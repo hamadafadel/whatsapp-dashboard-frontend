@@ -20,7 +20,9 @@ async function loadConversations() {
 
       item.innerHTML = `
         <div class="session-id">${conv.session_id}</div>
-        <div class="preview">${escapeHtml(conv.content || "")}</div>
+        <div class="preview">
+  ${escapeHtml((conv.content || "").slice(0, 80))}...
+</div>
       `;
 
       item.addEventListener("click", () => {
@@ -56,6 +58,7 @@ async function loadMessages(sessionId) {
       div.textContent = msg.content || "";
       messagesEl.appendChild(div);
     });
+    messagesEl.scrollTop = messagesEl.scrollHeight;
   } catch (error) {
     messagesEl.innerHTML = `<div style="color:red;">Failed to load messages</div>`;
     console.error(error);
