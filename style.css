@@ -1,114 +1,226 @@
-const API_BASE = "https://wadashboardapi.almehrab.org/api";
+* {
+  box-sizing: border-box;
+}
 
-const conversationsEl = document.getElementById("conversations");
-const messagesEl = document.getElementById("messages");
-const chatTitleEl = document.getElementById("chatTitle");
-const chatSubtitleEl = document.getElementById("chatSubtitle");
-const searchInputEl = document.getElementById("searchInput");
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  background: #0b141a;
+}
 
-let conversationsData = [];
-let activeSessionId = null;
+body {
+  overflow: hidden;
+}
 
-async function loadConversations() {
-  conversationsEl.innerHTML = `<div class="loading-state">جاري تحميل المحادثات...</div>`;
+.app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  background: #111b21;
+  direction: ltr;
+}
 
-  try {
-    const res = await fetch(`${API_BASE}/conversations`);
-    const conversations = await res.json();
+/* Sidebar */
+.sidebar {
+  width: 34%;
+  min-width: 320px;
+  max-width: 420px;
+  background: #111b21;
+  border-right: 1px solid #222d34;
+  display: flex;
+  flex-direction: column;
+}
 
-    conversationsData = Array.isArray(conversations) ? conversations : [];
-    renderConversations(conversationsData);
-  } catch (error) {
-    conversationsEl.innerHTML = `<div class="error-state">فشل تحميل المحادثات</div>`;
-    console.error(error);
+.sidebar-top {
+  height: 60px;
+  background: #202c33;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid #222d34;
+}
+
+.sidebar-title {
+  color: #e9edef;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.search-box {
+  padding: 10px 12px;
+  background: #111b21;
+  border-bottom: 1px solid #222d34;
+}
+
+.search-box input {
+  width: 100%;
+  height: 40px;
+  border: none;
+  outline: none;
+  border-radius: 8px;
+  background: #202c33;
+  color: #e9edef;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.search-box input::placeholder {
+  color: #8696a0;
+}
+
+.conversation-list {
+  flex: 1;
+  overflow-y: auto;
+  background: #111b21;
+}
+
+.conversation-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid #222d34;
+  transition: background 0.15s ease;
+}
+
+.conversation-item:hover {
+  background: #202c33;
+}
+
+.conversation-item.active {
+  background: #2a3942;
+}
+
+.session-id {
+  color: #e9edef;
+  font-size: 17px;
+  font-weight: 600;
+  direction: ltr;
+  text-align: left;
+}
+
+.preview {
+  color: #8696a0;
+  font-size: 14px;
+  line-height: 1.5;
+  direction: rtl;
+  text-align: right;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Chat */
+.chat-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #0b141a;
+  direction: rtl;
+}
+
+.chat-header {
+  height: 60px;
+  background: #202c33;
+  border-bottom: 1px solid #222d34;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+}
+
+.chat-title {
+  color: #e9edef;
+  font-size: 19px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.chat-subtitle {
+  color: #8696a0;
+  font-size: 13px;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background:
+    linear-gradient(rgba(11, 20, 26, 0.92), rgba(11, 20, 26, 0.92)),
+    radial-gradient(circle at center, #111b21 1px, transparent 1px);
+  background-size: auto, 24px 24px;
+}
+
+.message {
+  max-width: 72%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  position: relative;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.15);
+}
+
+.message.user {
+  align-self: flex-start;
+  background: #005c4b;
+  color: #e9edef;
+  border-top-left-radius: 0;
+}
+
+.message.ai {
+  align-self: flex-end;
+  background: #202c33;
+  color: #e9edef;
+  border-top-right-radius: 0;
+}
+
+.empty-state,
+.error-state,
+.loading-state {
+  color: #8696a0;
+  font-size: 16px;
+  margin: auto;
+  text-align: center;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #374248;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a5c66;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: 38%;
+    min-width: 280px;
+  }
+
+  .messages {
+    padding: 18px;
+  }
+
+  .message {
+    max-width: 85%;
   }
 }
-
-function renderConversations(conversations) {
-  if (!conversations.length) {
-    conversationsEl.innerHTML = `<div class="empty-state">لا توجد محادثات</div>`;
-    return;
-  }
-
-  conversationsEl.innerHTML = "";
-
-  conversations.forEach((conv) => {
-    const item = document.createElement("div");
-    item.className = "conversation-item";
-    if (conv.session_id === activeSessionId) item.classList.add("active");
-
-    const previewText = (conv.content || "").trim();
-
-    item.innerHTML = `
-      <div class="session-id">${escapeHtml(conv.session_id || "")}</div>
-      <div class="preview">${escapeHtml(previewText)}</div>
-    `;
-
-    item.addEventListener("click", () => {
-      activeSessionId = conv.session_id;
-      renderConversations(conversationsData);
-      loadMessages(conv.session_id);
-    });
-
-    conversationsEl.appendChild(item);
-  });
-}
-
-async function loadMessages(sessionId) {
-  chatTitleEl.textContent = `Session: ${sessionId}`;
-  chatSubtitleEl.textContent = "جاري تحميل الرسائل...";
-  messagesEl.innerHTML = `<div class="loading-state">جاري تحميل الرسائل...</div>`;
-
-  try {
-    const res = await fetch(`${API_BASE}/messages/${sessionId}`);
-    const messages = await res.json();
-
-    messagesEl.innerHTML = "";
-
-    if (!Array.isArray(messages) || messages.length === 0) {
-      messagesEl.innerHTML = `<div class="empty-state">لا توجد رسائل</div>`;
-      chatSubtitleEl.textContent = "0 messages";
-      return;
-    }
-
-    messages.forEach((msg) => {
-      const div = document.createElement("div");
-      const messageType =
-        msg.type === "human" || msg.type === "user" ? "user" : "ai";
-
-      div.className = `message ${messageType}`;
-      div.textContent = msg.content || "";
-      messagesEl.appendChild(div);
-    });
-
-    chatSubtitleEl.textContent = `${messages.length} messages`;
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  } catch (error) {
-    messagesEl.innerHTML = `<div class="error-state">فشل تحميل الرسائل</div>`;
-    chatSubtitleEl.textContent = "Load failed";
-    console.error(error);
-  }
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-searchInputEl.addEventListener("input", () => {
-  const value = searchInputEl.value.trim().toLowerCase();
-
-  const filtered = conversationsData.filter((conv) => {
-    const sessionId = String(conv.session_id || "").toLowerCase();
-    const content = String(conv.content || "").toLowerCase();
-    return sessionId.includes(value) || content.includes(value);
-  });
-
-  renderConversations(filtered);
-});
-
-loadConversations();
