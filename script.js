@@ -153,4 +153,10 @@ const eventSource = new EventSource('https://wadashboardapi.almehrab.org/api/eve
 eventSource.onmessage = function (event) {
   const data = JSON.parse(event.data);
   console.log('Realtime event:', data);
+
+  loadConversations();
+
+  if (activeSessionId) {
+    loadMessages(activeSessionId);
+  }
 };
