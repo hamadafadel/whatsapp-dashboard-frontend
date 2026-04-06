@@ -173,3 +173,21 @@ eventSource.onmessage = function (event) {
     loadMessages(activeSessionId);
   }
 };
+
+function appendRealtimeUserMessage(content) {
+  const wrap = document.createElement("div");
+  wrap.className = "message-wrap user";
+
+  const bubble = document.createElement("div");
+  bubble.className = "message user";
+
+  const textEl = document.createElement("div");
+  textEl.className = "message-text";
+  textEl.textContent = content || "";
+
+  bubble.appendChild(textEl);
+  wrap.appendChild(bubble);
+  messagesEl.appendChild(wrap);
+
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
