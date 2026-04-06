@@ -153,20 +153,19 @@ const eventSource = new EventSource('https://wadashboardapi.almehrab.org/api/eve
 eventSource.onmessage = function (event) {
   const data = JSON.parse(event.data);
 
-  console.log('Realtime event:', data);
+  console.log("Realtime event:", data);
+  console.log("activeSessionId =", activeSessionId);
+  console.log("event sessionId =", data.sessionId);
 
-  // 👇 لو رسالة يوزر
   if (data.type === 'user_message') {
-    loadConversations();
-
-    if (activeSessionId === data.sessionId && data.content) {
+    if (data.content) {
       appendRealtimeUserMessage(data.content);
     }
 
+    loadConversations();
     return;
   }
 
-  // 👇 رد AI
   loadConversations();
 
   if (activeSessionId) {
