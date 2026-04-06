@@ -154,26 +154,33 @@ eventSource.onmessage = function (event) {
   const data = JSON.parse(event.data);
 
   console.log("Realtime event:", data);
-  console.log("activeSessionId =", activeSessionId);
-  console.log("event sessionId =", data.sessionId);
 
-  if (data.type === 'user_message') {
-    if (data.content) {
+  const currentSession = String(activeSessionId || "").trim();
+  const eventSession = String(data.sessionId || "").trim();
+
+  if (data.type === "user_message") {
+    if (currentSession === eventSession && data.content) {
       appendRealtimeUserMessage(data.content);
     }
 
+    // نحدث القائمة فقط بدون ما نعمل reload للرسائل
     loadConversations();
     return;
   }
 
+  // هنا رد الـ AI أو أي تحديث نهائي
   loadConversations();
 
   if (activeSessionId) {
     loadMessages(activeSessionId);
   }
 };
-
 function appendRealtimeUserMessage(content) {
+  const lastMessageText = messagesEl.querySelector(".message-wrap.user:last-child .message-text");
+  if (lastMessageText && lastMessageText.textContent.trim() === String(content || "").trim()) {
+    return;
+  }
+
   const wrap = document.createElement("div");
   wrap.className = "message-wrap user";
 
