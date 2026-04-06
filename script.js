@@ -72,16 +72,51 @@ async function loadMessages(sessionId) {
     }
 
     messages.forEach((msg) => {
-      const div = document.createElement("div");
       const messageType =
         msg.type === "human" || msg.type === "user" ? "user" : "ai";
 
-      div.className = `message ${messageType}`;
-      div.textContent = msg.content || "";
-      messagesEl.appendChild(div);
+      const wrap = document.createElement("div");
+      wrap.className = `message-wrap ${messageType}`;
+
+      const bubble = document.createElement("div");
+      bubble.className = `message ${messageType}`;
+
+      const textEl = document.createElement("div");
+      textEl.className = "message-text";
+      textEl.textContent = msg.content || "";
+
+      bubble.appendChild(textEl);
+      wrap.appendChild(bubble);
+
+      const text = String(msg.content || "");
+      const isLongMessage = text.length > 350 || text.split("\n").length > 6;
+
+      if (isLongMessage) {
+        textEl.classList.add("collapsed");
+
+        const btn = document.createElement("button");
+        btn.className = "expand-btn";
+        btn.textContent = "عرض المزيد";
+
+        btn.addEventListener("click", () => {
+          const collapsed = textEl.classList.contains("collapsed");
+
+          if (collapsed) {
+            textEl.classList.remove("collapsed");
+            btn.textContent = "عرض أقل";
+          } else {
+            textEl.classList.add("collapsed");
+            btn.textContent = "عرض المزيد";
+          }
+        });
+
+        wrap.appendChild(btn);
+      }
+
+      messagesEl.appendChild(wrap);
     });
 
-    chatSubtitleEl.textContent = `${messages.length} messages`;
+    chatSubtitleEl.textContent = `messages ${messages.length}`;
     messagesEl.scrollTop = messagesEl.scrollHeight;
   } catch (error) {
     messagesEl.innerHTML = `<div class="error-state">فشل تحميل الرسائل</div>`;
