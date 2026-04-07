@@ -5,6 +5,8 @@ const messagesEl = document.getElementById("messages");
 const chatTitleEl = document.getElementById("chatTitle");
 const chatSubtitleEl = document.getElementById("chatSubtitle");
 const searchInputEl = document.getElementById("searchInput");
+const messageInputEl = document.getElementById("messageInput");
+const sendBtnEl = document.getElementById("sendBtn");
 
 let conversationsData = [];
 let activeSessionId = null;
@@ -48,6 +50,7 @@ function renderConversations(conversations) {
       activeSessionId = conv.session_id;
       renderConversations(conversationsData);
       loadMessages(conv.session_id);
+      messageInputEl.focus();
     });
 
     conversationsEl.appendChild(item);
@@ -72,48 +75,7 @@ async function loadMessages(sessionId) {
     }
 
     messages.forEach((msg) => {
-      const messageType =
-        msg.type === "human" || msg.type === "user" ? "user" : "ai";
-
-      const wrap = document.createElement("div");
-      wrap.className = `message-wrap ${messageType}`;
-
-      const bubble = document.createElement("div");
-      bubble.className = `message ${messageType}`;
-
-      const textEl = document.createElement("div");
-      textEl.className = "message-text";
-      textEl.textContent = msg.content || "";
-
-      bubble.appendChild(textEl);
-      wrap.appendChild(bubble);
-
-      const text = String(msg.content || "");
-      const isLongMessage = text.length > 350 || text.split("\n").length > 6;
-
-      if (isLongMessage) {
-        textEl.classList.add("collapsed");
-
-        const btn = document.createElement("button");
-        btn.className = "expand-btn";
-        btn.textContent = "عرض المزيد";
-
-        btn.addEventListener("click", () => {
-          const collapsed = textEl.classList.contains("collapsed");
-
-          if (collapsed) {
-            textEl.classList.remove("collapsed");
-            btn.textContent = "عرض أقل";
-          } else {
-            textEl.classList.add("collapsed");
-            btn.textContent = "عرض المزيد";
-          }
-        });
-
-        wrap.appendChild(btn);
-      }
-
-      messagesEl.appendChild(wrap);
+      appendMessageToUI(msg);
     });
 
     chatSubtitleEl.textContent = `messages ${messages.length}`;
@@ -122,6 +84,104 @@ async function loadMessages(sessionId) {
     messagesEl.innerHTML = `<div class="error-state">فشل تحميل الرسائل</div>`;
     chatSubtitleEl.textContent = "Load failed";
     console.error(error);
+  }
+}
+
+function appendMessageToUI(msg) {
+  const rawType = String(msg.type || "").toLowerCase();
+  const messageType =
+    rawType === "human" || rawType === "user" ? "user" : "ai";
+
+  const wrap = document.createElement("div");
+  wrap.className = `message-wrap ${messageType}`;
+
+  const bubble = document.createElement("div");
+  bubble.className = `message ${messageType}`;
+
+  const textEl = document.createElement("div");
+  textEl.className = "message-text";
+  textEl.textContent = msg.content || "";
+
+  bubble.appendChild(textEl);
+  wrap.appendChild(bubble);
+
+  const text = String(msg.content || "");
+  const isLongMessage = text.length > 350 || text.split("\n").length > 6;
+
+  if (isLongMessage) {
+    textEl.classList.add("collapsed");
+
+    const btn = document.createElement("button");
+    btn.className = "expand-btn";
+    btn.textContent = "عرض المزيد";
+
+    btn.addEventListener("click", () => {
+      const collapsed = textEl.classList.contains("collapsed");
+
+      if (collapsed) {
+        textEl.classList.remove("collapsed");
+        btn.textContent = "عرض أقل";
+      } else {
+        textEl.classList.add("collapsed");
+        btn.textContent = "عرض المزيد";
+      }
+    });
+
+    wrap.appendChild(btn);
+  }
+
+  messagesEl.appendChild(wrap);
+}
+
+async function sendMessageFromDashboard() {
+  const message = messageInputEl.value.trim();
+
+  if (!activeSessionId) {
+    alert("اختر محادثة أولًا");
+    return;
+  }
+
+  if (!message) {
+    return;
+  }
+
+  sendBtnEl.disabled = true;
+  messageInputEl.disabled = true;
+
+  try {
+    const res = await fetch(`${API_BASE}/send-message`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: activeSessionId,
+        message
+      })
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data.error || "فشل إرسال الرسالة");
+    }
+
+    messageInputEl.value = "";
+    messageInputEl.focus();
+
+    // fallback سريع لو الـ realtime اتأخر
+    setTimeout(() => {
+      if (activeSessionId) {
+        loadMessages(activeSessionId);
+      }
+      loadConversations();
+    }, 500);
+  } catch (error) {
+    console.error("sendMessageFromDashboard error:", error);
+    alert(error.message || "حدث خطأ أثناء الإرسال");
+  } finally {
+    sendBtnEl.disabled = false;
+    messageInputEl.disabled = false;
   }
 }
 
@@ -146,9 +206,19 @@ searchInputEl.addEventListener("input", () => {
   renderConversations(filtered);
 });
 
+sendBtnEl.addEventListener("click", sendMessageFromDashboard);
+
+messageInputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    sendMessageFromDashboard();
+  }
+});
+
 loadConversations();
+
 // 🔥 Real-time connection
-const eventSource = new EventSource('https://wadashboardapi.almehrab.org/api/events');
+const eventSource = new EventSource(`${API_BASE}/events`);
 
 eventSource.onmessage = function (event) {
   const data = JSON.parse(event.data);
@@ -163,20 +233,24 @@ eventSource.onmessage = function (event) {
       appendRealtimeUserMessage(data.content);
     }
 
-    // نحدث القائمة فقط بدون ما نعمل reload للرسائل
     loadConversations();
     return;
   }
 
-  // هنا رد الـ AI أو أي تحديث نهائي
   loadConversations();
 
   if (activeSessionId) {
     loadMessages(activeSessionId);
   }
 };
+
+eventSource.onerror = function (error) {
+  console.error("SSE error:", error);
+};
+
 function appendRealtimeUserMessage(content) {
   const lastMessageText = messagesEl.querySelector(".message-wrap.user:last-child .message-text");
+
   if (lastMessageText && lastMessageText.textContent.trim() === String(content || "").trim()) {
     return;
   }
