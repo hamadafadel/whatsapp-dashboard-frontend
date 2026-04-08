@@ -216,13 +216,20 @@ async function sendMessageFromDashboard() {
     }
 
     messageInputEl.value = "";
-    messageInputEl.focus();
   } catch (error) {
     console.error("sendMessageFromDashboard error:", error);
     alert(error.message || "حدث خطأ أثناء الإرسال");
   } finally {
     sendBtnEl.disabled = false;
     messageInputEl.disabled = false;
+
+    setTimeout(() => {
+      messageInputEl.focus();
+      messageInputEl.setSelectionRange(
+        messageInputEl.value.length,
+        messageInputEl.value.length
+      );
+    }, 0);
   }
 }
 
