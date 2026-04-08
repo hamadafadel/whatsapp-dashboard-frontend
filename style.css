@@ -331,3 +331,20 @@ body {
     min-width: 74px;
   }
 }
+
+/* ===== Message Types ===== */
+
+.message.agent {
+  background-color: #005c4b;
+  align-self: flex-end;
+}
+
+.message.ai {
+  background-color: #202c33;
+  align-self: flex-end;
+}
+
+.message.user {
+  background-color: #1f2c34;
+  align-self: flex-start;
+}
