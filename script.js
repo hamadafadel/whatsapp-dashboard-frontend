@@ -1,3 +1,4 @@
+let typingIndicatorSessionId = null;
 const API_BASE = "https://wadashboardapi.almehrab.org/api";
 
 const conversationsEl = document.getElementById("conversations");
@@ -299,7 +300,12 @@ eventSource.onmessage = function (event) {
     updateConversationPreview(eventSession, data.content);
     return;
   }
-
+if (data.type === "ai_typing") {
+  if (currentSession === eventSession) {
+    showAiTypingIndicator();
+  }
+  return;
+}
   if (data.type === "new_message") {
   if (currentSession === eventSession && data.content) {
     appendRealtimeMessage(data.content, data.messageType);
@@ -386,4 +392,40 @@ function appendRealtimeMessage(content, messageType) {
   messagesEl.appendChild(wrap);
 
   messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function showAiTypingIndicator() {
+  removeAiTypingIndicator();
+
+  typingIndicatorSessionId = String(activeSessionId || "").trim();
+
+  const wrap = document.createElement("div");
+  wrap.className = "message-wrap ai typing-wrap";
+  wrap.setAttribute("data-typing-indicator", "true");
+
+  const bubble = document.createElement("div");
+  bubble.className = "message ai typing-bubble";
+
+  const label = document.createElement("div");
+  label.className = "message-label ai";
+  label.textContent = "AI";
+
+  const dots = document.createElement("div");
+  dots.className = "typing-dots";
+  dots.innerHTML = `<span></span><span></span><span></span>`;
+
+  bubble.appendChild(label);
+  bubble.appendChild(dots);
+  wrap.appendChild(bubble);
+  messagesEl.appendChild(wrap);
+
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function removeAiTypingIndicator() {
+  const existing = messagesEl.querySelector('[data-typing-indicator="true"]');
+  if (existing) {
+    existing.remove();
+  }
+  typingIndicatorSessionId = null;
 }
