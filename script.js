@@ -1,5 +1,3 @@
-let typingIndicatorSessionId = null;
-let typingIndicatorTimeout = null;
 const API_BASE = "https://wadashboardapi.almehrab.org/api";
 
 const conversationsEl = document.getElementById("conversations");
@@ -13,6 +11,12 @@ const sendBtnEl = document.getElementById("sendBtn");
 let conversationsData = [];
 let activeSessionId = null;
 
+// 🔥 typing state
+let typingIndicatorTimeout = null;
+
+// =======================
+// تحميل المحادثات
+// =======================
 async function loadConversations() {
   conversationsEl.innerHTML = `<div class="loading-state">جاري تحميل المحادثات...</div>`;
 
@@ -43,11 +47,9 @@ function renderConversations(conversations) {
 
     if (conv.session_id === activeSessionId) item.classList.add("active");
 
-    const previewText = (conv.content || "").trim();
-
     item.innerHTML = `
       <div class="session-id">${escapeHtml(conv.session_id || "")}</div>
-      <div class="preview">${escapeHtml(previewText)}</div>
+      <div class="preview">${escapeHtml(conv.content || "")}</div>
     `;
 
     item.addEventListener("click", () => {
@@ -61,6 +63,9 @@ function renderConversations(conversations) {
   });
 }
 
+// =======================
+// تحميل الرسائل
+// =======================
 async function loadMessages(sessionId) {
   chatTitleEl.textContent = `Session: ${sessionId}`;
   chatSubtitleEl.textContent = "جاري تحميل الرسائل...";
@@ -91,18 +96,28 @@ async function loadMessages(sessionId) {
   }
 }
 
+// =======================
+// رسم الرسائل (مهم جدًا)
+// =======================
 function appendMessageToUI(msg) {
-  const rawType = String(msg.type || "").toLowerCase();
+  const rawType = String(msg.type || "").toLowerCase().trim();
+  const content = String(msg.content || "").trim();
 
-let messageType = "ai";
+  // ❌ تجاهل typing أو رسائل فاضية
+  if (!content) return;
+  if (rawType === "ai_typing") return;
 
-if (rawType === "user" || rawType === "human") {
-  messageType = "user";
-} else if (rawType === "agent") {
-  messageType = "agent";
-} else {
-  messageType = "ai";
-}
+  let messageType = "ai";
+
+  if (rawType === "user" || rawType === "human") {
+    messageType = "user";
+  } else if (rawType === "agent") {
+    messageType = "agent";
+  } else if (rawType === "assistant" || rawType === "ai") {
+    messageType = "ai";
+  } else {
+    return;
+  }
 
   const wrap = document.createElement("div");
   wrap.className = `message-wrap ${messageType}`;
@@ -111,105 +126,31 @@ if (rawType === "user" || rawType === "human") {
   bubble.className = `message ${messageType}`;
 
   if (messageType === "agent" || messageType === "ai") {
-  const label = document.createElement("div");
-  label.className = `message-label ${messageType}`;
-  label.textContent = messageType === "agent" ? "Agent" : "AI";
-  bubble.appendChild(label);
-}
+    const label = document.createElement("div");
+    label.className = `message-label ${messageType}`;
+    label.textContent = messageType === "agent" ? "Agent" : "AI";
+    bubble.appendChild(label);
+  }
 
   const textEl = document.createElement("div");
   textEl.className = "message-text";
-  textEl.textContent = msg.content || "";
+  textEl.textContent = content;
 
   bubble.appendChild(textEl);
   wrap.appendChild(bubble);
-
-  const text = String(msg.content || "");
-  const isLongMessage = text.length > 350 || text.split("\n").length > 6;
-
-  if (isLongMessage) {
-    textEl.classList.add("collapsed");
-
-    const btn = document.createElement("button");
-    btn.className = "expand-btn";
-    btn.textContent = "عرض المزيد";
-
-    btn.addEventListener("click", () => {
-      const collapsed = textEl.classList.contains("collapsed");
-
-      if (collapsed) {
-        textEl.classList.remove("collapsed");
-        btn.textContent = "عرض أقل";
-      } else {
-        textEl.classList.add("collapsed");
-        btn.textContent = "عرض المزيد";
-      }
-    });
-
-    wrap.appendChild(btn);
-  }
-
   messagesEl.appendChild(wrap);
+
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function updateConversationPreview(sessionId, content) {
-  const normalizedSessionId = String(sessionId || "").trim();
-  const normalizedContent = String(content || "").trim();
-
-  if (!normalizedSessionId) return;
-
-  const item = conversationsEl.querySelector(
-    `.conversation-item[data-session-id="${CSS.escape(normalizedSessionId)}"]`
-  );
-
-  if (!item) {
-    loadConversations();
-    return;
-  }
-
-  const previewEl = item.querySelector(".preview");
-  const sessionEl = item.querySelector(".session-id");
-
-  if (previewEl) {
-    previewEl.textContent = normalizedContent;
-  }
-
-  if (sessionEl) {
-    sessionEl.textContent = normalizedSessionId;
-  }
-
-  conversationsData = conversationsData.filter(
-    (conv) => String(conv.session_id || "").trim() !== normalizedSessionId
-  );
-
-  conversationsData.unshift({
-    session_id: normalizedSessionId,
-    content: normalizedContent
-  });
-
-  conversationsEl.prepend(item);
-
-  conversationsEl.querySelectorAll(".conversation-item").forEach((el) => {
-    const itemSessionId = String(el.dataset.sessionId || "").trim();
-    if (itemSessionId === String(activeSessionId || "").trim()) {
-      el.classList.add("active");
-    } else {
-      el.classList.remove("active");
-    }
-  });
-}
-
+// =======================
+// إرسال رسالة
+// =======================
 async function sendMessageFromDashboard() {
   const message = messageInputEl.value.trim();
 
-  if (!activeSessionId) {
-    alert("اختر محادثة أولًا");
-    return;
-  }
-
-  if (!message) {
-    return;
-  }
+  if (!activeSessionId) return alert("اختر محادثة أولًا");
+  if (!message) return;
 
   sendBtnEl.disabled = true;
   messageInputEl.disabled = true;
@@ -226,150 +167,70 @@ async function sendMessageFromDashboard() {
       })
     });
 
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(data.error || "فشل إرسال الرسالة");
-    }
+    if (!res.ok) throw new Error("فشل الإرسال");
 
     messageInputEl.value = "";
   } catch (error) {
-    console.error("sendMessageFromDashboard error:", error);
-    alert(error.message || "حدث خطأ أثناء الإرسال");
+    console.error(error);
+    alert("خطأ في الإرسال");
   } finally {
     sendBtnEl.disabled = false;
     messageInputEl.disabled = false;
-
-    setTimeout(() => {
-      messageInputEl.focus();
-      messageInputEl.setSelectionRange(
-        messageInputEl.value.length,
-        messageInputEl.value.length
-      );
-    }, 0);
+    messageInputEl.focus();
   }
 }
 
-function escapeHtml(str) {
-  return String(str)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-searchInputEl.addEventListener("input", () => {
-  const value = searchInputEl.value.trim().toLowerCase();
-
-  const filtered = conversationsData.filter((conv) => {
-    const sessionId = String(conv.session_id || "").toLowerCase();
-    const content = String(conv.content || "").toLowerCase();
-    return sessionId.includes(value) || content.includes(value);
-  });
-
-  renderConversations(filtered);
-});
-
-sendBtnEl.addEventListener("click", sendMessageFromDashboard);
-
-messageInputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    sendMessageFromDashboard();
-  }
-});
-
-loadConversations();
-
-// 🔥 Real-time connection
+// =======================
+// Realtime (أهم جزء)
+// =======================
 const eventSource = new EventSource(`${API_BASE}/events`);
 
 eventSource.onmessage = function (event) {
   const data = JSON.parse(event.data);
 
-  console.log("Realtime event:", data);
-
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
 
+  // 👤 رسالة عميل
   if (data.type === "user_message") {
     if (currentSession === eventSession && data.content) {
-      appendRealtimeUserMessage(data.content);
+      appendRealtimeMessage(data.content, "user");
+    }
+    updateConversationPreview(eventSession, data.content);
+    return;
+  }
+
+  // 🤖 typing
+  if (data.type === "ai_typing") {
+    if (currentSession === eventSession) {
+      showAiTypingIndicator();
+    }
+    return;
+  }
+
+  // 🤖 رسالة AI
+  if (data.type === "new_message") {
+    if (currentSession === eventSession) {
+      removeAiTypingIndicator(); // ✅ أهم سطر
+    }
+
+    if (currentSession === eventSession && data.content) {
+      appendRealtimeMessage(data.content, data.messageType);
     }
 
     updateConversationPreview(eventSession, data.content);
     return;
   }
-if (data.type === "ai_typing") {
-  if (currentSession === eventSession) {
-    showAiTypingIndicator();
-  }
-  return;
-}
-  if (data.type === "new_message") {
-  if (currentSession === eventSession && data.content) {
-    appendRealtimeMessage(data.content, data.messageType);
-  }
-
-  updateConversationPreview(eventSession, data.content);
-  return;
-}};
-
-eventSource.onerror = function (error) {
-  console.error("SSE error:", error);
 };
 
-function appendRealtimeUserMessage(content) {
-  const lastMessageText = messagesEl.querySelector(
-    ".message-wrap.user:last-child .message-text"
-  );
-
-  if (
-    lastMessageText &&
-    lastMessageText.textContent.trim() === String(content || "").trim()
-  ) {
-    return;
-  }
-
-  const wrap = document.createElement("div");
-  wrap.className = "message-wrap user";
-
-  const bubble = document.createElement("div");
-  bubble.className = "message user";
-
-  const textEl = document.createElement("div");
-  textEl.className = "message-text";
-  textEl.textContent = content || "";
-
-  bubble.appendChild(textEl);
-  wrap.appendChild(bubble);
-  messagesEl.appendChild(wrap);
-
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
+// =======================
+// append realtime
+// =======================
 function appendRealtimeMessage(content, messageType) {
-  let type = "ai";
+  removeAiTypingIndicator(); // ✅ ضمان
 
-  if (messageType === "user") {
-    type = "user";
-  } else if (messageType === "agent") {
-    type = "agent";
-  } else {
-    type = "ai";
-  }
-
-  const lastMessageText = messagesEl.querySelector(
-    `.message-wrap.${type}:last-child .message-text`
-  );
-
-  if (
-    lastMessageText &&
-    lastMessageText.textContent.trim() === String(content || "").trim()
-  ) {
-    return;
-  }
+  let type = messageType === "user" ? "user" :
+             messageType === "agent" ? "agent" : "ai";
 
   const wrap = document.createElement("div");
   wrap.className = `message-wrap ${type}`;
@@ -377,7 +238,7 @@ function appendRealtimeMessage(content, messageType) {
   const bubble = document.createElement("div");
   bubble.className = `message ${type}`;
 
-  if (type === "agent" || type === "ai") {
+  if (type !== "user") {
     const label = document.createElement("div");
     label.className = `message-label ${type}`;
     label.textContent = type === "agent" ? "Agent" : "AI";
@@ -386,7 +247,7 @@ function appendRealtimeMessage(content, messageType) {
 
   const textEl = document.createElement("div");
   textEl.className = "message-text";
-  textEl.textContent = content || "";
+  textEl.textContent = content;
 
   bubble.appendChild(textEl);
   wrap.appendChild(bubble);
@@ -395,6 +256,9 @@ function appendRealtimeMessage(content, messageType) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+// =======================
+// typing indicator
+// =======================
 function showAiTypingIndicator() {
   removeAiTypingIndicator();
 
@@ -420,19 +284,52 @@ function showAiTypingIndicator() {
 
   messagesEl.scrollTop = messagesEl.scrollHeight;
 
-  typingIndicatorTimeout = setTimeout(() => {
-    removeAiTypingIndicator();
-  }, 15000); // يشيل الـ typing بعد 15 ثانية تلقائيًا
+  typingIndicatorTimeout = setTimeout(removeAiTypingIndicator, 15000);
 }
 
 function removeAiTypingIndicator() {
   const existing = messagesEl.querySelector('[data-typing-indicator="true"]');
-  if (existing) {
-    existing.remove();
-  }
+  if (existing) existing.remove();
 
   if (typingIndicatorTimeout) {
     clearTimeout(typingIndicatorTimeout);
     typingIndicatorTimeout = null;
   }
 }
+
+// =======================
+function updateConversationPreview(sessionId, content) {
+  loadConversations();
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+// =======================
+searchInputEl.addEventListener("input", () => {
+  const value = searchInputEl.value.trim().toLowerCase();
+
+  const filtered = conversationsData.filter((conv) => {
+    return (
+      String(conv.session_id || "").toLowerCase().includes(value) ||
+      String(conv.content || "").toLowerCase().includes(value)
+    );
+  });
+
+  renderConversations(filtered);
+});
+
+sendBtnEl.addEventListener("click", sendMessageFromDashboard);
+
+messageInputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    sendMessageFromDashboard();
+  }
+});
+
+loadConversations();
