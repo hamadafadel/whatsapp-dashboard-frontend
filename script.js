@@ -215,7 +215,11 @@ const eventSource = new EventSource(`${API_BASE}/events`);
 eventSource.onmessage = function (event) {
   const data = JSON.parse(event.data);
 
-  console.log("Realtime event:", data);
+  console.log("Realtime event full:", data);
+console.log("activeSessionId:", activeSessionId);
+console.log("eventSession:", data.sessionId);
+console.log("eventContent:", data.content);
+console.log("eventType:", data.type);
 
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
