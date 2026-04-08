@@ -91,8 +91,16 @@ async function loadMessages(sessionId) {
 
 function appendMessageToUI(msg) {
   const rawType = String(msg.type || "").toLowerCase();
-  const messageType =
-    rawType === "human" || rawType === "user" ? "user" : "ai";
+
+let messageType = "ai";
+
+if (rawType === "user" || rawType === "human") {
+  messageType = "user";
+} else if (rawType === "agent") {
+  messageType = "agent";
+} else {
+  messageType = "ai";
+}
 
   const wrap = document.createElement("div");
   wrap.className = `message-wrap ${messageType}`;
@@ -286,14 +294,13 @@ eventSource.onmessage = function (event) {
   }
 
   if (data.type === "new_message") {
-    if (currentSession === eventSession && data.content) {
-      appendRealtimeAiMessage(data.content);
-    }
-
-    updateConversationPreview(eventSession, data.content);
-    return;
+  if (currentSession === eventSession && data.content) {
+    appendRealtimeMessage(data.content, data.messageType);
   }
-};
+
+  updateConversationPreview(eventSession, data.content);
+  return;
+}};
 
 eventSource.onerror = function (error) {
   console.error("SSE error:", error);
@@ -328,9 +335,19 @@ function appendRealtimeUserMessage(content) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function appendRealtimeAiMessage(content) {
+function appendRealtimeMessage(content, messageType) {
+  let type = "ai";
+
+  if (messageType === "user") {
+    type = "user";
+  } else if (messageType === "agent") {
+    type = "agent";
+  } else {
+    type = "ai";
+  }
+
   const lastMessageText = messagesEl.querySelector(
-    ".message-wrap.ai:last-child .message-text"
+    `.message-wrap.${type}:last-child .message-text`
   );
 
   if (
@@ -341,10 +358,10 @@ function appendRealtimeAiMessage(content) {
   }
 
   const wrap = document.createElement("div");
-  wrap.className = "message-wrap ai";
+  wrap.className = `message-wrap ${type}`;
 
   const bubble = document.createElement("div");
-  bubble.className = "message ai";
+  bubble.className = `message ${type}`;
 
   const textEl = document.createElement("div");
   textEl.className = "message-text";
