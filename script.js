@@ -168,14 +168,6 @@ async function sendMessageFromDashboard() {
 
     messageInputEl.value = "";
     messageInputEl.focus();
-
-    // fallback خفيف لو الـ realtime اتأخر
-    setTimeout(() => {
-      if (activeSessionId) {
-        loadMessages(activeSessionId);
-      }
-      loadConversations();
-    }, 300);
   } catch (error) {
     console.error("sendMessageFromDashboard error:", error);
     alert(error.message || "حدث خطأ أثناء الإرسال");
@@ -240,21 +232,16 @@ eventSource.onmessage = function (event) {
 
   // رسالة جديدة طالعة من الداشبورد
   if (data.type === "new_message") {
-    loadConversations();
-
-    if (currentSession === eventSession && activeSessionId) {
-      loadMessages(activeSessionId);
+    if (currentSession === eventSession && data.content) {
+      appendRealtimeAiMessage(data.content);
     }
 
+    loadConversations();
     return;
   }
 
   // fallback لأي event تاني
   loadConversations();
-
-  if (activeSessionId) {
-    loadMessages(activeSessionId);
-  }
 };
 
 eventSource.onerror = function (error) {
@@ -278,6 +265,35 @@ function appendRealtimeUserMessage(content) {
 
   const bubble = document.createElement("div");
   bubble.className = "message user";
+
+  const textEl = document.createElement("div");
+  textEl.className = "message-text";
+  textEl.textContent = content || "";
+
+  bubble.appendChild(textEl);
+  wrap.appendChild(bubble);
+  messagesEl.appendChild(wrap);
+
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function appendRealtimeAiMessage(content) {
+  const lastMessageText = messagesEl.querySelector(
+    ".message-wrap.ai:last-child .message-text"
+  );
+
+  if (
+    lastMessageText &&
+    lastMessageText.textContent.trim() === String(content || "").trim()
+  ) {
+    return;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "message-wrap ai";
+
+  const bubble = document.createElement("div");
+  bubble.className = "message ai";
 
   const textEl = document.createElement("div");
   textEl.className = "message-text";
