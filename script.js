@@ -1,4 +1,5 @@
 let typingIndicatorSessionId = null;
+let typingIndicatorTimeout = null;
 const API_BASE = "https://wadashboardapi.almehrab.org/api";
 
 const conversationsEl = document.getElementById("conversations");
@@ -397,8 +398,6 @@ function appendRealtimeMessage(content, messageType) {
 function showAiTypingIndicator() {
   removeAiTypingIndicator();
 
-  typingIndicatorSessionId = String(activeSessionId || "").trim();
-
   const wrap = document.createElement("div");
   wrap.className = "message-wrap ai typing-wrap";
   wrap.setAttribute("data-typing-indicator", "true");
@@ -420,6 +419,10 @@ function showAiTypingIndicator() {
   messagesEl.appendChild(wrap);
 
   messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  typingIndicatorTimeout = setTimeout(() => {
+    removeAiTypingIndicator();
+  }, 15000); // يشيل الـ typing بعد 15 ثانية تلقائيًا
 }
 
 function removeAiTypingIndicator() {
@@ -427,5 +430,9 @@ function removeAiTypingIndicator() {
   if (existing) {
     existing.remove();
   }
-  typingIndicatorSessionId = null;
+
+  if (typingIndicatorTimeout) {
+    clearTimeout(typingIndicatorTimeout);
+    typingIndicatorTimeout = null;
+  }
 }
