@@ -232,13 +232,13 @@ eventSource.onmessage = function (event) {
 
   // رسالة جديدة طالعة من الداشبورد
   if (data.type === "new_message") {
-    if (currentSession === eventSession && data.content) {
-      appendRealtimeAiMessage(data.content);
-    }
-
-    loadConversations();
-    return;
+  if (currentSession === eventSession && data.content) {
+    appendRealtimeAiMessage(data.content);
   }
+
+  loadConversations();
+  return;
+}
 
   // fallback لأي event تاني
   loadConversations();
