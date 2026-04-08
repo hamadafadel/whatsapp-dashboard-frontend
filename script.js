@@ -222,13 +222,11 @@ eventSource.onmessage = function (event) {
 
   // رسالة جاية من العميل
   if (data.type === "user_message") {
-    if (currentSession === eventSession && data.content) {
-      appendRealtimeUserMessage(data.content);
-    }
-
-    loadConversations();
-    return;
+  if (currentSession === eventSession && data.content) {
+    appendRealtimeUserMessage(data.content);
   }
+  return;
+}
 
   // رسالة جديدة طالعة من الداشبورد
   if (data.type === "new_message") {
