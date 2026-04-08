@@ -108,6 +108,13 @@ if (rawType === "user" || rawType === "human") {
   const bubble = document.createElement("div");
   bubble.className = `message ${messageType}`;
 
+  if (messageType === "agent" || messageType === "ai") {
+  const label = document.createElement("div");
+  label.className = `message-label ${messageType}`;
+  label.textContent = messageType === "agent" ? "Agent" : "AI";
+  bubble.appendChild(label);
+}
+
   const textEl = document.createElement("div");
   textEl.className = "message-text";
   textEl.textContent = msg.content || "";
@@ -362,6 +369,13 @@ function appendRealtimeMessage(content, messageType) {
 
   const bubble = document.createElement("div");
   bubble.className = `message ${type}`;
+
+  if (type === "agent" || type === "ai") {
+    const label = document.createElement("div");
+    label.className = `message-label ${type}`;
+    label.textContent = type === "agent" ? "Agent" : "AI";
+    bubble.appendChild(label);
+  }
 
   const textEl = document.createElement("div");
   textEl.className = "message-text";
