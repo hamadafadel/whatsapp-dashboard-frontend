@@ -37,6 +37,8 @@ function renderConversations(conversations) {
   conversations.forEach((conv) => {
     const item = document.createElement("div");
     item.className = "conversation-item";
+    item.dataset.sessionId = conv.session_id || "";
+
     if (conv.session_id === activeSessionId) item.classList.add("active");
 
     const previewText = (conv.content || "").trim();
@@ -133,6 +135,53 @@ function appendMessageToUI(msg) {
   messagesEl.appendChild(wrap);
 }
 
+function updateConversationPreview(sessionId, content) {
+  const normalizedSessionId = String(sessionId || "").trim();
+  const normalizedContent = String(content || "").trim();
+
+  if (!normalizedSessionId) return;
+
+  const item = conversationsEl.querySelector(
+    `.conversation-item[data-session-id="${CSS.escape(normalizedSessionId)}"]`
+  );
+
+  if (!item) {
+    loadConversations();
+    return;
+  }
+
+  const previewEl = item.querySelector(".preview");
+  const sessionEl = item.querySelector(".session-id");
+
+  if (previewEl) {
+    previewEl.textContent = normalizedContent;
+  }
+
+  if (sessionEl) {
+    sessionEl.textContent = normalizedSessionId;
+  }
+
+  conversationsData = conversationsData.filter(
+    (conv) => String(conv.session_id || "").trim() !== normalizedSessionId
+  );
+
+  conversationsData.unshift({
+    session_id: normalizedSessionId,
+    content: normalizedContent
+  });
+
+  conversationsEl.prepend(item);
+
+  conversationsEl.querySelectorAll(".conversation-item").forEach((el) => {
+    const itemSessionId = String(el.dataset.sessionId || "").trim();
+    if (itemSessionId === String(activeSessionId || "").trim()) {
+      el.classList.add("active");
+    } else {
+      el.classList.remove("active");
+    }
+  });
+}
+
 async function sendMessageFromDashboard() {
   const message = messageInputEl.value.trim();
 
@@ -215,35 +264,28 @@ const eventSource = new EventSource(`${API_BASE}/events`);
 eventSource.onmessage = function (event) {
   const data = JSON.parse(event.data);
 
-  console.log("Realtime event full:", data);
-console.log("activeSessionId:", activeSessionId);
-console.log("eventSession:", data.sessionId);
-console.log("eventContent:", data.content);
-console.log("eventType:", data.type);
+  console.log("Realtime event:", data);
 
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
 
-  // رسالة جاية من العميل
   if (data.type === "user_message") {
-  if (currentSession === eventSession && data.content) {
-    appendRealtimeUserMessage(data.content);
-  }
-  return;
-}
+    if (currentSession === eventSession && data.content) {
+      appendRealtimeUserMessage(data.content);
+    }
 
-  // رسالة جديدة طالعة من الداشبورد
+    updateConversationPreview(eventSession, data.content);
+    return;
+  }
+
   if (data.type === "new_message") {
-  if (currentSession === eventSession && data.content) {
-    appendRealtimeAiMessage(data.content);
+    if (currentSession === eventSession && data.content) {
+      appendRealtimeAiMessage(data.content);
+    }
+
+    updateConversationPreview(eventSession, data.content);
+    return;
   }
-
-  loadConversations();
-  return;
-}
-
-  // fallback لأي event تاني
-  loadConversations();
 };
 
 eventSource.onerror = function (error) {
