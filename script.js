@@ -169,13 +169,13 @@ async function sendMessageFromDashboard() {
     messageInputEl.value = "";
     messageInputEl.focus();
 
-    // fallback سريع لو الـ realtime اتأخر
+    // fallback خفيف لو الـ realtime اتأخر
     setTimeout(() => {
       if (activeSessionId) {
         loadMessages(activeSessionId);
       }
       loadConversations();
-    }, 500);
+    }, 300);
   } catch (error) {
     console.error("sendMessageFromDashboard error:", error);
     alert(error.message || "حدث خطأ أثناء الإرسال");
@@ -228,6 +228,7 @@ eventSource.onmessage = function (event) {
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
 
+  // رسالة جاية من العميل
   if (data.type === "user_message") {
     if (currentSession === eventSession && data.content) {
       appendRealtimeUserMessage(data.content);
@@ -237,6 +238,18 @@ eventSource.onmessage = function (event) {
     return;
   }
 
+  // رسالة جديدة طالعة من الداشبورد
+  if (data.type === "new_message") {
+    loadConversations();
+
+    if (currentSession === eventSession && activeSessionId) {
+      loadMessages(activeSessionId);
+    }
+
+    return;
+  }
+
+  // fallback لأي event تاني
   loadConversations();
 
   if (activeSessionId) {
@@ -249,9 +262,14 @@ eventSource.onerror = function (error) {
 };
 
 function appendRealtimeUserMessage(content) {
-  const lastMessageText = messagesEl.querySelector(".message-wrap.user:last-child .message-text");
+  const lastMessageText = messagesEl.querySelector(
+    ".message-wrap.user:last-child .message-text"
+  );
 
-  if (lastMessageText && lastMessageText.textContent.trim() === String(content || "").trim()) {
+  if (
+    lastMessageText &&
+    lastMessageText.textContent.trim() === String(content || "").trim()
+  ) {
     return;
   }
 
