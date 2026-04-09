@@ -7,12 +7,32 @@ const chatSubtitleEl = document.getElementById("chatSubtitle");
 const searchInputEl = document.getElementById("searchInput");
 const messageInputEl = document.getElementById("messageInput");
 const sendBtnEl = document.getElementById("sendBtn");
+const chatHeaderEl = document.querySelector(".chat-header");
 
 let conversationsData = [];
 let activeSessionId = null;
-
-// 🔥 typing state
 let typingIndicatorTimeout = null;
+let currentAiEnabled = true;
+
+// زرار AI
+const toggleAiBtn = document.createElement("button");
+toggleAiBtn.id = "toggleAiBtn";
+toggleAiBtn.type = "button";
+toggleAiBtn.textContent = "إيقاف AI";
+toggleAiBtn.style.marginInlineStart = "12px";
+toggleAiBtn.style.padding = "8px 14px";
+toggleAiBtn.style.border = "none";
+toggleAiBtn.style.borderRadius = "10px";
+toggleAiBtn.style.cursor = "pointer";
+toggleAiBtn.style.fontSize = "14px";
+toggleAiBtn.style.fontWeight = "700";
+toggleAiBtn.style.color = "#fff";
+toggleAiBtn.style.background = "#dc3545";
+toggleAiBtn.style.display = "none";
+
+if (chatHeaderEl) {
+  chatHeaderEl.appendChild(toggleAiBtn);
+}
 
 // =======================
 // تحميل المحادثات
@@ -56,6 +76,7 @@ function renderConversations(conversations) {
       activeSessionId = conv.session_id;
       renderConversations(conversationsData);
       loadMessages(conv.session_id);
+      loadAiStatus(conv.session_id);
       messageInputEl.focus();
     });
 
@@ -97,13 +118,12 @@ async function loadMessages(sessionId) {
 }
 
 // =======================
-// رسم الرسائل (مهم جدًا)
+// رسم الرسائل
 // =======================
 function appendMessageToUI(msg) {
   const rawType = String(msg.type || "").toLowerCase().trim();
   const content = String(msg.content || "").trim();
 
-  // ❌ تجاهل typing أو رسائل فاضية
   if (!content) return;
   if (rawType === "ai_typing") return;
 
@@ -181,7 +201,62 @@ async function sendMessageFromDashboard() {
 }
 
 // =======================
-// Realtime (أهم جزء)
+// AI Status
+// =======================
+async function loadAiStatus(sessionId) {
+  if (!sessionId) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/ai-status/${sessionId}`);
+    const data = await res.json();
+
+    currentAiEnabled = data.ai_enabled !== false;
+    updateAiButton();
+  } catch (error) {
+    console.error("Failed to load AI status", error);
+  }
+}
+
+function updateAiButton() {
+  if (!toggleAiBtn) return;
+
+  toggleAiBtn.style.display = activeSessionId ? "inline-block" : "none";
+  toggleAiBtn.textContent = currentAiEnabled ? "إيقاف AI" : "تشغيل AI";
+  toggleAiBtn.style.background = currentAiEnabled ? "#dc3545" : "#25d366";
+}
+
+async function toggleAiStatus() {
+  if (!activeSessionId) {
+    alert("اختر محادثة أولًا");
+    return;
+  }
+
+  const newStatus = !currentAiEnabled;
+
+  try {
+    const res = await fetch(`${API_BASE}/ai-status`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: activeSessionId,
+        ai_enabled: newStatus
+      })
+    });
+
+    if (!res.ok) throw new Error("Failed to update AI status");
+
+    currentAiEnabled = newStatus;
+    updateAiButton();
+  } catch (error) {
+    console.error(error);
+    alert("فشل تغيير حالة AI");
+  }
+}
+
+// =======================
+// Realtime
 // =======================
 const eventSource = new EventSource(`${API_BASE}/events`);
 
@@ -191,7 +266,6 @@ eventSource.onmessage = function (event) {
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
 
-  // 👤 رسالة عميل
   if (data.type === "user_message") {
     if (currentSession === eventSession && data.content) {
       appendRealtimeMessage(data.content, "user");
@@ -200,7 +274,6 @@ eventSource.onmessage = function (event) {
     return;
   }
 
-  // 🤖 typing
   if (data.type === "ai_typing") {
     if (currentSession === eventSession) {
       showAiTypingIndicator();
@@ -208,10 +281,9 @@ eventSource.onmessage = function (event) {
     return;
   }
 
-  // 🤖 رسالة AI
   if (data.type === "new_message") {
     if (currentSession === eventSession) {
-      removeAiTypingIndicator(); // ✅ أهم سطر
+      removeAiTypingIndicator();
     }
 
     if (currentSession === eventSession && data.content) {
@@ -221,16 +293,28 @@ eventSource.onmessage = function (event) {
     updateConversationPreview(eventSession, data.content);
     return;
   }
+
+  if (data.type === "ai_status_changed") {
+    if (currentSession === eventSession) {
+      currentAiEnabled = data.ai_enabled !== false;
+      updateAiButton();
+    }
+    return;
+  }
 };
 
 // =======================
 // append realtime
 // =======================
 function appendRealtimeMessage(content, messageType) {
-  removeAiTypingIndicator(); // ✅ ضمان
+  removeAiTypingIndicator();
 
-  let type = messageType === "user" ? "user" :
-             messageType === "agent" ? "agent" : "ai";
+  let type =
+    messageType === "user"
+      ? "user"
+      : messageType === "agent"
+      ? "agent"
+      : "ai";
 
   const wrap = document.createElement("div");
   wrap.className = `message-wrap ${type}`;
@@ -298,7 +382,7 @@ function removeAiTypingIndicator() {
 }
 
 // =======================
-function updateConversationPreview(sessionId, content) {
+function updateConversationPreview() {
   loadConversations();
 }
 
@@ -331,5 +415,7 @@ messageInputEl.addEventListener("keydown", (e) => {
     sendMessageFromDashboard();
   }
 });
+
+toggleAiBtn.addEventListener("click", toggleAiStatus);
 
 loadConversations();
