@@ -438,3 +438,25 @@ body {
     transform: translateY(-2px);
   }
 }
+.wa-buttons {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wa-button {
+  background: transparent;
+  border: 1px solid rgba(83, 189, 235, 0.55);
+  color: #53bdeb;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: default;
+  text-align: center;
+}
+
+.wa-button:hover {
+  background: rgba(83, 189, 235, 0.08);
+}
