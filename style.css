@@ -475,3 +475,20 @@ body {
 .wa-button:hover {
   background: rgba(83, 189, 235, 0.08);
 }
+
+.wa-list {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.12);
+  padding-top: 8px;
+}
+
+.wa-list-button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #25d366;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 8px;
+  cursor: default;
+}
