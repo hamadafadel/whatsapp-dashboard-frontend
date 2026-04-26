@@ -161,6 +161,14 @@ const interactive = messageObj.interactive || null;
   textEl.className = "message-text";
   textEl.textContent = content;
 
+  if (messageKind === "image" && media?.url) {
+  const img = document.createElement("img");
+  img.src = media.url;
+  img.style.maxWidth = "100%";
+  img.style.borderRadius = "8px";
+  img.style.marginBottom = content ? "6px" : "0";
+  bubble.appendChild(img);
+}
   bubble.appendChild(textEl);
   if (
   (messageKind === "buttons" || messageKind === "template_button") &&
