@@ -121,8 +121,13 @@ async function loadMessages(sessionId) {
 // رسم الرسائل
 // =======================
 function appendMessageToUI(msg) {
-  const rawType = String(msg.type || "").toLowerCase().trim();
-  const content = String(msg.content || "").trim();
+  const messageObj = msg.message || msg;
+
+const rawType = String(messageObj.type || msg.type || "").toLowerCase().trim();
+const content = String(messageObj.content || msg.content || "").trim();
+const messageKind = String(messageObj.message_kind || msg.message_kind || "text").toLowerCase().trim();
+const media = messageObj.media || null;
+const interactive = messageObj.interactive || null;
 
   if (!content) return;
   if (rawType === "ai_typing") return;
