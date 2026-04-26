@@ -169,6 +169,16 @@ const interactive = messageObj.interactive || null;
   img.style.marginBottom = content ? "6px" : "0";
   bubble.appendChild(img);
 }
+
+  if (messageKind === "video" && media?.url) {
+  const video = document.createElement("video");
+  video.src = media.url;
+  video.controls = true;
+  video.style.maxWidth = "100%";
+  video.style.borderRadius = "8px";
+  video.style.marginBottom = content ? "6px" : "0";
+  bubble.appendChild(video);
+}
   bubble.appendChild(textEl);
   if (
   (messageKind === "buttons" || messageKind === "template_button") &&
