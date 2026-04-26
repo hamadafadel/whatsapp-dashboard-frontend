@@ -236,7 +236,7 @@ function appendMessageToUI(msg) {
   if (content) {
     const textEl = document.createElement("div");
     textEl.className = "message-text";
-    textEl.textContent = content;
+    textEl.innerHTML = linkifyText(content);
     bubble.appendChild(textEl);
   }
 
@@ -519,3 +519,11 @@ messageInputEl.addEventListener("keydown", (e) => {
 toggleAiBtn.addEventListener("click", toggleAiStatus);
 
 loadConversations();
+
+function linkifyText(text) {
+  const safe = escapeHtml(text);
+  return safe.replace(
+    /(https?:\/\/[^\s]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+  );
+}
