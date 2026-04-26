@@ -255,6 +255,24 @@ function appendMessageToUI(msg) {
     bubble.appendChild(buttonsWrap);
   }
 
+  const listData =
+  messageObj.interactive?.list ||
+  messageObj.whatsapp_payload?.interactive?.action ||
+  null;
+
+if (messageKind === "list" && listData) {
+  const listWrap = document.createElement("div");
+  listWrap.className = "wa-list";
+
+  const listBtn = document.createElement("button");
+  listBtn.className = "wa-list-button";
+  listBtn.type = "button";
+  listBtn.textContent = "☰ " + (listData.button || "اختار");
+
+  listWrap.appendChild(listBtn);
+  bubble.appendChild(listWrap);
+}
+
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
 
