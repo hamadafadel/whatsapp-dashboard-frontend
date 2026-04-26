@@ -327,7 +327,13 @@ eventSource.onmessage = function (event) {
     }
 
     if (currentSession === eventSession && data.content) {
-      appendRealtimeMessage(data.content, data.messageType);
+      appendRealtimeMessage({
+  type: data.messageType || "ai",
+  content: data.content || "",
+  message_kind: data.message_kind || "text",
+  media: data.media || null,
+  interactive: data.interactive || null
+});
     }
 
     updateConversationPreview(eventSession, data.content);
@@ -346,38 +352,24 @@ eventSource.onmessage = function (event) {
 // =======================
 // append realtime
 // =======================
-function appendRealtimeMessage(content, messageType) {
+function appendRealtimeMessage(dataOrContent, messageType) {
   removeAiTypingIndicator();
 
-  let type =
-    messageType === "user"
-      ? "user"
-      : messageType === "agent"
-      ? "agent"
-      : "ai";
+  const messageObj =
+    typeof dataOrContent === "object"
+      ? dataOrContent
+      : {
+          type: messageType,
+          content: dataOrContent,
+          message_kind: "text"
+        };
 
-  const wrap = document.createElement("div");
-  wrap.className = `message-wrap ${type}`;
-
-  const bubble = document.createElement("div");
-  bubble.className = `message ${type}`;
-
-  if (type !== "user") {
-    const label = document.createElement("div");
-    label.className = `message-label ${type}`;
-    label.textContent = type === "agent" ? "Agent" : "AI";
-    bubble.appendChild(label);
-  }
-
-  const textEl = document.createElement("div");
-  textEl.className = "message-text";
-  textEl.textContent = content;
-
-  bubble.appendChild(textEl);
-  wrap.appendChild(bubble);
-  messagesEl.appendChild(wrap);
-
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  appendMessageToUI({
+    type: messageObj.type || messageType,
+    content: messageObj.content || "",
+    message_kind: messageObj.message_kind || "text",
+    message: messageObj
+  });
 }
 
 // =======================
