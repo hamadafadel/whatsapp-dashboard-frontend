@@ -540,8 +540,12 @@ loadConversations();
 
 function linkifyText(text) {
   const safe = escapeHtml(text);
+
   return safe.replace(
-    /(https?:\/\/[^\s]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+    /((https?:\/\/[^\s]+)|(www\.[^\s]+))/g,
+    (url) => {
+      const href = url.startsWith("http") ? url : `https://${url}`;
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+    }
   );
 }
