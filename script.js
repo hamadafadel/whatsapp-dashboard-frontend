@@ -129,7 +129,7 @@ const messageKind = String(messageObj.message_kind || msg.message_kind || "text"
 const media = messageObj.media || null;
 const interactive = messageObj.interactive || null;
 
-  if (!content) return;
+  if (!content && messageKind === "text") return;
   if (rawType === "ai_typing") return;
 
   let messageType = "ai";
@@ -162,6 +162,23 @@ const interactive = messageObj.interactive || null;
   textEl.textContent = content;
 
   bubble.appendChild(textEl);
+  if (
+  (messageKind === "buttons" || messageKind === "template_button") &&
+  interactive?.buttons?.length
+) {
+  const buttonsWrap = document.createElement("div");
+  buttonsWrap.className = "wa-buttons";
+
+  interactive.buttons.forEach((btn) => {
+    const buttonEl = document.createElement("button");
+    buttonEl.className = "wa-button";
+    buttonEl.type = "button";
+    buttonEl.textContent = btn.title || btn.text || "زر";
+    buttonsWrap.appendChild(buttonEl);
+  });
+
+  bubble.appendChild(buttonsWrap);
+}
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
 
