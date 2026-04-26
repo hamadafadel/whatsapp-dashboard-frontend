@@ -457,6 +457,21 @@ body {
   text-align: center;
 }
 
+.message-text {
+  direction: rtl;
+  text-align: right;
+  unicode-bidi: plaintext;
+  white-space: pre-line;
+  line-height: 1.8;
+}
+
+.message-text a {
+  color: #53bdeb;
+  text-decoration: underline;
+  direction: ltr;
+  display: inline-block;
+}
+
 .wa-button:hover {
   background: rgba(83, 189, 235, 0.08);
 }
