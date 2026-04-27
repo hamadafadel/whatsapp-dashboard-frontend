@@ -1,12 +1,12 @@
-const CACHE_NAME = 'mehrab-dashboard-v1';
+const CACHE_NAME = 'mehrab-dashboard-v3';
 
 const urlsToCache = [
   '/',
   '/index.html',
   '/style.css',
   '/script.js',
-  '/icon-192.png',
-  '/icon-512.png'
+  '/icon-192-v2.png',
+  '/icon-512-v2.png'
 ];
 
 // install
