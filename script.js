@@ -273,23 +273,57 @@ function appendMessageToUI(msg) {
     bubble.appendChild(listWrap);
   }
 
-  const productListData =
-    messageObj.interactive?.product_list ||
-    messageObj.whatsapp_payload?.interactive ||
-    null;
+ const productListData =
+  messageObj.interactive?.product_list ||
+  messageObj.whatsapp_payload?.interactive ||
+  null;
 
-  if (messageKind === "product_list" && productListData) {
-    const productWrap = document.createElement("div");
-    productWrap.className = "wa-list";
+if (messageKind === "product_list" && productListData) {
 
-    const productBtn = document.createElement("button");
-    productBtn.className = "wa-list-button";
-    productBtn.type = "button";
-    productBtn.textContent = "☰ View items";
+  const productWrap = document.createElement("div");
+  productWrap.className = "wa-product";
 
-    productWrap.appendChild(productBtn);
-    bubble.appendChild(productWrap);
+  // ===== Header (image + title) =====
+  const header = document.createElement("div");
+  header.className = "wa-product-header";
+
+  // صورة (لو موجودة)
+  if (productListData.header_image) {
+    const img = document.createElement("img");
+    img.src = productListData.header_image;
+    img.className = "wa-product-image";
+    header.appendChild(img);
   }
+
+  // Title + count
+  const info = document.createElement("div");
+  info.className = "wa-product-info";
+
+  const title = document.createElement("div");
+  title.className = "wa-product-title";
+  title.textContent = productListData.header || "منتجات";
+
+  const count = document.createElement("div");
+  count.className = "wa-product-count";
+  count.textContent = `items ${
+    productListData.sections?.reduce((acc, s) => acc + (s.product_items?.length || 0), 0) || 0
+  }`;
+
+  info.appendChild(title);
+  info.appendChild(count);
+  header.appendChild(info);
+
+  productWrap.appendChild(header);
+
+  // ===== زرار =====
+  const btn = document.createElement("button");
+  btn.className = "wa-list-button";
+  btn.textContent = "View items";
+
+  productWrap.appendChild(btn);
+
+  bubble.appendChild(productWrap);
+}
 
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
