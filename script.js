@@ -256,22 +256,40 @@ function appendMessageToUI(msg) {
   }
 
   const listData =
-  messageObj.interactive?.list ||
-  messageObj.whatsapp_payload?.interactive?.action ||
-  null;
+    messageObj.interactive?.list ||
+    messageObj.whatsapp_payload?.interactive?.action ||
+    null;
 
-if (messageKind === "list" && listData) {
-  const listWrap = document.createElement("div");
-  listWrap.className = "wa-list";
+  if (messageKind === "list" && listData) {
+    const listWrap = document.createElement("div");
+    listWrap.className = "wa-list";
 
-  const listBtn = document.createElement("button");
-  listBtn.className = "wa-list-button";
-  listBtn.type = "button";
-  listBtn.textContent = "☰ " + (listData.button || "اختار");
+    const listBtn = document.createElement("button");
+    listBtn.className = "wa-list-button";
+    listBtn.type = "button";
+    listBtn.textContent = "☰ " + (listData.button || "اختار");
 
-  listWrap.appendChild(listBtn);
-  bubble.appendChild(listWrap);
-}
+    listWrap.appendChild(listBtn);
+    bubble.appendChild(listWrap);
+  }
+
+  const productListData =
+    messageObj.interactive?.product_list ||
+    messageObj.whatsapp_payload?.interactive ||
+    null;
+
+  if (messageKind === "product_list" && productListData) {
+    const productWrap = document.createElement("div");
+    productWrap.className = "wa-list";
+
+    const productBtn = document.createElement("button");
+    productBtn.className = "wa-list-button";
+    productBtn.type = "button";
+    productBtn.textContent = "☰ View items";
+
+    productWrap.appendChild(productBtn);
+    bubble.appendChild(productWrap);
+  }
 
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
