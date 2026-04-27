@@ -8,6 +8,8 @@ const searchInputEl = document.getElementById("searchInput");
 const messageInputEl = document.getElementById("messageInput");
 const sendBtnEl = document.getElementById("sendBtn");
 const chatHeaderEl = document.querySelector(".chat-header");
+const appEl = document.querySelector(".app");
+const backToChatsBtn = document.getElementById("backToChatsBtn");
 
 let conversationsData = [];
 let activeSessionId = null;
@@ -77,6 +79,7 @@ function renderConversations(conversations) {
       renderConversations(conversationsData);
       loadMessages(conv.session_id);
       loadAiStatus(conv.session_id);
+      openChatOnMobile();
       messageInputEl.focus();
     });
 
@@ -589,6 +592,22 @@ messageInputEl.addEventListener("keydown", (e) => {
 toggleAiBtn.addEventListener("click", toggleAiStatus);
 
 loadConversations();
+
+function openChatOnMobile() {
+  if (window.innerWidth <= 768 && appEl) {
+    appEl.classList.add("chat-open");
+  }
+}
+
+function closeChatOnMobile() {
+  if (appEl) {
+    appEl.classList.remove("chat-open");
+  }
+}
+
+if (backToChatsBtn) {
+  backToChatsBtn.addEventListener("click", closeChatOnMobile);
+}
 
 function linkifyText(text) {
   const safe = escapeHtml(text);
