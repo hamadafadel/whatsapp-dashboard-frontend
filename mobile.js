@@ -125,7 +125,20 @@ function normalizeMessage(msg) {
     type: messageObj.type || msg?.type || "",
     content: messageObj.content || msg?.content || "",
     message_kind: messageObj.message_kind || msg?.message_kind || "text",
-    media: messageObj.media || msg?.media || null,
+    media:
+  messageObj.media ||
+  msg?.media ||
+  messageObj.mediaUrl ||
+  msg?.mediaUrl ||
+  messageObj.media_url ||
+  msg?.media_url ||
+  null,
+media_url:
+  messageObj.media_url ||
+  msg?.media_url ||
+  messageObj.mediaUrl ||
+  msg?.mediaUrl ||
+  "",
     interactive: messageObj.interactive || msg?.interactive || null,
     whatsapp_payload: whatsappPayload
   };
@@ -155,7 +168,17 @@ function appendMessageToUI(msg) {
   const rawType = String(messageObj.type || "").toLowerCase().trim();
   const content = String(messageObj.content || "").trim();
   const messageKind = String(messageObj.message_kind || "text").toLowerCase().trim();
-  const media = messageObj.media || null;
+  let mediaUrl = "";
+
+if (typeof messageObj.media === "string") {
+  mediaUrl = messageObj.media;
+} else if (messageObj.media?.url) {
+  mediaUrl = messageObj.media.url;
+} else if (messageObj.media_url) {
+  mediaUrl = messageObj.media_url;
+}
+
+const media = mediaUrl ? { url: mediaUrl } : null;
   const buttons = extractButtons(messageObj);
 
   if (!content && messageKind === "text" && !buttons.length && !media?.url) return;
@@ -333,8 +356,8 @@ eventSource.onmessage = function (event) {
       appendRealtimeMessage({
         type: "user",
         content: data.content || "",
-        message_kind: data.message_kind || "text",
-        media: data.media || null,
+        message_kind: data.messageKind || data.message_kind || "text",
+media: data.mediaUrl || data.media_url || data.media || null,
         interactive: data.interactive || null,
         whatsapp_payload: data.whatsapp_payload || null
       });
