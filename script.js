@@ -7,34 +7,12 @@ const chatSubtitleEl = document.getElementById("chatSubtitle");
 const searchInputEl = document.getElementById("searchInput");
 const messageInputEl = document.getElementById("messageInput");
 const sendBtnEl = document.getElementById("sendBtn");
-const chatHeaderEl = document.querySelector(".chat-header");
-const appEl = document.querySelector(".app");
-const backToChatsBtn = document.getElementById("backToChatsBtn");
 
 let conversationsData = [];
 let activeSessionId = null;
+
+// 🔥 typing state
 let typingIndicatorTimeout = null;
-let currentAiEnabled = true;
-
-// زرار AI
-const toggleAiBtn = document.createElement("button");
-toggleAiBtn.id = "toggleAiBtn";
-toggleAiBtn.type = "button";
-toggleAiBtn.textContent = "إيقاف AI";
-toggleAiBtn.style.marginInlineStart = "12px";
-toggleAiBtn.style.padding = "8px 14px";
-toggleAiBtn.style.border = "none";
-toggleAiBtn.style.borderRadius = "10px";
-toggleAiBtn.style.cursor = "pointer";
-toggleAiBtn.style.fontSize = "14px";
-toggleAiBtn.style.fontWeight = "700";
-toggleAiBtn.style.color = "#fff";
-toggleAiBtn.style.background = "#dc3545";
-toggleAiBtn.style.display = "none";
-
-if (chatHeaderEl) {
-  chatHeaderEl.appendChild(toggleAiBtn);
-}
 
 // =======================
 // تحميل المحادثات
@@ -78,8 +56,6 @@ function renderConversations(conversations) {
       activeSessionId = conv.session_id;
       renderConversations(conversationsData);
       loadMessages(conv.session_id);
-      loadAiStatus(conv.session_id);
-      openChatOnMobile();
       messageInputEl.focus();
     });
 
@@ -121,75 +97,14 @@ async function loadMessages(sessionId) {
 }
 
 // =======================
-// helpers
-// =======================
-function normalizeMessage(msg) {
-  const messageObj = msg?.message || msg || {};
-
-  let whatsappPayload = messageObj.whatsapp_payload || msg?.whatsapp_payload || null;
-
-  if (typeof whatsappPayload === "string") {
-    try {
-      whatsappPayload = JSON.parse(whatsappPayload);
-    } catch (e) {
-      whatsappPayload = null;
-    }
-  }
-
-  const interactive =
-    messageObj.interactive ||
-    msg?.interactive ||
-    null;
-
-  const media =
-    messageObj.media ||
-    msg?.media ||
-    null;
-
-  return {
-    ...messageObj,
-    type: messageObj.type || msg?.type || "",
-    content: messageObj.content || msg?.content || "",
-    message_kind: messageObj.message_kind || msg?.message_kind || "text",
-    media,
-    interactive,
-    whatsapp_payload: whatsappPayload
-  };
-}
-
-function extractButtons(messageObj) {
-  if (messageObj.interactive?.buttons?.length) {
-    return messageObj.interactive.buttons.map((b) => ({
-      id: b.id || b.reply?.id || "",
-      title: b.title || b.text || b.reply?.title || "زر"
-    }));
-  }
-
-  const wpButtons = messageObj.whatsapp_payload?.interactive?.action?.buttons;
-  if (Array.isArray(wpButtons) && wpButtons.length) {
-    return wpButtons.map((b) => ({
-      id: b.reply?.id || b.id || "",
-      title: b.reply?.title || b.title || "زر"
-    }));
-  }
-
-  return [];
-}
-
-// =======================
-// رسم الرسائل
+// رسم الرسائل (مهم جدًا)
 // =======================
 function appendMessageToUI(msg) {
-  const messageObj = normalizeMessage(msg);
+  const rawType = String(msg.type || "").toLowerCase().trim();
+  const content = String(msg.content || "").trim();
 
-  const rawType = String(messageObj.type || "").toLowerCase().trim();
-  const content = String(messageObj.content || "").trim();
-  const messageKind = String(messageObj.message_kind || "text").toLowerCase().trim();
-  const media = messageObj.media || null;
-
-  const buttons = extractButtons(messageObj);
-
-  if (!content && messageKind === "text" && !buttons.length && !media?.url) return;
+  // ❌ تجاهل typing أو رسائل فاضية
+  if (!content) return;
   if (rawType === "ai_typing") return;
 
   let messageType = "ai";
@@ -217,117 +132,11 @@ function appendMessageToUI(msg) {
     bubble.appendChild(label);
   }
 
-  if (messageKind === "image" && media?.url) {
-    const img = document.createElement("img");
-    img.src = media.url;
-    img.style.maxWidth = "100%";
-    img.style.borderRadius = "8px";
-    img.style.marginBottom = content ? "6px" : "0";
-    bubble.appendChild(img);
-  }
+  const textEl = document.createElement("div");
+  textEl.className = "message-text";
+  textEl.textContent = content;
 
-  if (messageKind === "video" && media?.url) {
-    const video = document.createElement("video");
-    video.src = media.url;
-    video.controls = true;
-    video.style.maxWidth = "100%";
-    video.style.borderRadius = "8px";
-    video.style.marginBottom = content ? "6px" : "0";
-    bubble.appendChild(video);
-  }
-
-  if (content) {
-    const textEl = document.createElement("div");
-    textEl.className = "message-text";
-    textEl.innerHTML = linkifyText(content);
-    bubble.appendChild(textEl);
-  }
-
-  if (buttons.length) {
-    const buttonsWrap = document.createElement("div");
-    buttonsWrap.className = "wa-buttons";
-
-    buttons.forEach((btn) => {
-      const buttonEl = document.createElement("button");
-      buttonEl.className = "wa-button";
-      buttonEl.type = "button";
-      buttonEl.textContent = btn.title || "زر";
-      buttonsWrap.appendChild(buttonEl);
-    });
-
-    bubble.appendChild(buttonsWrap);
-  }
-
-  const listData =
-    messageObj.interactive?.list ||
-    messageObj.whatsapp_payload?.interactive?.action ||
-    null;
-
-  if (messageKind === "list" && listData) {
-    const listWrap = document.createElement("div");
-    listWrap.className = "wa-list";
-
-    const listBtn = document.createElement("button");
-    listBtn.className = "wa-list-button";
-    listBtn.type = "button";
-    listBtn.textContent = "☰ " + (listData.button || "اختار");
-
-    listWrap.appendChild(listBtn);
-    bubble.appendChild(listWrap);
-  }
-
- const productListData =
-  messageObj.interactive?.product_list ||
-  messageObj.whatsapp_payload?.interactive ||
-  null;
-
-if (messageKind === "product_list" && productListData) {
-
-  const productWrap = document.createElement("div");
-  productWrap.className = "wa-product";
-
-  // ===== Header (image + title) =====
-  const header = document.createElement("div");
-  header.className = "wa-product-header";
-
-  // صورة (لو موجودة)
-  if (productListData.header_image) {
-    const img = document.createElement("img");
-    img.src = productListData.header_image;
-    img.className = "wa-product-image";
-    header.appendChild(img);
-  }
-
-  // Title + count
-  const info = document.createElement("div");
-  info.className = "wa-product-info";
-
-  const title = document.createElement("div");
-  title.className = "wa-product-title";
-  title.textContent = productListData.header || "منتجات";
-
-  const count = document.createElement("div");
-  count.className = "wa-product-count";
-  count.textContent = `items ${
-    productListData.sections?.reduce((acc, s) => acc + (s.product_items?.length || 0), 0) || 0
-  }`;
-
-  info.appendChild(title);
-  info.appendChild(count);
-  header.appendChild(info);
-
-  productWrap.appendChild(header);
-
-  // ===== زرار =====
-  const btn = document.createElement("button");
-  btn.className = "wa-list-button";
-  btn.textContent = "View items";
-
-  productWrap.appendChild(btn);
-
-  bubble.appendChild(productWrap);
-}
-
+  bubble.appendChild(textEl);
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
 
@@ -372,62 +181,7 @@ async function sendMessageFromDashboard() {
 }
 
 // =======================
-// AI Status
-// =======================
-async function loadAiStatus(sessionId) {
-  if (!sessionId) return;
-
-  try {
-    const res = await fetch(`${API_BASE}/ai-status/${sessionId}`);
-    const data = await res.json();
-
-    currentAiEnabled = data.ai_enabled !== false;
-    updateAiButton();
-  } catch (error) {
-    console.error("Failed to load AI status", error);
-  }
-}
-
-function updateAiButton() {
-  if (!toggleAiBtn) return;
-
-  toggleAiBtn.style.display = activeSessionId ? "inline-block" : "none";
-  toggleAiBtn.textContent = currentAiEnabled ? "إيقاف AI" : "تشغيل AI";
-  toggleAiBtn.style.background = currentAiEnabled ? "#dc3545" : "#25d366";
-}
-
-async function toggleAiStatus() {
-  if (!activeSessionId) {
-    alert("اختر محادثة أولًا");
-    return;
-  }
-
-  const newStatus = !currentAiEnabled;
-
-  try {
-    const res = await fetch(`${API_BASE}/ai-status`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        sessionId: activeSessionId,
-        ai_enabled: newStatus
-      })
-    });
-
-    if (!res.ok) throw new Error("Failed to update AI status");
-
-    currentAiEnabled = newStatus;
-    updateAiButton();
-  } catch (error) {
-    console.error(error);
-    alert("فشل تغيير حالة AI");
-  }
-}
-
-// =======================
-// Realtime
+// Realtime (أهم جزء)
 // =======================
 const eventSource = new EventSource(`${API_BASE}/events`);
 
@@ -437,22 +191,16 @@ eventSource.onmessage = function (event) {
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
 
+  // 👤 رسالة عميل
   if (data.type === "user_message") {
-    if (currentSession === eventSession) {
-      appendRealtimeMessage({
-        type: "user",
-        content: data.content || "",
-        message_kind: data.message_kind || "text",
-        media: data.media || null,
-        interactive: data.interactive || null,
-        whatsapp_payload: data.whatsapp_payload || null
-      });
+    if (currentSession === eventSession && data.content) {
+      appendRealtimeMessage(data.content, "user");
     }
-
     updateConversationPreview(eventSession, data.content);
     return;
   }
 
+  // 🤖 typing
   if (data.type === "ai_typing") {
     if (currentSession === eventSession) {
       showAiTypingIndicator();
@@ -460,29 +208,17 @@ eventSource.onmessage = function (event) {
     return;
   }
 
+  // 🤖 رسالة AI
   if (data.type === "new_message") {
     if (currentSession === eventSession) {
-      removeAiTypingIndicator();
+      removeAiTypingIndicator(); // ✅ أهم سطر
+    }
 
-      appendRealtimeMessage({
-        type: data.messageType || "ai",
-        content: data.content || "",
-        message_kind: data.message_kind || "text",
-        media: data.media || null,
-        interactive: data.interactive || null,
-        whatsapp_payload: data.whatsapp_payload || null
-      });
+    if (currentSession === eventSession && data.content) {
+      appendRealtimeMessage(data.content, data.messageType);
     }
 
     updateConversationPreview(eventSession, data.content);
-    return;
-  }
-
-  if (data.type === "ai_status_changed") {
-    if (currentSession === eventSession) {
-      currentAiEnabled = data.ai_enabled !== false;
-      updateAiButton();
-    }
     return;
   }
 };
@@ -490,27 +226,34 @@ eventSource.onmessage = function (event) {
 // =======================
 // append realtime
 // =======================
-function appendRealtimeMessage(dataOrContent, messageType) {
-  removeAiTypingIndicator();
+function appendRealtimeMessage(content, messageType) {
+  removeAiTypingIndicator(); // ✅ ضمان
 
-  const messageObj =
-    typeof dataOrContent === "object"
-      ? dataOrContent
-      : {
-          type: messageType,
-          content: dataOrContent,
-          message_kind: "text"
-        };
+  let type = messageType === "user" ? "user" :
+             messageType === "agent" ? "agent" : "ai";
 
-  appendMessageToUI({
-    type: messageObj.type || messageType,
-    content: messageObj.content || "",
-    message_kind: messageObj.message_kind || "text",
-    media: messageObj.media || null,
-    interactive: messageObj.interactive || null,
-    whatsapp_payload: messageObj.whatsapp_payload || null,
-    message: messageObj
-  });
+  const wrap = document.createElement("div");
+  wrap.className = `message-wrap ${type}`;
+
+  const bubble = document.createElement("div");
+  bubble.className = `message ${type}`;
+
+  if (type !== "user") {
+    const label = document.createElement("div");
+    label.className = `message-label ${type}`;
+    label.textContent = type === "agent" ? "Agent" : "AI";
+    bubble.appendChild(label);
+  }
+
+  const textEl = document.createElement("div");
+  textEl.className = "message-text";
+  textEl.textContent = content;
+
+  bubble.appendChild(textEl);
+  wrap.appendChild(bubble);
+  messagesEl.appendChild(wrap);
+
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 // =======================
@@ -555,7 +298,7 @@ function removeAiTypingIndicator() {
 }
 
 // =======================
-function updateConversationPreview() {
+function updateConversationPreview(sessionId, content) {
   loadConversations();
 }
 
@@ -589,12 +332,15 @@ messageInputEl.addEventListener("keydown", (e) => {
   }
 });
 
-toggleAiBtn.addEventListener("click", toggleAiStatus);
-
-loadConversations();
+// =======================
+// Mobile WhatsApp Navigation
+// =======================
+function isMobileView() {
+  return window.matchMedia("(max-width: 768px)").matches;
+}
 
 function openChatOnMobile() {
-  if (window.innerWidth <= 768 && appEl) {
+  if (isMobileView() && appEl) {
     appEl.classList.add("chat-open");
   }
 }
@@ -606,17 +352,17 @@ function closeChatOnMobile() {
 }
 
 if (backToChatsBtn) {
-  backToChatsBtn.addEventListener("click", closeChatOnMobile);
+  backToChatsBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeChatOnMobile();
+  });
 }
 
-function linkifyText(text) {
-  const safe = escapeHtml(text);
+window.addEventListener("resize", () => {
+  if (!isMobileView()) {
+    closeChatOnMobile();
+  }
+});
 
-  return safe.replace(
-    /((https?:\/\/[^\s]+)|(www\.[^\s]+))/g,
-    (url) => {
-      const href = url.startsWith("http") ? url : `https://${url}`;
-      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
-    }
-  );
-}
+loadConversations();
