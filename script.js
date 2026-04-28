@@ -185,11 +185,19 @@ function appendMessageToUI(msg) {
   const rawType = String(messageObj.type || "").toLowerCase().trim();
   const content = String(messageObj.content || "").trim();
   const messageKind = String(messageObj.message_kind || "text").toLowerCase().trim();
-  const media = messageObj.media || null;
+
+  let mediaUrl = "";
+  if (typeof messageObj.media === "string") {
+    mediaUrl = messageObj.media;
+  } else if (messageObj.media?.url) {
+    mediaUrl = messageObj.media.url;
+  } else if (messageObj.media_url) {
+    mediaUrl = messageObj.media_url;
+  }
 
   const buttons = extractButtons(messageObj);
 
-  if (!content && messageKind === "text" && !buttons.length && !media?.url) return;
+  if (!content && !mediaUrl && messageKind === "text" && !buttons.length) return;
   if (rawType === "ai_typing") return;
 
   let messageType = "ai";
@@ -217,62 +225,23 @@ function appendMessageToUI(msg) {
     bubble.appendChild(label);
   }
 
-  if (messageKind === "image" && media?.url) {
+  if (messageKind === "image" && mediaUrl) {
     const img = document.createElement("img");
-    img.src = media.url;
-    img.style.maxWidth = "100%";
-    img.style.borderRadius = "8px";
-    img.style.marginBottom = content ? "6px" : "0";
+    img.src = mediaUrl;
+    img.className = "chat-media-image";
+    img.alt = "image";
     bubble.appendChild(img);
-  }
-
-  if (messageKind === "video" && media?.url) {
+  } else if (messageKind === "video" && mediaUrl) {
     const video = document.createElement("video");
-    video.src = media.url;
+    video.src = mediaUrl;
+    video.className = "chat-media-video";
     video.controls = true;
-    video.style.maxWidth = "100%";
-    video.style.borderRadius = "8px";
-    video.style.marginBottom = content ? "6px" : "0";
     bubble.appendChild(video);
-  }
-
-  if (content) {
-    if (messageKind === "image" && mediaUrl) {
-  const img = document.createElement("img");
-  img.src = mediaUrl;
-  img.className = "chat-media-image";
-  img.alt = "image";
-  bubble.appendChild(img);
-
-} else if (messageKind === "video" && mediaUrl) {
-  const video = document.createElement("video");
-  video.src = mediaUrl;
-  video.className = "chat-media-video";
-  video.controls = true;
-  bubble.appendChild(video);
-
-} else {
- if ((msg.message_kind === "image" || msg.messageKind === "image") && msg.media) {
-  const img = document.createElement("img");
-  img.src = msg.media;
-  img.className = "chat-media-image";
-  img.alt = "image";
-  bubble.appendChild(img);
-
-} else if ((msg.message_kind === "video" || msg.messageKind === "video") && msg.media) {
-  const video = document.createElement("video");
-  video.src = msg.media;
-  video.className = "chat-media-video";
-  video.controls = true;
-  bubble.appendChild(video);
-
-} else {
-  const textEl = document.createElement("div");
-  textEl.className = "message-text";
-  textEl.textContent = content;
-  bubble.appendChild(textEl);
-}
-}
+  } else if (content) {
+    const textEl = document.createElement("div");
+    textEl.className = "message-text";
+    textEl.innerHTML = linkifyText(content);
+    bubble.appendChild(textEl);
   }
 
   if (buttons.length) {
@@ -308,61 +277,53 @@ function appendMessageToUI(msg) {
     bubble.appendChild(listWrap);
   }
 
- const productListData =
-  messageObj.interactive?.product_list ||
-  messageObj.whatsapp_payload?.interactive ||
-  null;
+  const productListData =
+    messageObj.interactive?.product_list ||
+    messageObj.whatsapp_payload?.interactive ||
+    null;
 
-if (messageKind === "product_list" && productListData) {
+  if (messageKind === "product_list" && productListData) {
+    const productWrap = document.createElement("div");
+    productWrap.className = "wa-product";
 
-  const productWrap = document.createElement("div");
-  productWrap.className = "wa-product";
+    const header = document.createElement("div");
+    header.className = "wa-product-header";
 
-  // ===== Header (image + title) =====
-  const header = document.createElement("div");
-  header.className = "wa-product-header";
+    if (productListData.header_image) {
+      const img = document.createElement("img");
+      img.src = productListData.header_image;
+      img.className = "wa-product-image";
+      header.appendChild(img);
+    }
 
-  // صورة (لو موجودة)
-  if (productListData.header_image) {
-    const img = document.createElement("img");
-    img.src = productListData.header_image;
-    img.className = "wa-product-image";
-    header.appendChild(img);
+    const info = document.createElement("div");
+    info.className = "wa-product-info";
+
+    const title = document.createElement("div");
+    title.className = "wa-product-title";
+    title.textContent = productListData.header || "منتجات";
+
+    const count = document.createElement("div");
+    count.className = "wa-product-count";
+    count.textContent = `items ${
+      productListData.sections?.reduce((acc, s) => acc + (s.product_items?.length || 0), 0) || 0
+    }`;
+
+    info.appendChild(title);
+    info.appendChild(count);
+    header.appendChild(info);
+    productWrap.appendChild(header);
+
+    const btn = document.createElement("button");
+    btn.className = "wa-list-button";
+    btn.textContent = "View items";
+
+    productWrap.appendChild(btn);
+    bubble.appendChild(productWrap);
   }
-
-  // Title + count
-  const info = document.createElement("div");
-  info.className = "wa-product-info";
-
-  const title = document.createElement("div");
-  title.className = "wa-product-title";
-  title.textContent = productListData.header || "منتجات";
-
-  const count = document.createElement("div");
-  count.className = "wa-product-count";
-  count.textContent = `items ${
-    productListData.sections?.reduce((acc, s) => acc + (s.product_items?.length || 0), 0) || 0
-  }`;
-
-  info.appendChild(title);
-  info.appendChild(count);
-  header.appendChild(info);
-
-  productWrap.appendChild(header);
-
-  // ===== زرار =====
-  const btn = document.createElement("button");
-  btn.className = "wa-list-button";
-  btn.textContent = "View items";
-
-  productWrap.appendChild(btn);
-
-  bubble.appendChild(productWrap);
-}
 
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
-
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
@@ -469,25 +430,21 @@ eventSource.onmessage = function (event) {
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
 
-  if (data.type === "new_message") {
-  if (currentSession === eventSession) {
-    removeAiTypingIndicator();
-  }
+  if (data.type === "user_message") {
+    if (currentSession === eventSession) {
+      appendRealtimeMessage({
+        type: "user",
+        content: data.content || "",
+        message_kind: data.message_kind || data.messageKind || "text",
+        media: data.mediaUrl || data.media_url || data.media || null,
+        interactive: data.interactive || null,
+        whatsapp_payload: data.whatsapp_payload || null
+      });
+    }
 
-  if (currentSession === eventSession && (data.content || data.mediaUrl || data.media_url || data.media)) {
-    appendRealtimeMessage({
-      type: data.messageType || "ai",
-      content: data.content || "",
-      message_kind: data.messageKind || data.message_kind || "text",
-      media: data.mediaUrl || data.media_url || data.media || null,
-      interactive: data.interactive || null,
-      whatsapp_payload: data.whatsapp_payload || null
-    });
+    updateConversationPreview(eventSession, data.content || "");
+    return;
   }
-
-  updateConversationPreview(eventSession, data.content || data.mediaUrl || data.media_url || "");
-  return;
-}
 
   if (data.type === "ai_typing") {
     if (currentSession === eventSession) {
@@ -503,14 +460,14 @@ eventSource.onmessage = function (event) {
       appendRealtimeMessage({
         type: data.messageType || "ai",
         content: data.content || "",
-        message_kind: data.message_kind || "text",
-        media: data.media || null,
+        message_kind: data.messageKind || data.message_kind || "text",
+        media: data.mediaUrl || data.media_url || data.media || null,
         interactive: data.interactive || null,
         whatsapp_payload: data.whatsapp_payload || null
       });
     }
 
-    updateConversationPreview(eventSession, data.content);
+    updateConversationPreview(eventSession, data.content || data.mediaUrl || data.media_url || "");
     return;
   }
 
@@ -526,41 +483,24 @@ eventSource.onmessage = function (event) {
 // =======================
 // append realtime
 // =======================
-function appendRealtimeMessage(dataOrContent, messageType, messageKind = "text", mediaUrl = "") {
+function appendRealtimeMessage(dataOrContent, messageType) {
   removeAiTypingIndicator();
 
-  const isObject = typeof dataOrContent === "object" && dataOrContent !== null;
-
-  const content = isObject
-    ? String(dataOrContent.content || "")
-    : String(dataOrContent || "");
-
-  messageType = isObject
-    ? dataOrContent.messageType
-    : messageType;
-
-  messageKind = isObject
-    ? (dataOrContent.messageKind || "text")
-    : messageKind;
-
-  mediaUrl = isObject
-    ? (dataOrContent.mediaUrl || dataOrContent.media_url || content || "")
-    : (mediaUrl || content || "");
-
   const messageObj =
-    typeof dataOrContent === "object"
+    typeof dataOrContent === "object" && dataOrContent !== null
       ? dataOrContent
       : {
-          type: messageType,
-          content: dataOrContent,
-          message_kind: "text"
+          type: messageType || "ai",
+          content: dataOrContent || "",
+          message_kind: "text",
+          media: null
         };
 
   appendMessageToUI({
-    type: messageObj.type || messageType,
+    type: messageObj.type || messageType || "ai",
     content: messageObj.content || "",
-    message_kind: messageObj.message_kind || "text",
-    media: messageObj.media || null,
+    message_kind: messageObj.message_kind || messageObj.messageKind || "text",
+    media: messageObj.mediaUrl || messageObj.media_url || messageObj.media || null,
     interactive: messageObj.interactive || null,
     whatsapp_payload: messageObj.whatsapp_payload || null,
     message: messageObj
