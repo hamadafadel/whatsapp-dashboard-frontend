@@ -11,16 +11,13 @@
 <body>
   <div class="mobile-app" id="mobileApp">
     <section class="sessions-screen" id="sessionsScreen">
-      <header class="chat-mobile-header">
-  <button id="backBtn" class="back-btn" type="button">‹</button>
-
-  <div class="chat-header-text">
-    <div id="chatTitle" class="chat-title">اختر محادثة</div>
-    <div id="chatSubtitle" class="chat-subtitle">WhatsApp Dashboard</div>
-  </div>
-
-  <button id="toggleAiBtn" class="mobile-ai-btn" type="button">إيقاف AI</button>
-</header>
+      <header class="sessions-header">
+        <div>
+          <div class="brand-title">المحادثات</div>
+          <div class="brand-subtitle">Al Mehrab Dashboard</div>
+        </div>
+        <button id="refreshBtn" class="icon-btn" type="button" aria-label="Refresh">↻</button>
+      </header>
 
       <div class="mobile-search">
         <input id="searchInput" type="text" placeholder="ابحث عن Session..." autocomplete="off" />
