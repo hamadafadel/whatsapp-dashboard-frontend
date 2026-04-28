@@ -10,6 +10,8 @@ const messageInputEl = document.getElementById("messageInput");
 const sendBtnEl = document.getElementById("sendBtn");
 const backBtnEl = document.getElementById("backBtn");
 const refreshBtnEl = document.getElementById("refreshBtn");
+const toggleAiBtnEl = document.getElementById("toggleAiBtn");
+let currentAiEnabled = true;
 
 let conversationsData = [];
 let activeSessionId = null;
@@ -60,6 +62,7 @@ function renderConversations(conversations) {
       renderConversations(conversationsData);
       openChat();
       loadMessages(conv.session_id);
+      loadAiStatus(conv.session_id);
       setTimeout(() => messageInputEl.focus(), 250);
     });
 
@@ -460,5 +463,59 @@ refreshBtnEl.addEventListener("click", loadConversations);
 window.addEventListener("popstate", () => {
   if (appEl.classList.contains("chat-open")) closeChat();
 });
+async function loadAiStatus(sessionId) {
+  if (!sessionId || !toggleAiBtnEl) return;
 
+  try {
+    const res = await fetch(`${API_BASE}/ai-status/${encodeURIComponent(sessionId)}`, {
+      cache: "no-store"
+    });
+
+    const data = await res.json();
+    currentAiEnabled = data.ai_enabled !== false;
+    updateAiButton();
+  } catch (error) {
+    console.error("Failed to load AI status", error);
+  }
+}
+
+function updateAiButton() {
+  if (!toggleAiBtnEl) return;
+
+  toggleAiBtnEl.style.display = activeSessionId ? "inline-flex" : "none";
+  toggleAiBtnEl.textContent = currentAiEnabled ? "إيقاف AI" : "تشغيل AI";
+  toggleAiBtnEl.classList.toggle("off", currentAiEnabled);
+  toggleAiBtnEl.classList.toggle("on", !currentAiEnabled);
+}
+
+async function toggleAiStatus() {
+  if (!activeSessionId) return;
+
+  const newStatus = !currentAiEnabled;
+
+  try {
+    const res = await fetch(`${API_BASE}/ai-status`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: activeSessionId,
+        ai_enabled: newStatus
+      })
+    });
+
+    if (!res.ok) throw new Error("Failed to update AI status");
+
+    currentAiEnabled = newStatus;
+    updateAiButton();
+  } catch (error) {
+    console.error(error);
+    alert("فشل تغيير حالة AI");
+  }
+}
+
+if (toggleAiBtnEl) {
+  toggleAiBtnEl.addEventListener("click", toggleAiStatus);
+}
 loadConversations();
