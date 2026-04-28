@@ -453,3 +453,27 @@ input {
     line-height: 1.8;
   }
 }
+
+.mobile-ai-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  min-width: 82px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mobile-ai-btn.off {
+  background: #dc3545;
+}
+
+.mobile-ai-btn.on {
+  background: #25d366;
+}
