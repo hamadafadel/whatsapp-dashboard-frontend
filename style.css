@@ -832,3 +832,62 @@ body {
     align-items: center;
   }
 }
+
+/* ===== GUARANTEED MOBILE BACK BUTTON ===== */
+#mobileBackBtn {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .app {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    max-width: none;
+    flex: none;
+  }
+
+  .chat-panel {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    z-index: 1000;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+  }
+
+  .app.chat-open .chat-panel {
+    transform: translateX(0);
+  }
+
+  #mobileBackBtn {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 999999;
+    width: 44px;
+    height: 44px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: #202c33;
+    color: #e9edef;
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .app.chat-open ~ #mobileBackBtn,
+  body:has(.app.chat-open) #mobileBackBtn {
+    display: flex;
+  }
+}
