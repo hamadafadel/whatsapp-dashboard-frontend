@@ -62,6 +62,8 @@ input {
   background: #202c33;
   border-bottom: 1px solid #222d34;
   padding: 0 12px;
+
+  gap: 8px; /* 👈 ضيف السطر ده بس */
 }
 
 .sessions-header {
@@ -194,6 +196,7 @@ input {
 .chat-header-text {
   flex: 1;
   min-width: 0;
+  overflow: hidden; /* 👈 ده المهم */
 }
 
 .chat-title {
@@ -455,16 +458,16 @@ input {
 }
 
 .mobile-ai-btn {
-  display: none;
+  display: inline-flex; /* 👈 بدل none */
   align-items: center;
   justify-content: center;
-  height: 36px;
-  min-width: 82px;
-  padding: 0 12px;
+  height: 32px;       /* 👈 صغرناه شوية */
+  min-width: 70px;    /* 👈 أخف */
+  padding: 0 10px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   color: #fff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   cursor: pointer;
   white-space: nowrap;
