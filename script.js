@@ -9,6 +9,21 @@ const messageInputEl = document.getElementById("messageInput");
 const sendBtnEl = document.getElementById("sendBtn");
 const chatHeaderEl = document.querySelector(".chat-header");
 const appEl = document.querySelector(".app");
+
+const backToChatsBtn = document.createElement("button");
+backToChatsBtn.id = "backToChatsBtn";
+backToChatsBtn.className = "back-to-chats-btn";
+backToChatsBtn.type = "button";
+backToChatsBtn.textContent = "‹";
+
+if (chatHeaderEl) {
+  chatHeaderEl.prepend(backToChatsBtn);
+}
+
+backToChatsBtn.addEventListener("click", () => {
+  if (appEl) appEl.classList.remove("chat-open");
+});
+const appEl = document.querySelector(".app");
 const backToChatsBtn = document.getElementById("backToChatsBtn");
 const appEl = document.querySelector(".app");
 const backToChatsBtn = document.getElementById("backToChatsBtn");
@@ -81,6 +96,9 @@ function renderConversations(conversations) {
       renderConversations(conversationsData);
       loadMessages(conv.session_id);
       loadAiStatus(conv.session_id);
+      if (window.innerWidth <= 768 && appEl) {
+  appEl.classList.add("chat-open");
+}
       openChatOnMobile();
       openChatOnMobile();
       messageInputEl.focus();
