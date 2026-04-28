@@ -237,10 +237,42 @@ function appendMessageToUI(msg) {
   }
 
   if (content) {
-    const textEl = document.createElement("div");
-    textEl.className = "message-text";
-    textEl.innerHTML = linkifyText(content);
-    bubble.appendChild(textEl);
+    if (messageKind === "image" && mediaUrl) {
+  const img = document.createElement("img");
+  img.src = mediaUrl;
+  img.className = "chat-media-image";
+  img.alt = "image";
+  bubble.appendChild(img);
+
+} else if (messageKind === "video" && mediaUrl) {
+  const video = document.createElement("video");
+  video.src = mediaUrl;
+  video.className = "chat-media-video";
+  video.controls = true;
+  bubble.appendChild(video);
+
+} else {
+ if ((msg.message_kind === "image" || msg.messageKind === "image") && msg.media) {
+  const img = document.createElement("img");
+  img.src = msg.media;
+  img.className = "chat-media-image";
+  img.alt = "image";
+  bubble.appendChild(img);
+
+} else if ((msg.message_kind === "video" || msg.messageKind === "video") && msg.media) {
+  const video = document.createElement("video");
+  video.src = msg.media;
+  video.className = "chat-media-video";
+  video.controls = true;
+  bubble.appendChild(video);
+
+} else {
+  const textEl = document.createElement("div");
+  textEl.className = "message-text";
+  textEl.textContent = content;
+  bubble.appendChild(textEl);
+}
+}
   }
 
   if (buttons.length) {
@@ -437,21 +469,25 @@ eventSource.onmessage = function (event) {
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
 
-  if (data.type === "user_message") {
-    if (currentSession === eventSession) {
-      appendRealtimeMessage({
-        type: "user",
-        content: data.content || "",
-        message_kind: data.message_kind || "text",
-        media: data.media || null,
-        interactive: data.interactive || null,
-        whatsapp_payload: data.whatsapp_payload || null
-      });
-    }
-
-    updateConversationPreview(eventSession, data.content);
-    return;
+  if (data.type === "new_message") {
+  if (currentSession === eventSession) {
+    removeAiTypingIndicator();
   }
+
+  if (currentSession === eventSession && (data.content || data.mediaUrl || data.media_url || data.media)) {
+    appendRealtimeMessage({
+      type: data.messageType || "ai",
+      content: data.content || "",
+      message_kind: data.messageKind || data.message_kind || "text",
+      media: data.mediaUrl || data.media_url || data.media || null,
+      interactive: data.interactive || null,
+      whatsapp_payload: data.whatsapp_payload || null
+    });
+  }
+
+  updateConversationPreview(eventSession, data.content || data.mediaUrl || data.media_url || "");
+  return;
+}
 
   if (data.type === "ai_typing") {
     if (currentSession === eventSession) {
@@ -490,8 +526,26 @@ eventSource.onmessage = function (event) {
 // =======================
 // append realtime
 // =======================
-function appendRealtimeMessage(dataOrContent, messageType) {
+function appendRealtimeMessage(dataOrContent, messageType, messageKind = "text", mediaUrl = "") {
   removeAiTypingIndicator();
+
+  const isObject = typeof dataOrContent === "object" && dataOrContent !== null;
+
+  const content = isObject
+    ? String(dataOrContent.content || "")
+    : String(dataOrContent || "");
+
+  messageType = isObject
+    ? dataOrContent.messageType
+    : messageType;
+
+  messageKind = isObject
+    ? (dataOrContent.messageKind || "text")
+    : messageKind;
+
+  mediaUrl = isObject
+    ? (dataOrContent.mediaUrl || dataOrContent.media_url || content || "")
+    : (mediaUrl || content || "");
 
   const messageObj =
     typeof dataOrContent === "object"
