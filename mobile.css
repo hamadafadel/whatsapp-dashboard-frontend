@@ -477,3 +477,12 @@ input {
 .mobile-ai-btn.on {
   background: #25d366;
 }
+
+.chat-media-image,
+.chat-media-video {
+  display: block;
+  max-width: 240px;
+  max-height: 320px;
+  border-radius: 10px;
+  object-fit: cover;
+}
