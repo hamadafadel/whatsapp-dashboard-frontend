@@ -9,34 +9,6 @@ const messageInputEl = document.getElementById("messageInput");
 const sendBtnEl = document.getElementById("sendBtn");
 const chatHeaderEl = document.querySelector(".chat-header");
 const appEl = document.querySelector(".app");
-
-const mobileBackBtn = document.createElement("button");
-mobileBackBtn.id = "mobileBackBtn";
-mobileBackBtn.type = "button";
-mobileBackBtn.textContent = "‹";
-document.body.appendChild(mobileBackBtn);
-
-mobileBackBtn.addEventListener("click", () => {
-  if (appEl) appEl.classList.remove("chat-open");
-});
-const appEl = document.querySelector(".app");
-
-const backToChatsBtn = document.createElement("button");
-backToChatsBtn.id = "backToChatsBtn";
-backToChatsBtn.className = "back-to-chats-btn";
-backToChatsBtn.type = "button";
-backToChatsBtn.textContent = "‹";
-
-if (chatHeaderEl) {
-  chatHeaderEl.prepend(backToChatsBtn);
-}
-
-backToChatsBtn.addEventListener("click", () => {
-  if (appEl) appEl.classList.remove("chat-open");
-});
-const appEl = document.querySelector(".app");
-const backToChatsBtn = document.getElementById("backToChatsBtn");
-const appEl = document.querySelector(".app");
 const backToChatsBtn = document.getElementById("backToChatsBtn");
 
 let conversationsData = [];
@@ -107,13 +79,6 @@ function renderConversations(conversations) {
       renderConversations(conversationsData);
       loadMessages(conv.session_id);
       loadAiStatus(conv.session_id);
-      if (window.innerWidth <= 768 && appEl) {
-  appEl.classList.add("chat-open");
-}
-      if (window.innerWidth <= 768 && appEl) {
-  appEl.classList.add("chat-open");
-}
-      openChatOnMobile();
       openChatOnMobile();
       messageInputEl.focus();
     });
@@ -654,24 +619,4 @@ function linkifyText(text) {
       return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
     }
   );
-}
-
-function openChatOnMobile() {
-  if (window.innerWidth <= 768 && appEl) {
-    appEl.classList.add("chat-open");
-  }
-}
-
-function closeChatOnMobile() {
-  if (appEl) {
-    appEl.classList.remove("chat-open");
-  }
-}
-
-if (backToChatsBtn) {
-  backToChatsBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    closeChatOnMobile();
-  });
 }
