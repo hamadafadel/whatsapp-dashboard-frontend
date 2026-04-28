@@ -804,3 +804,31 @@ body {
     font-size: 11px;
   }
 }
+
+.back-to-chats-btn {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .back-to-chats-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border: none;
+    background: transparent;
+    color: #e9edef;
+    font-size: 40px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 8px;
+    z-index: 9999;
+  }
+
+  .chat-header {
+    display: flex;
+    align-items: center;
+  }
+}
