@@ -319,7 +319,6 @@ async function sendMessageFromDashboard() {
   sendBtnEl.disabled = true;
   messageInputEl.disabled = true;
 
-  // يظهر فورًا في الشات
   appendMessageToUI({
     message: {
       type: "agent",
@@ -327,6 +326,12 @@ async function sendMessageFromDashboard() {
       message_kind: "text"
     }
   });
+
+  const lastMsg = messagesEl.lastElementChild;
+  if (lastMsg) {
+    lastMsg.dataset.pendingAgent = "true";
+    lastMsg.dataset.pendingContent = message;
+  }
 
   try {
     const res = await fetch(`${API_BASE}/send-message`, {
@@ -340,13 +345,12 @@ async function sendMessageFromDashboard() {
       })
     });
 
-   if (!res.ok) throw new Error("فشل الإرسال");
+    if (!res.ok) throw new Error("فشل الإرسال");
 
-messageInputEl.value = "";
-loadConversations();
-    } 
-    
-  catch (error) {
+    messageInputEl.value = "";
+    loadConversations();
+
+  } catch (error) {
     console.error(error);
     alert("خطأ في الإرسال");
   } finally {
