@@ -319,15 +319,37 @@ async function sendMessageFromDashboard() {
   sendBtnEl.disabled = true;
   messageInputEl.disabled = true;
 
+  // يظهر فورًا في الشات
+  appendMessageToUI({
+    message: {
+      type: "agent",
+      content: message,
+      message_kind: "text"
+    }
+  });
+
   try {
     const res = await fetch(`${API_BASE}/send-message`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: activeSessionId, message })
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: activeSessionId,
+        message
+      })
     });
 
     if (!res.ok) throw new Error("فشل الإرسال");
+
     messageInputEl.value = "";
+
+    // تحديث احتياطي من السيرفر
+    setTimeout(() => {
+      loadMessages(activeSessionId);
+      loadConversations();
+    }, 600);
+
   } catch (error) {
     console.error(error);
     alert("خطأ في الإرسال");
