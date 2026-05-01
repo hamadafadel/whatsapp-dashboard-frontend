@@ -340,17 +340,13 @@ async function sendMessageFromDashboard() {
       })
     });
 
-    if (!res.ok) throw new Error("فشل الإرسال");
+   if (!res.ok) throw new Error("فشل الإرسال");
 
-    messageInputEl.value = "";
-
-    // تحديث احتياطي من السيرفر
-    setTimeout(() => {
-      loadMessages(activeSessionId);
-      loadConversations();
-    }, 600);
-
-  } catch (error) {
+messageInputEl.value = "";
+loadConversations();
+    } 
+    
+  catch (error) {
     console.error(error);
     alert("خطأ في الإرسال");
   } finally {
