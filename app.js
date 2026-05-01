@@ -511,13 +511,25 @@ sendBtnEl.addEventListener("click", sendMessageFromDashboard);
 messageInputEl.addEventListener("keydown", (e) => {
   const isMobile = window.innerWidth < 900;
 
-  // 📱 موبايل: Enter ينزل سطر فقط
   if (isMobile && e.key === "Enter") {
-    return; // سيب السلوك الطبيعي (سطر جديد)
+    return;
   }
 
-  // 💻 ديسكتوب: Enter يبعت
-  if (!isMobile && e.key === "Enter" && !e.shiftKey && !e.altKey) {
+  if (!isMobile && e.key === "Enter" && (e.shiftKey || e.altKey)) {
+    e.preventDefault();
+
+    const start = messageInputEl.selectionStart;
+    const end = messageInputEl.selectionEnd;
+    const value = messageInputEl.value;
+
+    messageInputEl.value =
+      value.substring(0, start) + "\n" + value.substring(end);
+
+    messageInputEl.selectionStart = messageInputEl.selectionEnd = start + 1;
+    return;
+  }
+
+  if (!isMobile && e.key === "Enter") {
     e.preventDefault();
     sendMessageFromDashboard();
   }
