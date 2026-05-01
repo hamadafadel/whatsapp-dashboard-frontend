@@ -509,7 +509,15 @@ searchInputEl.addEventListener("input", () => {
 sendBtnEl.addEventListener("click", sendMessageFromDashboard);
 
 messageInputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
+  const isMobile = window.innerWidth < 900;
+
+  // 📱 موبايل: Enter ينزل سطر فقط
+  if (isMobile && e.key === "Enter") {
+    return; // سيب السلوك الطبيعي (سطر جديد)
+  }
+
+  // 💻 ديسكتوب: Enter يبعت
+  if (!isMobile && e.key === "Enter" && !e.shiftKey && !e.altKey) {
     e.preventDefault();
     sendMessageFromDashboard();
   }
