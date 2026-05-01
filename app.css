@@ -436,23 +436,7 @@ input {
   color: #ccc;
 }
 
-@media (min-width: 769px) {
-  body::before {
-    content: "هذه الصفحة مخصصة للموبايل فقط. افتح index.html للديسكتوب.";
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 30px;
-    text-align: center;
-    color: #e9edef;
-    background: #111b21;
-    z-index: 9999;
-    font-size: 20px;
-    line-height: 1.8;
-  }
-}
+
 
 .mobile-ai-btn {
   display: none;
