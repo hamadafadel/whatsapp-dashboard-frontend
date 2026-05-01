@@ -535,3 +535,15 @@ input {
   }
 
 }
+
+.chat-mobile-header {
+  gap: 14px;
+}
+
+.chat-header-text {
+  margin-inline-start: 8px;
+}
+
+.mobile-ai-btn {
+  margin-inline-end: 12px;
+}
