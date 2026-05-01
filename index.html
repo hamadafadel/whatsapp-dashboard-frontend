@@ -11,12 +11,13 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <link rel="stylesheet" href="app.css?v=10" />
+  <link rel="stylesheet" href="app.css?v=20" />
 </head>
 <body>
 
   <div class="mobile-app" id="mobileApp">
 
+    <!-- Sessions -->
     <section class="sessions-screen" id="sessionsScreen">
       <header class="sessions-header">
         <div>
@@ -24,7 +25,7 @@
           <div class="brand-subtitle">Al Mehrab Dashboard</div>
         </div>
 
-        <button id="refreshBtn" class="icon-btn" type="button" aria-label="Refresh">↻</button>
+        <button id="refreshBtn" class="icon-btn" type="button">↻</button>
       </header>
 
       <div class="mobile-search">
@@ -34,9 +35,10 @@
       <div id="conversations" class="sessions-list"></div>
     </section>
 
+    <!-- Chat -->
     <section class="chat-screen" id="chatScreen">
       <header class="chat-mobile-header">
-        <button id="backBtn" class="back-btn" type="button" aria-label="Back">‹</button>
+        <button id="backBtn" class="back-btn" type="button">‹</button>
 
         <div class="chat-header-text">
           <div id="chatTitle" class="chat-title">اختر محادثة</div>
@@ -56,7 +58,7 @@
 
   </div>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=20"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
