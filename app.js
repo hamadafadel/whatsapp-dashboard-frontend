@@ -1,5 +1,5 @@
 const API_BASE = "https://wadashboardapi.almehrab.org/api";
-
+const chatNameEl = document.getElementById("chatName");
 const appEl = document.getElementById("mobileApp");
 const conversationsEl = document.getElementById("conversations");
 const messagesEl = document.getElementById("messages");
