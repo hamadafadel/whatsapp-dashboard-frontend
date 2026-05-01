@@ -1,7 +1,7 @@
 {
   "name": "Al Mehrab WhatsApp Dashboard",
   "short_name": "Mehrab Chat",
-  "start_url": "/app.html",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0b141a",
