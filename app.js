@@ -64,6 +64,7 @@ function renderConversations(conversations) {
       loadMessages(conv.session_id);
       loadAiStatus(conv.session_id);
       setTimeout(() => messageInputEl.focus(), 250);
+      chatNameEl.textContent = conv.customer_name || "عميل";
     });
 
     conversationsEl.appendChild(item);
