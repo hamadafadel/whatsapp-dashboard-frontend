@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Mehrab Dashboard</title>
+
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#202c33" />
+
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+
+<div class="mobile-app" id="mobileApp">
+
+  <!-- ===== Sessions ===== -->
+  <section class="sessions-screen" id="sessionsScreen">
+    <header class="sessions-header">
+      <div>
+        <div class="brand-title">المحادثات</div>
+        <div class="brand-subtitle">Al Mehrab Dashboard</div>
+      </div>
+      <button id="refreshBtn" class="icon-btn" type="button">↻</button>
+    </header>
+
+    <div class="mobile-search">
+      <input id="searchInput" type="text" placeholder="ابحث..." />
+    </div>
+
+    <div id="conversations" class="sessions-list"></div>
+  </section>
+
+  <!-- ===== Chat ===== -->
+  <section class="chat-screen" id="chatScreen">
+    <header class="chat-mobile-header">
+      <button id="backBtn" class="back-btn" type="button">‹</button>
+
+      <div class="chat-header-text">
+        <div id="chatTitle" class="chat-title">اختر محادثة</div>
+        <div id="chatSubtitle" class="chat-subtitle">WhatsApp Dashboard</div>
+      </div>
+
+      <button id="toggleAiBtn" class="mobile-ai-btn">AI</button>
+    </header>
+
+    <div id="messages" class="messages"></div>
+
+    <footer class="chat-compose">
+      <input id="messageInput" type="text" placeholder="اكتب رسالة..." />
+      <button id="sendBtn">إرسال</button>
+    </footer>
+  </section>
+
+</div>
+
+<script src="app.js"></script>
+
+</body>
+</html>
