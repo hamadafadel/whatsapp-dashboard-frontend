@@ -169,6 +169,18 @@ function appendMessageToUI(msg) {
   const rawType = String(messageObj.type || "").toLowerCase().trim();
   const content = String(messageObj.content || "").trim();
   const messageKind = String(messageObj.message_kind || "text").toLowerCase().trim();
+  // منع تكرار رسالة الـ agent بعد optimistic render
+if (rawType === "agent" && content) {
+  const lastBubble = messagesEl.lastElementChild;
+  const lastPending = lastBubble?.dataset?.pendingAgent === "true";
+  const lastContent = lastBubble?.dataset?.pendingContent || "";
+
+  if (lastPending && lastContent === content) {
+    delete lastBubble.dataset.pendingAgent;
+    delete lastBubble.dataset.pendingContent;
+    return;
+  }
+}
   let mediaUrl = "";
 
 if (typeof messageObj.media === "string") {
