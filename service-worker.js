@@ -1,8 +1,8 @@
-const CACHE_NAME = 'mehrab-dashboard-v4';
+const CACHE_NAME = 'mehrab-dashboard-final-v1';
 
 const urlsToCache = [
   '/',
-  '/app.html',
+  '/index.html',
   '/app.css',
   '/app.js',
   '/manifest.json',
@@ -10,31 +10,32 @@ const urlsToCache = [
   '/icon-512-v2.png'
 ];
 
+// install
 self.addEventListener('install', event => {
   self.skipWaiting();
-
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
+    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
   );
 });
 
+// fetch
 self.addEventListener('fetch', event => {
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
 });
 
+// activate
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(names => {
-      return Promise.all(
+    caches.keys().then(names =>
+      Promise.all(
         names.map(name => {
           if (name !== CACHE_NAME) {
             return caches.delete(name);
           }
         })
-      );
-    }).then(() => self.clients.claim())
+      )
+    ).then(() => self.clients.claim())
   );
 });
