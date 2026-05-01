@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Mehrab Dashboard</title>
+
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#202c33" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <link rel="stylesheet" href="app.css?v=10" />
+</head>
+<body>
+
+  <div class="mobile-app" id="mobileApp">
+
+    <section class="sessions-screen" id="sessionsScreen">
+      <header class="sessions-header">
+        <div>
+          <div class="brand-title">المحادثات</div>
+          <div class="brand-subtitle">Al Mehrab Dashboard</div>
+        </div>
+
+        <button id="refreshBtn" class="icon-btn" type="button" aria-label="Refresh">↻</button>
+      </header>
+
+      <div class="mobile-search">
+        <input id="searchInput" type="text" placeholder="ابحث عن Session..." autocomplete="off" />
+      </div>
+
+      <div id="conversations" class="sessions-list"></div>
+    </section>
+
+    <section class="chat-screen" id="chatScreen">
+      <header class="chat-mobile-header">
+        <button id="backBtn" class="back-btn" type="button" aria-label="Back">‹</button>
+
+        <div class="chat-header-text">
+          <div id="chatTitle" class="chat-title">اختر محادثة</div>
+          <div id="chatSubtitle" class="chat-subtitle">WhatsApp Dashboard</div>
+        </div>
+
+        <button id="toggleAiBtn" class="mobile-ai-btn" type="button">إيقاف AI</button>
+      </header>
+
+      <div id="messages" class="messages"></div>
+
+      <footer class="chat-compose">
+        <input id="messageInput" type="text" placeholder="اكتب رسالة..." autocomplete="off" />
+        <button id="sendBtn" type="button">إرسال</button>
+      </footer>
+    </section>
+
+  </div>
+
+  <script src="app.js?v=10"></script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js')
+        .then(() => console.log('Service Worker Registered'))
+        .catch(err => console.log('SW Error', err));
+    }
+  </script>
+
+</body>
+</html>
