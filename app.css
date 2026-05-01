@@ -547,3 +547,9 @@ input {
 .mobile-ai-btn {
   margin-inline-end: 12px;
 }
+
+.chat-name {
+  font-size: 13px;
+  color: #00a884;
+  margin-top: 2px;
+}
