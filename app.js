@@ -475,7 +475,7 @@ searchInputEl.addEventListener("input", () => {
 sendBtnEl.addEventListener("click", sendMessageFromDashboard);
 
 messageInputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
+  if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     sendMessageFromDashboard();
   }
