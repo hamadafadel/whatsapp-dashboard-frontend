@@ -386,13 +386,22 @@ eventSource.onmessage = function (event) {
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
 
+  if (data.type === "reload_messages") {
+    if (currentSession === eventSession) {
+      removeAiTypingIndicator();
+      loadMessages(activeSessionId);
+    }
+    loadConversations();
+    return;
+  }
+
   if (data.type === "user_message") {
     if (currentSession === eventSession) {
       appendRealtimeMessage({
         type: "user",
         content: data.content || "",
         message_kind: data.messageKind || data.message_kind || "text",
-media: data.mediaUrl || data.media_url || data.media || null,
+        media: data.mediaUrl || data.media_url || data.media || null,
         interactive: data.interactive || null,
         whatsapp_payload: data.whatsapp_payload || null
       });
@@ -412,8 +421,8 @@ media: data.mediaUrl || data.media_url || data.media || null,
       appendRealtimeMessage({
         type: data.messageType || "ai",
         content: data.content || "",
-        message_kind: data.message_kind || "text",
-        media: data.media || null,
+        message_kind: data.messageKind || data.message_kind || "text",
+        media: data.mediaUrl || data.media_url || data.media || null,
         interactive: data.interactive || null,
         whatsapp_payload: data.whatsapp_payload || null
       });
