@@ -416,6 +416,13 @@ eventSource.onmessage = function (event) {
   }
 
   if (data.type === "new_message") {
+    if (data.messageType === "reload" || data.messageKind === "reload") {
+  if (currentSession === eventSession) {
+    loadMessages(activeSessionId);
+  }
+  loadConversations();
+  return;
+}
     if (currentSession === eventSession) {
       removeAiTypingIndicator();
       appendRealtimeMessage({
