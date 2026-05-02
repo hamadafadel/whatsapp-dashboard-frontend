@@ -396,6 +396,13 @@ eventSource.onmessage = function (event) {
   }
 
   if (data.type === "user_message") {
+    if (data.messageKind === "reload" || data.content === "__RELOAD_MESSAGES__") {
+  if (currentSession === eventSession) {
+    loadMessages(activeSessionId);
+  }
+  loadConversations();
+  return;
+}
     if (currentSession === eventSession) {
       appendRealtimeMessage({
         type: "user",
