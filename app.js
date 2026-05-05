@@ -92,7 +92,7 @@ chatTitleEl.textContent = conv?.customer_name || "عميل";
 chatSubtitleEl.textContent = sessionId;
 messagesEl.innerHTML = `<div class="loading-state">جاري تحميل الرسائل...</div>`;
   try {
-    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(sessionId)}`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(sessionId)}?limit=50`, { cache: "no-store" });
     if (!res.ok) throw new Error("Failed messages");
 
     const messages = await res.json();
