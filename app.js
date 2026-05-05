@@ -52,12 +52,7 @@ function renderConversations(conversations) {
 
     item.innerHTML = `
       <div class="session-row">
-        <div class="session-id">
-  ${escapeHtml(conv.customer_name || "عميل")}
-  <div style="font-size:12px;color:#8696a0">
-    ${escapeHtml(conv.session_id || "")}
-  </div>
-</div>
+        <div class="session-id">${escapeHtml(conv.session_id || "")}</div>
       </div>
       <div class="session-preview">${escapeHtml(conv.content || "")}</div>
     `;
