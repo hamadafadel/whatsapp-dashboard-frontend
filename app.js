@@ -391,6 +391,13 @@ eventSource.onmessage = function (event) {
 
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
+  if (currentSession === eventSession) {
+  const conv = conversationsData.find(c => c.session_id === currentSession);
+  if (conv) {
+    chatTitleEl.textContent = conv.customer_name || "عميل";
+    chatSubtitleEl.textContent = currentSession;
+  }
+}
 
   if (data.type === "user_message") {
     if (currentSession === eventSession) {
