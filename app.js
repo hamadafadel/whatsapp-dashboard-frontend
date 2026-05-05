@@ -86,10 +86,11 @@ function closeChat() {
 }
 
 async function loadMessages(sessionId) {
-  chatTitleEl.textContent = `${sessionId}`;
-  chatSubtitleEl.textContent = "جاري تحميل الرسائل...";
-  messagesEl.innerHTML = `<div class="loading-state">جاري تحميل الرسائل...</div>`;
+  const conv = conversationsData.find(c => c.session_id === sessionId);
 
+chatTitleEl.textContent = conv?.customer_name || "عميل";
+chatSubtitleEl.textContent = sessionId;
+messagesEl.innerHTML = `<div class="loading-state">جاري تحميل الرسائل...</div>`;
   try {
     const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(sessionId)}`, { cache: "no-store" });
     if (!res.ok) throw new Error("Failed messages");
@@ -104,7 +105,7 @@ async function loadMessages(sessionId) {
     }
 
     messages.forEach((msg) => appendMessageToUI(msg));
-    chatSubtitleEl.textContent = `messages ${messages.length}`;
+    chatSubtitleEl.textContent = `${sessionId} • messages ${messages.length}`;
     scrollMessagesToBottom();
   } catch (error) {
     messagesEl.innerHTML = `<div class="error-state">فشل تحميل الرسائل</div>`;
