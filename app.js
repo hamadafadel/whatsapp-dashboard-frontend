@@ -409,23 +409,33 @@ eventSource.onmessage = function (event) {
     return;
   }
 
-  if (data.type === "new_message") {
+ if (data.type === "new_message") {
+  if (data.content === "__image__") {
     if (currentSession === eventSession) {
       removeAiTypingIndicator();
-
-      appendRealtimeMessage({
-        type: data.messageType || "ai",
-        content: data.content || "",
-        message_kind: data.messageKind || data.message_kind || "text",
-        media: data.mediaUrl || data.media_url || data.media || null,
-        interactive: data.interactive || null,
-        whatsapp_payload: data.whatsapp_payload || null
-      });
+      loadMessages(activeSessionId);
     }
 
     updateConversationPreview();
     return;
   }
+
+  if (currentSession === eventSession) {
+    removeAiTypingIndicator();
+
+    appendRealtimeMessage({
+      type: data.messageType || "ai",
+      content: data.content || "",
+      message_kind: data.messageKind || data.message_kind || "text",
+      media: data.mediaUrl || data.media_url || data.media || null,
+      interactive: data.interactive || null,
+      whatsapp_payload: data.whatsapp_payload || null
+    });
+  }
+
+  updateConversationPreview();
+  return;
+}
 };
 
 function appendRealtimeMessage(messageObj) {
