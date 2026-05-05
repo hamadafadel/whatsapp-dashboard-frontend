@@ -386,23 +386,7 @@ eventSource.onmessage = function (event) {
   const currentSession = String(activeSessionId || "").trim();
   const eventSession = String(data.sessionId || "").trim();
 
-  if (data.type === "reload_messages") {
-    if (currentSession === eventSession) {
-      removeAiTypingIndicator();
-      loadMessages(activeSessionId);
-    }
-    loadConversations();
-    return;
-  }
-
   if (data.type === "user_message") {
-    if (data.messageKind === "reload" || data.content === "__RELOAD_MESSAGES__") {
-  if (currentSession === eventSession) {
-    loadMessages(activeSessionId);
-  }
-  loadConversations();
-  return;
-}
     if (currentSession === eventSession) {
       appendRealtimeMessage({
         type: "user",
@@ -413,25 +397,22 @@ eventSource.onmessage = function (event) {
         whatsapp_payload: data.whatsapp_payload || null
       });
     }
+
     updateConversationPreview();
     return;
   }
 
   if (data.type === "ai_typing") {
-    if (currentSession === eventSession) showAiTypingIndicator();
+    if (currentSession === eventSession) {
+      showAiTypingIndicator();
+    }
     return;
   }
 
   if (data.type === "new_message") {
-    if (data.messageType === "reload" || data.messageKind === "reload") {
-  if (currentSession === eventSession) {
-    loadMessages(activeSessionId);
-  }
-  loadConversations();
-  return;
-}
     if (currentSession === eventSession) {
       removeAiTypingIndicator();
+
       appendRealtimeMessage({
         type: data.messageType || "ai",
         content: data.content || "",
@@ -441,7 +422,9 @@ eventSource.onmessage = function (event) {
         whatsapp_payload: data.whatsapp_payload || null
       });
     }
+
     updateConversationPreview();
+    return;
   }
 };
 
