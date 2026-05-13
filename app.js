@@ -433,6 +433,7 @@ eventSource.onmessage = function (event) {
 
   if (data.type === "user_message") {
   if (currentSession === eventSession) {
+    removeAiTypingIndicator();
     loadMessages(currentSession);
   }
 
