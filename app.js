@@ -432,21 +432,13 @@ eventSource.onmessage = function (event) {
 }
 
   if (data.type === "user_message") {
-    if (currentSession === eventSession) {
-      appendRealtimeMessage({
-  type: "user",
-  content: data.content || "",
-  message_kind: data.messageKind || data.message_kind || "text",
-  media: data.mediaUrl || data.media_url || data.media || null,
-  interactive: data.interactive || null,
-  whatsapp_payload: data.whatsapp_payload || null,
-  wa_message_id: data.wa_message_id || data.message_id || data.whatsapp_message_id || ""
-});
-    }
-
-    updateConversationPreview();
-    return;
+  if (currentSession === eventSession) {
+    loadMessages(currentSession);
   }
+
+  updateConversationPreview();
+  return;
+}
 
   if (data.type === "ai_typing") {
     if (currentSession === eventSession) {
@@ -486,6 +478,7 @@ eventSource.onmessage = function (event) {
 
 function appendRealtimeMessage(messageObj) {
   removeAiTypingIndicator();
+
   appendMessageToUI({
     type: messageObj.type,
     content: messageObj.content || "",
@@ -494,6 +487,7 @@ function appendRealtimeMessage(messageObj) {
     interactive: messageObj.interactive || null,
     whatsapp_payload: messageObj.whatsapp_payload || null,
     wa_message_id: messageObj.wa_message_id || "",
+    reply_to: messageObj.reply_to || null,
     message: messageObj
   });
 }
