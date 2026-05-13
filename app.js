@@ -226,15 +226,7 @@ bubble.className = `message ${messageType}`;
 
 wrap.dataset.messageType = messageType;
 wrap.dataset.messageContent = content;
-  const duplicateKey = `${messageType}_${messageKind}_${content}`;
 
-if (
-  messagesEl.querySelector(`[data-duplicate-key="${CSS.escape(duplicateKey)}"]`)
-) {
-  return;
-}
-
-wrap.dataset.duplicateKey = duplicateKey;
 wrap.dataset.messageKind = messageKind;
 
 wrap.dataset.waMessageId =
