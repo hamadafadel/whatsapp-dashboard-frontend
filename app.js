@@ -275,13 +275,7 @@ enableReplyGesture(wrap, messageObj, messageType);
     bubble.appendChild(replyBox);
   }
 
-  if (content) {
-    const textEl = document.createElement("div");
-    textEl.className = "message-text";
-    textEl.innerHTML = linkifyText(content);
-    bubble.appendChild(textEl);
-  }
-  
+    
   if (content) {
     const textEl = document.createElement("div");
     textEl.className = "message-text";
