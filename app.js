@@ -131,26 +131,41 @@ function normalizeMessage(msg) {
 
   return {
     ...messageObj,
+
     type: messageObj.type || msg?.type || "",
     content: messageObj.content || msg?.content || "",
     message_kind: messageObj.message_kind || msg?.message_kind || "text",
+
     media:
-  messageObj.media ||
-  msg?.media ||
-  messageObj.mediaUrl ||
-  msg?.mediaUrl ||
-  messageObj.media_url ||
-  msg?.media_url ||
-  null,
-media_url:
-  messageObj.media_url ||
-  msg?.media_url ||
-  messageObj.mediaUrl ||
-  msg?.mediaUrl ||
-  "",
+      messageObj.media ||
+      msg?.media ||
+      messageObj.mediaUrl ||
+      msg?.mediaUrl ||
+      messageObj.media_url ||
+      msg?.media_url ||
+      null,
+
+    media_url:
+      messageObj.media_url ||
+      msg?.media_url ||
+      messageObj.mediaUrl ||
+      msg?.mediaUrl ||
+      "",
+
+    wa_message_id:
+      messageObj.wa_message_id ||
+      msg?.wa_message_id ||
+      messageObj.whatsapp_message?.id ||
+      msg?.whatsapp_message?.id ||
+      messageObj.whatsapp_message_id ||
+      msg?.whatsapp_message_id ||
+      messageObj.message_id ||
+      msg?.message_id ||
+      "",
+
     interactive: messageObj.interactive || msg?.interactive || null,
     whatsapp_payload: whatsappPayload,
-reply_to: messageObj.reply_to || msg?.reply_to || null
+    reply_to: messageObj.reply_to || msg?.reply_to || null
   };
 }
 
