@@ -226,6 +226,15 @@ bubble.className = `message ${messageType}`;
 
 wrap.dataset.messageType = messageType;
 wrap.dataset.messageContent = content;
+  const duplicateKey = `${messageType}_${messageKind}_${content}`;
+
+if (
+  messagesEl.querySelector(`[data-duplicate-key="${CSS.escape(duplicateKey)}"]`)
+) {
+  return;
+}
+
+wrap.dataset.duplicateKey = duplicateKey;
 wrap.dataset.messageKind = messageKind;
 
 wrap.dataset.waMessageId =
@@ -708,46 +717,10 @@ function renderReplyBar() {
 function enableReplyGesture(wrap, messageObj, messageType) {
   if (messageType !== "user") return;
 
-  let startX = 0;
-  let startY = 0;
-  let moved = false;
+  wrap.style.cursor = "pointer";
 
-  wrap.addEventListener("touchstart", (e) => {
-    const t = e.touches[0];
-    startX = t.clientX;
-    startY = t.clientY;
-    moved = false;
-
-    longPressTimer = setTimeout(() => {
-      selectReplyMessage(messageObj, messageType);
-    }, 550);
-  }, { passive: true });
-
-  wrap.addEventListener("touchmove", (e) => {
-    const t = e.touches[0];
-    const dx = t.clientX - startX;
-    const dy = t.clientY - startY;
-
-    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
-
-    if (Math.abs(dy) > 25) {
-      clearTimeout(longPressTimer);
-      return;
-    }
-
-    if (dx > 55) {
-      clearTimeout(longPressTimer);
-      selectReplyMessage(messageObj, messageType);
-      wrap.classList.add("reply-swipe-active");
-
-      setTimeout(() => {
-        wrap.classList.remove("reply-swipe-active");
-      }, 250);
-    }
-  }, { passive: true });
-
-  wrap.addEventListener("touchend", () => {
-    clearTimeout(longPressTimer);
+  wrap.addEventListener("click", () => {
+    selectReplyMessage(messageObj, messageType);
   });
 
   wrap.addEventListener("contextmenu", (e) => {
