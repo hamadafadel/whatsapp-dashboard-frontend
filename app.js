@@ -419,13 +419,14 @@ eventSource.onmessage = function (event) {
   if (data.type === "user_message") {
     if (currentSession === eventSession) {
       appendRealtimeMessage({
-        type: "user",
-        content: data.content || "",
-        message_kind: data.messageKind || data.message_kind || "text",
-        media: data.mediaUrl || data.media_url || data.media || null,
-        interactive: data.interactive || null,
-        whatsapp_payload: data.whatsapp_payload || null
-      });
+  type: "user",
+  content: data.content || "",
+  message_kind: data.messageKind || data.message_kind || "text",
+  media: data.mediaUrl || data.media_url || data.media || null,
+  interactive: data.interactive || null,
+  whatsapp_payload: data.whatsapp_payload || null,
+  wa_message_id: data.wa_message_id || data.message_id || data.whatsapp_message_id || ""
+});
     }
 
     updateConversationPreview();
