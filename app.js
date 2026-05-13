@@ -16,6 +16,8 @@ let currentAiEnabled = true;
 let conversationsData = [];
 let activeSessionId = null;
 let typingIndicatorTimeout = null;
+let selectedReplyMessage = null;
+let longPressTimer = null;
 
 async function loadConversations() {
   conversationsEl.innerHTML = `<div class="loading-state">جاري تحميل المحادثات...</div>`;
@@ -147,7 +149,8 @@ media_url:
   msg?.mediaUrl ||
   "",
     interactive: messageObj.interactive || msg?.interactive || null,
-    whatsapp_payload: whatsappPayload
+    whatsapp_payload: whatsappPayload,
+reply_to: messageObj.reply_to || msg?.reply_to || null
   };
 }
 
@@ -218,8 +221,21 @@ const media = mediaUrl ? { url: mediaUrl } : null;
   const wrap = document.createElement("div");
   wrap.className = `message-wrap ${messageType}`;
 
-  const bubble = document.createElement("div");
-  bubble.className = `message ${messageType}`;
+ const bubble = document.createElement("div");
+bubble.className = `message ${messageType}`;
+
+wrap.dataset.messageType = messageType;
+wrap.dataset.messageContent = content;
+wrap.dataset.messageKind = messageKind;
+
+wrap.dataset.waMessageId =
+  messageObj.wa_message_id ||
+  messageObj.message_id ||
+  messageObj.whatsapp_message_id ||
+  messageObj.id ||
+  "";
+
+enableReplyGesture(wrap, messageObj, messageType);
 
   if (messageType === "agent" || messageType === "ai") {
     const label = document.createElement("div");
@@ -248,6 +264,23 @@ const media = mediaUrl ? { url: mediaUrl } : null;
     bubble.appendChild(video);
   }
 
+  if (messageObj.reply_to?.content) {
+    const replyBox = document.createElement("div");
+    replyBox.className = "reply-preview-in-message";
+    replyBox.innerHTML = `
+      <div class="reply-preview-name">${escapeHtml(messageObj.reply_to.type === "user" ? "العميل" : "أنت")}</div>
+      <div class="reply-preview-text">${escapeHtml(messageObj.reply_to.content || "")}</div>
+    `;
+    bubble.appendChild(replyBox);
+  }
+
+  if (content) {
+    const textEl = document.createElement("div");
+    textEl.className = "message-text";
+    textEl.innerHTML = linkifyText(content);
+    bubble.appendChild(textEl);
+  }
+  
   if (content) {
     const textEl = document.createElement("div");
     textEl.className = "message-text";
@@ -358,14 +391,16 @@ async function sendMessageFromDashboard() {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        sessionId: activeSessionId,
-        message
-      })
+  sessionId: activeSessionId,
+  message,
+  replyTo: selectedReplyMessage
+})
     });
 
     if (!res.ok) throw new Error("فشل الإرسال");
 
     messageInputEl.value = "";
+    clearSelectedReply();
     loadConversations();
 
   } catch (error) {
@@ -620,6 +655,105 @@ async function toggleAiStatus() {
     console.error(error);
     alert("فشل تغيير حالة AI");
   }
+}
+
+function selectReplyMessage(messageObj, messageType) {
+  if (messageType !== "user") return;
+
+  selectedReplyMessage = {
+    type: "user",
+    content: messageObj.content || "",
+    message_kind: messageObj.message_kind || "text",
+    wa_message_id:
+      messageObj.wa_message_id ||
+      messageObj.message_id ||
+      messageObj.whatsapp_message_id ||
+      messageObj.id ||
+      ""
+  };
+
+  renderReplyBar();
+  messageInputEl.focus();
+}
+
+function clearSelectedReply() {
+  selectedReplyMessage = null;
+  renderReplyBar();
+}
+
+function renderReplyBar() {
+  let existing = document.getElementById("replyBar");
+  if (existing) existing.remove();
+
+  if (!selectedReplyMessage) return;
+
+  const replyBar = document.createElement("div");
+  replyBar.id = "replyBar";
+  replyBar.className = "reply-bar";
+
+  replyBar.innerHTML = `
+    <div class="reply-bar-content">
+      <div class="reply-bar-title">رد على العميل</div>
+      <div class="reply-bar-text">${escapeHtml(selectedReplyMessage.content || "")}</div>
+    </div>
+    <button type="button" class="reply-bar-close">×</button>
+  `;
+
+  replyBar.querySelector(".reply-bar-close").addEventListener("click", clearSelectedReply);
+
+  const compose = document.querySelector(".chat-compose");
+  compose.parentNode.insertBefore(replyBar, compose);
+}
+
+function enableReplyGesture(wrap, messageObj, messageType) {
+  if (messageType !== "user") return;
+
+  let startX = 0;
+  let startY = 0;
+  let moved = false;
+
+  wrap.addEventListener("touchstart", (e) => {
+    const t = e.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+    moved = false;
+
+    longPressTimer = setTimeout(() => {
+      selectReplyMessage(messageObj, messageType);
+    }, 550);
+  }, { passive: true });
+
+  wrap.addEventListener("touchmove", (e) => {
+    const t = e.touches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
+
+    if (Math.abs(dy) > 25) {
+      clearTimeout(longPressTimer);
+      return;
+    }
+
+    if (dx > 55) {
+      clearTimeout(longPressTimer);
+      selectReplyMessage(messageObj, messageType);
+      wrap.classList.add("reply-swipe-active");
+
+      setTimeout(() => {
+        wrap.classList.remove("reply-swipe-active");
+      }, 250);
+    }
+  }, { passive: true });
+
+  wrap.addEventListener("touchend", () => {
+    clearTimeout(longPressTimer);
+  });
+
+  wrap.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    selectReplyMessage(messageObj, messageType);
+  });
 }
 
 if (toggleAiBtnEl) {
