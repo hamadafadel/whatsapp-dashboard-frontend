@@ -478,6 +478,7 @@ function appendRealtimeMessage(messageObj) {
     media: messageObj.media || null,
     interactive: messageObj.interactive || null,
     whatsapp_payload: messageObj.whatsapp_payload || null,
+    wa_message_id: messageObj.wa_message_id || "",
     message: messageObj
   });
 }
