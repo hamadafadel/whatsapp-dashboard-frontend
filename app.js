@@ -379,19 +379,6 @@ async function sendMessageFromDashboard() {
   sendBtnEl.disabled = true;
   messageInputEl.disabled = true;
 
-  appendMessageToUI({
-    message: {
-      type: "agent",
-      content: message,
-      message_kind: "text"
-    }
-  });
-
-  const lastMsg = messagesEl.lastElementChild;
-  if (lastMsg) {
-    lastMsg.dataset.pendingAgent = "true";
-    lastMsg.dataset.pendingContent = message;
-  }
 
   try {
     const res = await fetch(`${API_BASE}/send-message`, {
