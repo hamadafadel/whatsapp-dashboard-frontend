@@ -669,17 +669,21 @@ async function toggleAiStatus() {
 function selectReplyMessage(messageObj, messageType) {
   if (messageType !== "user") return;
 
+  const waMessageId =
+    messageObj.wa_message_id ||
+    messageObj.whatsapp_message?.id ||
+    messageObj.message_id ||
+    messageObj.whatsapp_message_id ||
+    "";
+
   selectedReplyMessage = {
     type: "user",
     content: messageObj.content || "",
     message_kind: messageObj.message_kind || "text",
-    wa_message_id:
-      messageObj.wa_message_id ||
-      messageObj.message_id ||
-      messageObj.whatsapp_message_id ||
-      messageObj.id ||
-      ""
+    wa_message_id: waMessageId
   };
+
+  console.log("Selected reply:", selectedReplyMessage);
 
   renderReplyBar();
   messageInputEl.focus();
