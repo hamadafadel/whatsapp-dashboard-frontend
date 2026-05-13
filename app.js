@@ -463,13 +463,23 @@ eventSource.onmessage = function (event) {
     removeAiTypingIndicator();
 
     appendRealtimeMessage({
-      type: data.messageType || "ai",
-      content: data.content || "",
-      message_kind: data.messageKind || data.message_kind || "text",
-      media: data.mediaUrl || data.media_url || data.media || null,
-      interactive: data.interactive || null,
-      whatsapp_payload: data.whatsapp_payload || null
-    });
+  type: data.messageType || "ai",
+  content: data.content || "",
+  message_kind: data.messageKind || data.message_kind || "text",
+  media: data.mediaUrl || data.media_url || data.media || null,
+  interactive: data.interactive || null,
+  whatsapp_payload: data.whatsapp_payload || null,
+
+  wa_message_id:
+    data.wa_message_id ||
+    data.message_id ||
+    data.whatsapp_message_id ||
+    data.whatsapp_message?.id ||
+    "",
+
+  whatsapp_message: data.whatsapp_message || null,
+  reply_to: data.reply_to || null
+});
   }
 
   updateConversationPreview();
@@ -483,11 +493,19 @@ function appendRealtimeMessage(messageObj) {
   appendMessageToUI({
     type: messageObj.type,
     content: messageObj.content || "",
-    message_kind: messageObj.message_kind || "text",
-    media: messageObj.media || null,
+    message_kind: messageObj.message_kind || messageObj.messageKind || "text",
+    media: messageObj.media || messageObj.mediaUrl || messageObj.media_url || null,
     interactive: messageObj.interactive || null,
     whatsapp_payload: messageObj.whatsapp_payload || null,
-    wa_message_id: messageObj.wa_message_id || "",
+
+    wa_message_id:
+      messageObj.wa_message_id ||
+      messageObj.message_id ||
+      messageObj.whatsapp_message_id ||
+      messageObj.whatsapp_message?.id ||
+      "",
+
+    whatsapp_message: messageObj.whatsapp_message || null,
     reply_to: messageObj.reply_to || null,
     message: messageObj
   });
