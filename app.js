@@ -462,9 +462,9 @@ async function sendMessageFromDashboard() {
   try {
     const res = await fetch(`${API_BASE}/send-message`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+     headers: getAuthHeaders({
+  "Content-Type": "application/json"
+}),
       body: JSON.stringify({
   sessionId: activeSessionId,
   message,
@@ -790,8 +790,9 @@ async function loadAiStatus(sessionId) {
 
   try {
     const res = await fetch(`${API_BASE}/ai-status/${encodeURIComponent(sessionId)}`, {
-      cache: "no-store"
-    });
+  cache: "no-store",
+  headers: getAuthHeaders()
+});
 
     const data = await res.json();
     currentAiEnabled = data.ai_enabled !== false;
@@ -818,9 +819,9 @@ async function toggleAiStatus() {
   try {
     const res = await fetch(`${API_BASE}/ai-status`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: getAuthHeaders({
+  "Content-Type": "application/json"
+}),
       body: JSON.stringify({
         sessionId: activeSessionId,
         ai_enabled: newStatus
@@ -961,8 +962,64 @@ function enableReplyGesture(wrap, messageObj, messageType) {
 if (toggleAiBtnEl) {
   toggleAiBtnEl.addEventListener("click", toggleAiStatus);
 }
-loadConversations();
 
+async function login() {
+  loginErrorEl.textContent = "";
+
+  const username = loginUsernameEl.value.trim();
+  const password = loginPasswordEl.value;
+
+  if (!username || !password) {
+    loginErrorEl.textContent = "ادخل البيانات";
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        username,
+        password
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.token) {
+      loginErrorEl.textContent = "بيانات الدخول غير صحيحة";
+      return;
+    }
+
+    authToken = data.token;
+
+    localStorage.setItem("dashboard_token", authToken);
+
+    hideLogin();
+
+    connectEvents();
+    loadConversations();
+
+  } catch (err) {
+    console.error(err);
+    loginErrorEl.textContent = "فشل تسجيل الدخول";
+  }
+}
+
+loginBtnEl?.addEventListener("click", login);
+
+if (authToken) {
+  hideLogin();
+  connectEvents();
+} else {
+  showLogin();
+}
+
+if (authToken) {
+  loadConversations();
+}
 if (appEl && window.innerWidth > 900) {
   appEl.classList.remove("chat-open");
 }
