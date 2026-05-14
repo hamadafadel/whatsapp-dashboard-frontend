@@ -281,16 +281,21 @@ enableReplyGesture(wrap, messageObj, messageType);
   }
 
   if (messageObj.reply_to?.content) {
-    const replyBox = document.createElement("div");
-    replyBox.className = "reply-preview-in-message";
-    replyBox.innerHTML = `
-  <div class="reply-preview-content">
-    <div class="reply-preview-name">${escapeHtml(messageObj.reply_to.type === "user" ? "العميل" : "أنت")}</div>
-    <div class="reply-preview-text">${escapeHtml(messageObj.reply_to.content || "")}</div>
-  </div>
-`;
-    bubble.appendChild(replyBox);
-  }
+  const replyBox = document.createElement("div");
+  replyBox.className = "quoted-reply-box";
+
+  replyBox.innerHTML = `
+    <div class="quoted-reply-name">
+      ${escapeHtml(messageObj.reply_to.type === "user" ? "العميل" : "أنت")}
+    </div>
+
+    <div class="quoted-reply-text">
+      ${escapeHtml(messageObj.reply_to.content || "")}
+    </div>
+  `;
+
+  bubble.appendChild(replyBox);
+}
 
     
   if (content) {
