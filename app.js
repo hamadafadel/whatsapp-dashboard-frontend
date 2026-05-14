@@ -733,13 +733,67 @@ function enableReplyGesture(wrap, messageObj, messageType) {
 
   wrap.style.cursor = "pointer";
 
-  wrap.addEventListener("click", () => {
+  let pressTimer = null;
+  let startX = 0;
+  let startY = 0;
+  let didSelect = false;
+
+  const select = () => {
+    if (didSelect) return;
+    didSelect = true;
     selectReplyMessage(messageObj, messageType);
+
+    wrap.classList.add("reply-swipe-active");
+    setTimeout(() => {
+      wrap.classList.remove("reply-swipe-active");
+    }, 200);
+  };
+
+  // Desktop click
+  wrap.addEventListener("click", () => {
+    select();
   });
 
+  // Desktop right click
   wrap.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    selectReplyMessage(messageObj, messageType);
+    select();
+  });
+
+  // Mobile long press
+  wrap.addEventListener("touchstart", (e) => {
+    didSelect = false;
+
+    const t = e.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+
+    pressTimer = setTimeout(() => {
+      select();
+    }, 450);
+  }, { passive: true });
+
+  wrap.addEventListener("touchmove", (e) => {
+    const t = e.touches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+
+    if (Math.abs(dx) > 45 && Math.abs(dy) < 25) {
+      clearTimeout(pressTimer);
+      select();
+    }
+
+    if (Math.abs(dy) > 30) {
+      clearTimeout(pressTimer);
+    }
+  }, { passive: true });
+
+  wrap.addEventListener("touchend", () => {
+    clearTimeout(pressTimer);
+  });
+
+  wrap.addEventListener("touchcancel", () => {
+    clearTimeout(pressTimer);
   });
 }
 
