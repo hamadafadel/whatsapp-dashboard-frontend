@@ -284,16 +284,16 @@ enableReplyGesture(wrap, messageObj, messageType);
   const replyBox = document.createElement("div");
   replyBox.className = "quoted-reply-box";
 
-  replyBox.innerHTML = `
-    <div class="quoted-reply-name">
-      ${escapeHtml(messageObj.reply_to.type === "user" ? "العميل" : "أنت")}
-    </div>
+  const replyName = document.createElement("div");
+  replyName.className = "quoted-reply-name";
+  replyName.textContent = messageObj.reply_to.type === "user" ? "العميل" : "أنت";
 
-    <div class="quoted-reply-text">
-      ${escapeHtml(messageObj.reply_to.content || "")}
-    </div>
-  `;
+  const replyText = document.createElement("div");
+  replyText.className = "quoted-reply-text";
+  replyText.textContent = messageObj.reply_to.content || "";
 
+  replyBox.appendChild(replyName);
+  replyBox.appendChild(replyText);
   bubble.appendChild(replyBox);
 }
 
