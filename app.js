@@ -774,14 +774,24 @@ function selectReplyMessage(messageObj, messageType) {
     messageObj.whatsapp_message_id ||
     "";
 
+  const messageKind = messageObj.message_kind || "text";
+
+  let content = messageObj.content || "";
+
+  if (!content) {
+    if (messageKind === "image") content = "📷 صورة";
+    else if (messageKind === "video") content = "🎥 فيديو";
+    else if (messageKind === "audio") content = "🎙️ رسالة صوتية";
+    else if (messageKind === "document") content = "📄 ملف";
+    else content = "رسالة";
+  }
+
   selectedReplyMessage = {
     type: "user",
-    content: messageObj.content || "",
-    message_kind: messageObj.message_kind || "text",
+    content,
+    message_kind: messageKind,
     wa_message_id: waMessageId
   };
-
-  console.log("Selected reply:", selectedReplyMessage);
 
   renderReplyBar();
   messageInputEl.focus();
