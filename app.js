@@ -289,6 +289,8 @@ const realWaMessageId =
   messageObj.id ||
   "";
 
+messageObj.wa_message_id = realWaMessageId;
+
 wrap.dataset.waMessageId = realWaMessageId;
 
 if (realWaMessageId) {
