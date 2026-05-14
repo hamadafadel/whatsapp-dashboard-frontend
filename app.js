@@ -11,6 +11,11 @@ const sendBtnEl = document.getElementById("sendBtn");
 const backBtnEl = document.getElementById("backBtn");
 const refreshBtnEl = document.getElementById("refreshBtn");
 const toggleAiBtnEl = document.getElementById("toggleAiBtn");
+const loginScreenEl = document.getElementById("loginScreen");
+const loginUsernameEl = document.getElementById("loginUsername");
+const loginPasswordEl = document.getElementById("loginPassword");
+const loginBtnEl = document.getElementById("loginBtn");
+const loginErrorEl = document.getElementById("loginError");
 let currentAiEnabled = true;
 
 let conversationsData = [];
@@ -18,13 +23,38 @@ let activeSessionId = null;
 let typingIndicatorTimeout = null;
 let selectedReplyMessage = null;
 let longPressTimer = null;
+let authToken = localStorage.getItem("dashboard_token") || "";
+function getAuthHeaders(extraHeaders = {}) {
+  return {
+    ...extraHeaders,
+    Authorization: `Bearer ${authToken}`
+  };
+}
+
+function showLogin() {
+  loginScreenEl?.classList.remove("hidden");
+}
+
+function hideLogin() {
+  loginScreenEl?.classList.add("hidden");
+}
+
+function logout() {
+  localStorage.removeItem("dashboard_token");
+  authToken = "";
+  showLogin();
+}
 
 async function loadConversations() {
   conversationsEl.innerHTML = `<div class="loading-state">جاري تحميل المحادثات...</div>`;
 
-  try {
-    const res = await fetch(`${API_BASE}/conversations`, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed conversations");
+ try {
+  const res = await fetch(`${API_BASE}/conversations`, {
+    cache: "no-store",
+    headers: getAuthHeaders()
+  });
+
+  if (!res.ok) throw new Error("Failed conversations");
 
     const conversations = await res.json();
     conversationsData = Array.isArray(conversations) ? conversations : [];
@@ -93,9 +123,16 @@ async function loadMessages(sessionId) {
 chatTitleEl.textContent = conv?.customer_name || "عميل";
 chatSubtitleEl.textContent = sessionId;
 messagesEl.innerHTML = `<div class="loading-state">جاري تحميل الرسائل...</div>`;
-  try {
-    const res = await fetch(`${API_BASE}/messages/${encodeURIComponent(sessionId)}?limit=50`, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed messages");
+ try {
+  const res = await fetch(
+    `${API_BASE}/messages/${encodeURIComponent(sessionId)}?limit=50`,
+    {
+      cache: "no-store",
+      headers: getAuthHeaders()
+    }
+  );
+
+  if (!res.ok) throw new Error("Failed messages");
 
     const messages = await res.json();
     messagesEl.innerHTML = "";
@@ -451,7 +488,97 @@ async function sendMessageFromDashboard() {
   }
 }
 
-const eventSource = new EventSource(`${API_BASE}/events`);
+let eventSource = null;
+
+function connectEvents() {
+  if (!authToken) return;
+
+  if (eventSource) {
+    eventSource.close();
+  }
+
+  eventSource = new EventSource(
+    `${API_BASE}/events?token=${encodeURIComponent(authToken)}`
+  );
+
+  eventSource.onmessage = function (event) {
+    let data = {};
+
+    try {
+      data = JSON.parse(event.data);
+    } catch (e) {
+      return;
+    }
+
+    const currentSession = String(activeSessionId || "").trim();
+    const eventSession = String(data.sessionId || "").trim();
+
+    if (currentSession === eventSession) {
+      const conv = conversationsData.find(c => c.session_id === currentSession);
+
+      if (conv) {
+        chatTitleEl.textContent = conv.customer_name || "عميل";
+        chatSubtitleEl.textContent = currentSession;
+      }
+    }
+
+    if (data.type === "user_message") {
+      if (currentSession === eventSession) {
+        removeAiTypingIndicator();
+        loadMessages(currentSession);
+      }
+
+      updateConversationPreview();
+      return;
+    }
+
+    if (data.type === "ai_typing") {
+      if (currentSession === eventSession) {
+        showAiTypingIndicator();
+      }
+
+      return;
+    }
+
+    if (data.type === "new_message") {
+      if (data.content === "__image__") {
+        if (currentSession === eventSession) {
+          removeAiTypingIndicator();
+          loadMessages(activeSessionId);
+        }
+
+        updateConversationPreview();
+        return;
+      }
+
+      if (currentSession === eventSession) {
+        removeAiTypingIndicator();
+
+        appendRealtimeMessage({
+          type: data.messageType || "ai",
+          content: data.content || "",
+          message_kind: data.messageKind || data.message_kind || "text",
+          media: data.mediaUrl || data.media_url || data.media || null,
+          interactive: data.interactive || null,
+          whatsapp_payload: data.whatsapp_payload || null,
+
+          wa_message_id:
+            data.wa_message_id ||
+            data.message_id ||
+            data.whatsapp_message_id ||
+            data.whatsapp_message?.id ||
+            "",
+
+          whatsapp_message: data.whatsapp_message || null,
+          reply_to: data.reply_to || null
+        });
+      }
+
+      updateConversationPreview();
+      return;
+    }
+  };
+}
 
 eventSource.onmessage = function (event) {
   let data = {};
