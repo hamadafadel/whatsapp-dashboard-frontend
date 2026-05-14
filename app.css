@@ -589,13 +589,46 @@ input {
   line-height: 1.2;
 }
 
+.quoted-reply-box {
+  width: 210px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: 46px !important;
+  overflow: hidden !important;
+  background: rgba(255,255,255,0.08) !important;
+  border-right: 3px solid #53bdeb !important;
+  border-radius: 7px !important;
+  padding: 5px 8px !important;
+  margin: 0 0 6px 0 !important;
+  direction: rtl !important;
+  text-align: right !important;
+  white-space: normal !important;
+  line-height: normal !important;
+}
+
+.quoted-reply-name {
+  display: block !important;
+  height: 14px !important;
+  color: #53bdeb !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  line-height: 14px !important;
+  margin: 0 0 2px 0 !important;
+  padding: 0 !important;
+  white-space: nowrap !important;
+}
+
 .quoted-reply-text {
-  color: #d8dde1;
-  font-size: 12px;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: block !important;
+  height: 16px !important;
+  color: #d8dde1 !important;
+  font-size: 12px !important;
+  line-height: 16px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
 }
 .reply-bar {
   display: flex;
