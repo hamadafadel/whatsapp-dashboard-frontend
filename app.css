@@ -569,38 +569,34 @@ input {
   font-family: inherit;
   resize: none;
 }
-
-.reply-preview-in-message {
-  width: 220px;
-  background: rgba(255,255,255,0.07);
+.quoted-reply-box {
+  width: 210px;
+  background: rgba(255,255,255,0.08);
   border-right: 3px solid #53bdeb;
-  border-radius: 8px;
-  padding: 6px 8px;
+  border-radius: 7px;
+  padding: 5px 8px;
   margin-bottom: 6px;
+  overflow: hidden;
   direction: rtl;
   text-align: right;
 }
 
-.reply-preview-content {
-  min-width: 0;
-}
-.reply-preview-name {
-  font-size: 11px;
-  font-weight: 800;
+.quoted-reply-name {
   color: #53bdeb;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 2px;
   line-height: 1.2;
-  margin-bottom: 3px;
 }
 
-.reply-preview-text {
-  font-size: 12px;
+.quoted-reply-text {
   color: #d8dde1;
+  font-size: 12px;
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .reply-bar {
   display: flex;
   align-items: center;
