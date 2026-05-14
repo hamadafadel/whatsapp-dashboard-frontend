@@ -306,6 +306,29 @@ replyBox.style.cursor = "pointer";
   replyBox.appendChild(replyName);
   replyBox.appendChild(replyText);
   bubble.appendChild(replyBox);
+    replyBox.addEventListener("click", (e) => {
+  e.stopPropagation();
+
+  const targetId = replyBox.dataset.replyTargetId;
+  if (!targetId) return;
+
+  const target = messagesEl.querySelector(
+    `[data-wa-message-id="${CSS.escape(targetId)}"]`
+  );
+
+  if (!target) return;
+
+  target.scrollIntoView({
+    behavior: "smooth",
+    block: "center"
+  });
+
+  target.classList.add("message-highlight");
+
+  setTimeout(() => {
+    target.classList.remove("message-highlight");
+  }, 1200);
+});
 }
 
     
