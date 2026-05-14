@@ -284,9 +284,11 @@ enableReplyGesture(wrap, messageObj, messageType);
     const replyBox = document.createElement("div");
     replyBox.className = "reply-preview-in-message";
     replyBox.innerHTML = `
-      <div class="reply-preview-name">${escapeHtml(messageObj.reply_to.type === "user" ? "العميل" : "أنت")}</div>
-      <div class="reply-preview-text">${escapeHtml(messageObj.reply_to.content || "")}</div>
-    `;
+  <div class="reply-preview-content">
+    <div class="reply-preview-name">${escapeHtml(messageObj.reply_to.type === "user" ? "العميل" : "أنت")}</div>
+    <div class="reply-preview-text">${escapeHtml(messageObj.reply_to.content || "")}</div>
+  </div>
+`;
     bubble.appendChild(replyBox);
   }
 
