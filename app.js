@@ -244,12 +244,19 @@ wrap.dataset.messageContent = content;
 
 wrap.dataset.messageKind = messageKind;
 
-wrap.dataset.waMessageId =
+const realWaMessageId =
   messageObj.wa_message_id ||
+  messageObj.whatsapp_message?.id ||
   messageObj.message_id ||
   messageObj.whatsapp_message_id ||
   messageObj.id ||
   "";
+
+wrap.dataset.waMessageId = realWaMessageId;
+
+if (realWaMessageId) {
+  wrap.setAttribute("data-wa-message-id", realWaMessageId);
+}
 
 enableReplyGesture(wrap, messageObj, messageType);
 
@@ -283,6 +290,10 @@ enableReplyGesture(wrap, messageObj, messageType);
   if (messageObj.reply_to?.content) {
   const replyBox = document.createElement("div");
   replyBox.className = "quoted-reply-box";
+    replyBox.dataset.replyTargetId =
+  messageObj.reply_to.wa_message_id || "";
+
+replyBox.style.cursor = "pointer";
 
   const replyName = document.createElement("div");
   replyName.className = "quoted-reply-name";
