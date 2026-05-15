@@ -16,6 +16,8 @@ const loginUsernameEl = document.getElementById("loginUsername");
 const loginPasswordEl = document.getElementById("loginPassword");
 const loginBtnEl = document.getElementById("loginBtn");
 const loginErrorEl = document.getElementById("loginError");
+const mediaInputEl = document.getElementById("mediaInput");
+const attachBtnEl = document.getElementById("attachBtn");
 let currentAiEnabled = true;
 
 let conversationsData = [];
@@ -960,4 +962,53 @@ if (authToken) {
 }
 if (appEl && window.innerWidth > 900) {
   appEl.classList.remove("chat-open");
+}
+
+if (attachBtnEl && mediaInputEl) {
+  attachBtnEl.addEventListener("click", () => {
+    mediaInputEl.click();
+  });
+}
+if (mediaInputEl) {
+  mediaInputEl.addEventListener("change", async () => {
+    const file = mediaInputEl.files?.[0];
+    if (!file) return;
+
+    if (!activeSessionId) {
+      alert("اختر محادثة أولًا");
+      mediaInputEl.value = "";
+      return;
+    }
+
+    const messageKind = file.type.startsWith("video/") ? "video" : "image";
+    const caption = messageInputEl.value.trim();
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("sessionId", activeSessionId);
+    formData.append("caption", caption);
+    formData.append("messageKind", messageKind);
+
+    sendBtnEl.disabled = true;
+    attachBtnEl.disabled = true;
+
+    try {
+      const res = await fetch(`${API_BASE}/send-media`, {
+        method: "POST",
+        body: formData
+      });
+
+      if (!res.ok) throw new Error("Failed to send media");
+
+      messageInputEl.value = "";
+      mediaInputEl.value = "";
+    } catch (err) {
+      console.error(err);
+      alert("فشل إرسال الميديا");
+    } finally {
+      sendBtnEl.disabled = false;
+      attachBtnEl.disabled = false;
+      messageInputEl.focus();
+    }
+  });
 }
