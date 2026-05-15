@@ -315,15 +315,34 @@ enableReplyGesture(wrap, messageObj, messageType);
     bubble.appendChild(label);
   }
 
-  if (messageKind === "image" && media?.url) {
-    const img = document.createElement("img");
-    img.src = media.url;
-    img.alt = "image";
-    img.style.maxWidth = "100%";
-    img.style.borderRadius = "8px";
-    img.style.marginBottom = content ? "6px" : "0";
-    bubble.appendChild(img);
-  }
+  if ((messageKind === "image" || media?.url) && media?.url) {
+  const img = document.createElement("img");
+
+  img.src = media.url;
+  img.alt = "image";
+  img.loading = "lazy";
+
+  img.style.display = "block";
+  img.style.maxWidth = "240px";
+  img.style.width = "100%";
+  img.style.height = "auto";
+  img.style.borderRadius = "8px";
+  img.style.marginBottom = content ? "6px" : "0";
+
+  img.onerror = () => {
+    console.error("Image failed:", media.url);
+    img.remove();
+
+    const fallback = document.createElement("a");
+    fallback.href = media.url;
+    fallback.target = "_blank";
+    fallback.textContent = "فتح الصورة";
+    fallback.style.color = "#53bdeb";
+    bubble.appendChild(fallback);
+  };
+
+  bubble.appendChild(img);
+}
 
   if (messageKind === "video" && media?.url) {
     const video = document.createElement("video");
