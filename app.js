@@ -246,12 +246,20 @@ if (rawType === "agent" && content) {
 }
   let mediaUrl = "";
 
+let mediaUrl = "";
+
 if (typeof messageObj.media === "string") {
   mediaUrl = messageObj.media;
 } else if (messageObj.media?.url) {
   mediaUrl = messageObj.media.url;
 } else if (messageObj.media_url) {
   mediaUrl = messageObj.media_url;
+} else if (messageObj.mediaUrl) {
+  mediaUrl = messageObj.mediaUrl;
+}
+
+if (mediaUrl && mediaUrl.startsWith("http://wadashboardapi.almehrab.org")) {
+  mediaUrl = mediaUrl.replace("http://", "https://");
 }
 
 const media = mediaUrl ? { url: mediaUrl } : null;
