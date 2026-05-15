@@ -244,7 +244,6 @@ if (rawType === "agent" && content) {
     return;
   }
 }
-  let mediaUrl = "";
 
 let mediaUrl = "";
 
