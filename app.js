@@ -1005,7 +1005,13 @@ if (mediaInputEl) {
       mediaInputEl.value = "";
       return;
     }
+const maxVideoSize = 15 * 1024 * 1024;
 
+if (file.type.startsWith("video/") && file.size > maxVideoSize) {
+  alert("الفيديو كبير جدًا. اختار فيديو أقل من 15 ميجا.");
+  mediaInputEl.value = "";
+  return;
+}
     const messageKind = file.type.startsWith("video/") ? "video" : "image";
     const caption = messageInputEl.value.trim();
 
