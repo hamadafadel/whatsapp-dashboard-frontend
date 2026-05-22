@@ -998,16 +998,26 @@ if (attachBtnEl && mediaInputEl) {
 async function normalizeImageFile(file) {
   if (!file.type.startsWith("image/")) return file;
 
-  const bitmap = await createImageBitmap(file, {
-    imageOrientation: "from-image"
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const img = await new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = dataUrl;
   });
 
   const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
 
   const ctx = canvas.getContext("2d");
-  ctx.drawImage(bitmap, 0, 0);
+  ctx.drawImage(img, 0, 0);
 
   return new Promise((resolve) => {
     canvas.toBlob(
