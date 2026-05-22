@@ -998,6 +998,7 @@ if (attachBtnEl && mediaInputEl) {
 if (mediaInputEl) {
   mediaInputEl.addEventListener("change", async () => {
     const files = Array.from(mediaInputEl.files || []);
+    alert("عدد الملفات المختارة: " + files.length);
 
 if (!files.length) return;
 
