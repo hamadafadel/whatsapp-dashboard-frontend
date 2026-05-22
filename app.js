@@ -1047,6 +1047,7 @@ function setUploadProgress(percent) {
 
   if (percent >= 100) {
     setTimeout(() => {
+      uploadProgressTextEl.textContent = "0%";
       uploadProgressEl.classList.add("hidden");
     }, 800);
   }
@@ -1095,7 +1096,7 @@ try {
 
     await new Promise((resolve, reject) => {
   const xhr = new XMLHttpRequest();
-
+setUploadProgress(0);
   xhr.open("POST", `${API_BASE}/send-media`);
 
   xhr.upload.onprogress = (event) => {
