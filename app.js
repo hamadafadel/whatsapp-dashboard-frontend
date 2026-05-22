@@ -997,8 +997,15 @@ if (attachBtnEl && mediaInputEl) {
 }
 if (mediaInputEl) {
   mediaInputEl.addEventListener("change", async () => {
-    const file = mediaInputEl.files?.[0];
-    if (!file) return;
+    const files = Array.from(mediaInputEl.files || []);
+
+if (!files.length) return;
+
+if (files.length > 15) {
+  alert("الحد الأقصى 15 ملف مرة واحدة");
+  mediaInputEl.value = "";
+  return;
+}
 
     if (!activeSessionId) {
       alert("اختر محادثة أولًا");
@@ -1006,14 +1013,19 @@ if (mediaInputEl) {
       return;
     }
 const maxVideoSize = 15 * 1024 * 1024;
+const caption = messageInputEl.value.trim();
 
-if (file.type.startsWith("video/") && file.size > maxVideoSize) {
-  alert("الفيديو كبير جدًا. اختار فيديو أقل من 15 ميجا.");
-  mediaInputEl.value = "";
-  return;
-}
+sendBtnEl.disabled = true;
+attachBtnEl.disabled = true;
+
+try {
+  for (const file of files) {
+    if (file.type.startsWith("video/") && file.size > maxVideoSize) {
+      alert(`الفيديو ${file.name} كبير جدًا. اختار فيديو أقل من 15 ميجا.`);
+      continue;
+    }
+
     const messageKind = file.type.startsWith("video/") ? "video" : "image";
-    const caption = messageInputEl.value.trim();
 
     const formData = new FormData();
     formData.append("file", file);
@@ -1021,26 +1033,22 @@ if (file.type.startsWith("video/") && file.size > maxVideoSize) {
     formData.append("caption", caption);
     formData.append("messageKind", messageKind);
 
-    sendBtnEl.disabled = true;
-    attachBtnEl.disabled = true;
+    const res = await fetch(`${API_BASE}/send-media`, {
+      method: "POST",
+      body: formData
+    });
 
-    try {
-      const res = await fetch(`${API_BASE}/send-media`, {
-        method: "POST",
-        body: formData
-      });
+    if (!res.ok) throw new Error("Failed to send media");
+  }
 
-      if (!res.ok) throw new Error("Failed to send media");
-
-      messageInputEl.value = "";
-      mediaInputEl.value = "";
-    } catch (err) {
-      console.error(err);
-      alert("فشل إرسال الميديا");
-    } finally {
-      sendBtnEl.disabled = false;
-      attachBtnEl.disabled = false;
-      messageInputEl.focus();
-    }
-  });
+  messageInputEl.value = "";
+  mediaInputEl.value = "";
+} catch (err) {
+  console.error(err);
+  alert("فشل إرسال الميديا");
+} finally {
+  sendBtnEl.disabled = false;
+  attachBtnEl.disabled = false;
+  messageInputEl.focus();
+}  });
 }
