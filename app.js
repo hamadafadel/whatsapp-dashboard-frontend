@@ -18,6 +18,8 @@ const loginBtnEl = document.getElementById("loginBtn");
 const loginErrorEl = document.getElementById("loginError");
 const mediaInputEl = document.getElementById("mediaInput");
 const attachBtnEl = document.getElementById("attachBtn");
+const uploadProgressEl = document.getElementById("uploadProgress");
+const uploadProgressTextEl = document.getElementById("uploadProgressText");
 let currentAiEnabled = true;
 
 let conversationsData = [];
