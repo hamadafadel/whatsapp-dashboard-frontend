@@ -995,6 +995,38 @@ if (attachBtnEl && mediaInputEl) {
     mediaInputEl.click();
   });
 }
+async function normalizeImageFile(file) {
+  if (!file.type.startsWith("image/")) return file;
+
+  const bitmap = await createImageBitmap(file, {
+    imageOrientation: "from-image"
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0);
+
+  return new Promise((resolve) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return resolve(file);
+
+        resolve(
+          new File(
+            [blob],
+            file.name.replace(/\.(jpg|jpeg|png|webp)$/i, ".jpg"),
+            { type: "image/jpeg" }
+          )
+        );
+      },
+      "image/jpeg",
+      0.92
+    );
+  });
+}
 if (mediaInputEl) {
   mediaInputEl.addEventListener("change", async () => {
     const files = Array.from(mediaInputEl.files || []);
@@ -1020,7 +1052,10 @@ sendBtnEl.disabled = true;
 attachBtnEl.disabled = true;
 
 try {
-  for (const file of files) {
+  for (const originalFile of files) {
+
+  const file = await normalizeImageFile(originalFile);
+
     if (file.type.startsWith("video/") && file.size > maxVideoSize) {
       alert(`الفيديو ${file.name} كبير جدًا. اختار فيديو أقل من 15 ميجا.`);
       continue;
