@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mehrab-dashboard-final-v2';
+const CACHE_NAME = 'mehrab-dashboard-final-v3';
 
 const urlsToCache = [
   '/',
