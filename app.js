@@ -1039,6 +1039,18 @@ async function normalizeImageFile(file) {
     );
   });
 }
+function setUploadProgress(percent) {
+  if (!uploadProgressEl || !uploadProgressTextEl) return;
+
+  uploadProgressEl.classList.remove("hidden");
+  uploadProgressTextEl.textContent = `${percent}%`;
+
+  if (percent >= 100) {
+    setTimeout(() => {
+      uploadProgressEl.classList.add("hidden");
+    }, 800);
+  }
+}
 if (mediaInputEl) {
   mediaInputEl.addEventListener("change", async () => {
     const files = Array.from(mediaInputEl.files || []);
@@ -1081,12 +1093,31 @@ try {
     formData.append("caption", caption);
     formData.append("messageKind", messageKind);
 
-    const res = await fetch(`${API_BASE}/send-media`, {
-      method: "POST",
-      body: formData
-    });
+    await new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
 
-    if (!res.ok) throw new Error("Failed to send media");
+  xhr.open("POST", `${API_BASE}/send-media`);
+
+  xhr.upload.onprogress = (event) => {
+    if (!event.lengthComputable) return;
+
+    const percent = Math.round((event.loaded / event.total) * 100);
+    setUploadProgress(percent);
+  };
+
+  xhr.onload = () => {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      setUploadProgress(100);
+      resolve();
+    } else {
+      reject(new Error("Failed to send media"));
+    }
+  };
+
+  xhr.onerror = () => reject(new Error("Upload error"));
+
+  xhr.send(formData);
+});
   }
 
   messageInputEl.value = "";
