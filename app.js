@@ -18,8 +18,7 @@ const loginBtnEl = document.getElementById("loginBtn");
 const loginErrorEl = document.getElementById("loginError");
 const mediaInputEl = document.getElementById("mediaInput");
 const attachBtnEl = document.getElementById("attachBtn");
-const uploadProgressEl = document.getElementById("uploadProgress");
-const uploadProgressTextEl = document.getElementById("uploadProgressText");
+
 let currentAiEnabled = true;
 
 let conversationsData = [];
@@ -1039,19 +1038,7 @@ async function normalizeImageFile(file) {
     );
   });
 }
-function setUploadProgress(percent) {
-  if (!uploadProgressEl || !uploadProgressTextEl) return;
 
-  uploadProgressEl.classList.remove("hidden");
-  uploadProgressTextEl.textContent = `${percent}%`;
-
-  if (percent >= 100) {
-    setTimeout(() => {
-      uploadProgressTextEl.textContent = "0%";
-      uploadProgressEl.classList.add("hidden");
-    }, 800);
-  }
-}
 function appendPendingMedia(file, caption = "") {
   const url = URL.createObjectURL(file);
   const messageKind = file.type.startsWith("video/") ? "video" : "image";
