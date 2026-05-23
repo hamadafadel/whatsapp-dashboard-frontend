@@ -1052,6 +1052,72 @@ function setUploadProgress(percent) {
     }, 800);
   }
 }
+function appendPendingMedia(file, caption = "") {
+  const url = URL.createObjectURL(file);
+  const messageKind = file.type.startsWith("video/") ? "video" : "image";
+
+  const wrap = document.createElement("div");
+  wrap.className = "message-wrap agent";
+  wrap.dataset.pendingUpload = "true";
+
+  const bubble = document.createElement("div");
+  bubble.className = "message agent";
+  bubble.style.position = "relative";
+
+  const label = document.createElement("div");
+  label.className = "message-label agent";
+  label.textContent = "Agent";
+  bubble.appendChild(label);
+
+  if (messageKind === "image") {
+    const img = document.createElement("img");
+    img.src = url;
+    img.style.display = "block";
+    img.style.maxWidth = "240px";
+    img.style.width = "100%";
+    img.style.borderRadius = "8px";
+    bubble.appendChild(img);
+  } else {
+    const video = document.createElement("video");
+    video.src = url;
+    video.controls = true;
+    video.style.display = "block";
+    video.style.maxWidth = "240px";
+    video.style.width = "100%";
+    video.style.borderRadius = "8px";
+    bubble.appendChild(video);
+  }
+
+  if (caption) {
+    const textEl = document.createElement("div");
+    textEl.className = "message-text";
+    textEl.textContent = caption;
+    bubble.appendChild(textEl);
+  }
+
+  const overlay = document.createElement("div");
+  overlay.className = "upload-overlay";
+  overlay.textContent = "جاري الإرسال...";
+  bubble.appendChild(overlay);
+
+  wrap.appendChild(bubble);
+  messagesEl.appendChild(wrap);
+  scrollMessagesToBottom();
+
+  return {
+    done() {
+      overlay.textContent = "تم الإرسال";
+      setTimeout(() => {
+        wrap.remove();
+        URL.revokeObjectURL(url);
+      }, 500);
+    },
+    fail() {
+      overlay.textContent = "فشل الإرسال";
+      overlay.classList.add("failed");
+    }
+  };
+}
 if (mediaInputEl) {
   mediaInputEl.addEventListener("change", async () => {
     const files = Array.from(mediaInputEl.files || []);
@@ -1080,6 +1146,7 @@ try {
   for (const originalFile of files) {
 
   const file = await normalizeImageFile(originalFile);
+    const pending = appendPendingMedia(file, caption);
 
     if (file.type.startsWith("video/") && file.size > maxVideoSize) {
       alert(`الفيديو ${file.name} كبير جدًا. اختار فيديو أقل من 15 ميجا.`);
@@ -1109,6 +1176,7 @@ setUploadProgress(0);
   xhr.onload = () => {
     if (xhr.status >= 200 && xhr.status < 300) {
       setUploadProgress(100);
+      pending.done();
       resolve();
     } else {
       reject(new Error("Failed to send media"));
@@ -1125,6 +1193,7 @@ setUploadProgress(0);
   mediaInputEl.value = "";
 } catch (err) {
   console.error(err);
+  pending?.fail?.();
   alert("فشل إرسال الميديا");
 } finally {
   sendBtnEl.disabled = false;
