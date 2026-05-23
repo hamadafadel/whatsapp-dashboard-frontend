@@ -1163,7 +1163,7 @@ try {
 
     await new Promise((resolve, reject) => {
   const xhr = new XMLHttpRequest();
-setUploadProgress(0);
+
   xhr.open("POST", `${API_BASE}/send-media`);
 
   xhr.upload.onprogress = (event) => {
@@ -1175,7 +1175,7 @@ setUploadProgress(0);
 
   xhr.onload = () => {
     if (xhr.status >= 200 && xhr.status < 300) {
-      setUploadProgress(100);
+      
       pending.done();
       resolve();
     } else {
