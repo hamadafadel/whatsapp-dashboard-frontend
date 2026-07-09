@@ -48,6 +48,23 @@ function logout() {
   showLogin();
 }
 
+function handleInvalidToken(res) {
+  if (res.status === 401 || res.status === 403) {
+    localStorage.removeItem("dashboard_token");
+    authToken = "";
+
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+
+    showLogin();
+    return true;
+  }
+
+  return false;
+}
+
 async function loadConversations() {
   conversationsEl.innerHTML = `<div class="loading-state">جاري تحميل المحادثات...</div>`;
 
@@ -57,7 +74,8 @@ async function loadConversations() {
     headers: getAuthHeaders()
   });
 
-  if (!res.ok) throw new Error("Failed conversations");
+  if (handleInvalidToken(res)) return;
+if (!res.ok) throw new Error("Failed conversations");
 
     const conversations = await res.json();
     conversationsData = Array.isArray(conversations) ? conversations : [];
