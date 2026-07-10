@@ -649,12 +649,16 @@ if (messageType === "user" && realWaMessageId) {
   }
 
   if (reactionEmoji) {
-    const badge = document.createElement("div");
-    badge.className = "message-reaction";
-    badge.textContent = reactionEmoji;
+  wrap.dataset.currentReaction = reactionEmoji;
 
-    bubble.appendChild(badge);
-  }
+  const badge = document.createElement("div");
+  badge.className = "message-reaction";
+  badge.textContent = reactionEmoji;
+
+  bubble.appendChild(badge);
+} else {
+  wrap.dataset.currentReaction = "";
+}
 
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
@@ -702,7 +706,9 @@ async function sendMessageFromDashboard() {
 }
 
 async function sendReactionFromDashboard(messageId, emoji) {
-  if (!activeSessionId || !messageId || !emoji) return;
+  if (!activeSessionId || !messageId) return;
+
+  if (typeof emoji !== "string") return;
 
   try {
     const res = await fetch(`${API_BASE}/send-message`, {
@@ -780,20 +786,36 @@ function connectEvents() {
     }
 
 if (data.type === "reaction") {
-  const target = messagesEl.querySelector(
-    `[data-wa-message-id="${CSS.escape(data.messageId)}"] .message`
+  const messageWrap = messagesEl.querySelector(
+    `[data-wa-message-id="${CSS.escape(data.messageId)}"]`
   );
 
-  if (target) {
-    let badge = target.querySelector(".message-reaction");
+  if (messageWrap) {
+    const target = messageWrap.querySelector(".message");
+    let badge = target?.querySelector(".message-reaction");
 
-    if (!badge) {
-      badge = document.createElement("div");
-      badge.className = "message-reaction";
-      target.appendChild(badge);
+    const emoji = String(data.emoji || "");
+
+    // حفظ الريأكت الحالي عشان نعرف إن الضغط الثاني إزالة
+    messageWrap.dataset.currentReaction = emoji;
+
+    if (!emoji) {
+      // إزالة الريأكت
+      if (badge) {
+        badge.remove();
+      }
+    } else {
+      // إضافة أو تغيير الريأكت
+      if (!badge && target) {
+        badge = document.createElement("div");
+        badge.className = "message-reaction";
+        target.appendChild(badge);
+      }
+
+      if (badge) {
+        badge.textContent = emoji;
+      }
     }
-
-    badge.textContent = data.emoji;
   }
 
   return;
@@ -1057,10 +1079,33 @@ function showMessageActions(messageObj, messageType) {
   const basicRow = document.createElement("div");
   basicRow.className = "reaction-basic-row";
 
-  const sendEmoji = async (emoji) => {
-    menu.remove();
-    await sendReactionFromDashboard(waMessageId, emoji);
-  };
+  const messageWrap = messagesEl.querySelector(
+  `[data-wa-message-id="${CSS.escape(waMessageId)}"]`
+);
+
+const currentReaction =
+  messageWrap?.dataset.currentReaction ||
+  messageObj.reaction?.emoji ||
+  "";
+
+const sendEmoji = async (emoji) => {
+  menu.remove();
+
+  const latestReaction =
+    messageWrap?.dataset.currentReaction ||
+    currentReaction ||
+    "";
+
+  const emojiToSend =
+    latestReaction === emoji
+      ? ""
+      : emoji;
+
+  await sendReactionFromDashboard(
+    waMessageId,
+    emojiToSend
+  );
+};
 
   basicEmojis.forEach((emoji) => {
     const button = document.createElement("button");
