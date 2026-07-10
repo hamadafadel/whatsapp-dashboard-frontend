@@ -944,30 +944,79 @@ function showMessageActions(messageObj, messageType) {
     messageObj.whatsapp_message_id ||
     "";
 
-  if (!waMessageId) {
-    selectReplyMessage(messageObj, messageType);
-    return;
-  }
+  if (!waMessageId) return;
+
+  const basicEmojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+  const moreEmojis = [
+    "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😊",
+    "😇", "🙂", "🙃", "😉", "😍", "🥰", "😘", "😎",
+    "🤩", "🥳", "😋", "😜", "🤪", "🤔", "🫡", "🤗",
+    "🤭", "🫢", "😐", "😑", "😶", "🙄", "😏", "😒",
+    "😔", "😕", "☹️", "😣", "😖", "😫", "😩", "🥺",
+    "😭", "😤", "😡", "🤬", "😱", "😨", "😰", "😓",
+    "🤝", "👏", "🙌", "👌", "✌️", "🤞", "🤟", "🤘",
+    "💪", "👊", "✋", "👋", "🫶", "💐", "🌹", "🔥",
+    "⭐", "✨", "💯", "✅", "❌", "🎉", "🎊", "🎁"
+  ];
 
   const menu = document.createElement("div");
   menu.className = "message-actions-menu";
 
-  const emojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+  const basicRow = document.createElement("div");
+  basicRow.className = "reaction-basic-row";
 
-  emojis.forEach((emoji) => {
+  const sendEmoji = async (emoji) => {
+    menu.remove();
+    await sendReactionFromDashboard(waMessageId, emoji);
+  };
+
+  basicEmojis.forEach((emoji) => {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = emoji;
 
     button.addEventListener("click", async (e) => {
       e.stopPropagation();
-      menu.remove();
-
-      await sendReactionFromDashboard(waMessageId, emoji);
+      await sendEmoji(emoji);
     });
 
-    menu.appendChild(button);
+    basicRow.appendChild(button);
   });
+
+  const moreButton = document.createElement("button");
+  moreButton.type = "button";
+  moreButton.className = "reaction-more-button";
+  moreButton.textContent = "+";
+
+  basicRow.appendChild(moreButton);
+  menu.appendChild(basicRow);
+
+  const morePanel = document.createElement("div");
+  morePanel.className = "reaction-more-panel";
+  morePanel.hidden = true;
+
+  moreEmojis.forEach((emoji) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = emoji;
+
+    button.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await sendEmoji(emoji);
+    });
+
+    morePanel.appendChild(button);
+  });
+
+  moreButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+
+    morePanel.hidden = !morePanel.hidden;
+    moreButton.textContent = morePanel.hidden ? "+" : "×";
+  });
+
+  menu.appendChild(morePanel);
 
   const replyButton = document.createElement("button");
   replyButton.type = "button";
