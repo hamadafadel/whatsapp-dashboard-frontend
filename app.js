@@ -255,40 +255,58 @@ function appendMessageToUI(msg) {
   const messageObj = normalizeMessage(msg);
   const rawType = String(messageObj.type || "").toLowerCase().trim();
   const content = String(messageObj.content || "").trim();
-  const messageKind = String(messageObj.message_kind || "text").toLowerCase().trim();
+  const messageKind = String(
+    messageObj.message_kind || "text"
+  ).toLowerCase().trim();
+
+  const reactionEmoji =
+    messageObj.reaction?.emoji ||
+    "";
+
   // منع تكرار رسالة الـ agent بعد optimistic render
-if (rawType === "agent" && content) {
-  const lastBubble = messagesEl.lastElementChild;
-  const lastPending = lastBubble?.dataset?.pendingAgent === "true";
-  const lastContent = lastBubble?.dataset?.pendingContent || "";
+  if (rawType === "agent" && content) {
+    const lastBubble = messagesEl.lastElementChild;
+    const lastPending = lastBubble?.dataset?.pendingAgent === "true";
+    const lastContent = lastBubble?.dataset?.pendingContent || "";
 
-  if (lastPending && lastContent === content) {
-    delete lastBubble.dataset.pendingAgent;
-    delete lastBubble.dataset.pendingContent;
-    return;
+    if (lastPending && lastContent === content) {
+      delete lastBubble.dataset.pendingAgent;
+      delete lastBubble.dataset.pendingContent;
+      return;
+    }
   }
-}
 
-let mediaUrl = "";
+  let mediaUrl = "";
 
-if (typeof messageObj.media === "string") {
-  mediaUrl = messageObj.media;
-} else if (messageObj.media?.url) {
-  mediaUrl = messageObj.media.url;
-} else if (messageObj.media_url) {
-  mediaUrl = messageObj.media_url;
-} else if (messageObj.mediaUrl) {
-  mediaUrl = messageObj.mediaUrl;
-}
+  if (typeof messageObj.media === "string") {
+    mediaUrl = messageObj.media;
+  } else if (messageObj.media?.url) {
+    mediaUrl = messageObj.media.url;
+  } else if (messageObj.media_url) {
+    mediaUrl = messageObj.media_url;
+  } else if (messageObj.mediaUrl) {
+    mediaUrl = messageObj.mediaUrl;
+  }
 
-if (mediaUrl && mediaUrl.startsWith("http://wadashboardapi.almehrab.org")) {
-  mediaUrl = mediaUrl.replace("http://", "https://");
-}
+  if (
+    mediaUrl &&
+    mediaUrl.startsWith("http://wadashboardapi.almehrab.org")
+  ) {
+    mediaUrl = mediaUrl.replace("http://", "https://");
+  }
 
-const media = mediaUrl ? { url: mediaUrl } : null;
+  const media = mediaUrl ? { url: mediaUrl } : null;
   const buttons = extractButtons(messageObj);
 
-  if (!content && messageKind === "text" && !buttons.length && !media?.url) return;
+  if (
+    !content &&
+    messageKind === "text" &&
+    !buttons.length &&
+    !media?.url
+  ) {
+    return;
+  }
+
   if (rawType === "ai_typing") return;
 
   let messageType = "ai";
@@ -306,127 +324,136 @@ const media = mediaUrl ? { url: mediaUrl } : null;
   const wrap = document.createElement("div");
   wrap.className = `message-wrap ${messageType}`;
 
- const bubble = document.createElement("div");
-bubble.className = `message ${messageType}`;
+  const bubble = document.createElement("div");
+  bubble.className = `message ${messageType}`;
 
-wrap.dataset.messageType = messageType;
-wrap.dataset.messageContent = content;
+  wrap.dataset.messageType = messageType;
+  wrap.dataset.messageContent = content;
+  wrap.dataset.messageKind = messageKind;
 
-wrap.dataset.messageKind = messageKind;
+  const realWaMessageId =
+    messageObj.wa_message_id ||
+    messageObj.whatsapp_message?.id ||
+    messageObj.message_id ||
+    messageObj.whatsapp_message_id ||
+    messageObj.id ||
+    "";
 
-const realWaMessageId =
-  messageObj.wa_message_id ||
-  messageObj.whatsapp_message?.id ||
-  messageObj.message_id ||
-  messageObj.whatsapp_message_id ||
-  messageObj.id ||
-  "";
+  messageObj.wa_message_id = realWaMessageId;
+  wrap.dataset.waMessageId = realWaMessageId;
 
-messageObj.wa_message_id = realWaMessageId;
+  if (realWaMessageId) {
+    wrap.setAttribute("data-wa-message-id", realWaMessageId);
+  }
 
-wrap.dataset.waMessageId = realWaMessageId;
-
-if (realWaMessageId) {
-  wrap.setAttribute("data-wa-message-id", realWaMessageId);
-}
-
-enableReplyGesture(wrap, messageObj, messageType);
+  enableReplyGesture(wrap, messageObj, messageType);
 
   if (messageType === "agent" || messageType === "ai") {
     const label = document.createElement("div");
     label.className = `message-label ${messageType}`;
-    label.textContent = messageType === "agent" ? "Agent" : "AI";
+    label.textContent =
+      messageType === "agent" ? "Agent" : "AI";
+
     bubble.appendChild(label);
   }
 
-  if ((messageKind === "image" || media?.url) && media?.url) {
-  const img = document.createElement("img");
+  if (messageKind === "image" && media?.url) {
+    const img = document.createElement("img");
 
-  img.src = media.url;
-  img.alt = "image";
-  img.loading = "lazy";
+    img.src = media.url;
+    img.alt = "image";
+    img.loading = "lazy";
 
-  img.style.display = "block";
-  img.style.maxWidth = "240px";
-  img.style.width = "100%";
-  img.style.height = "auto";
-  img.style.borderRadius = "8px";
-  img.style.marginBottom = content ? "6px" : "0";
+    img.style.display = "block";
+    img.style.maxWidth = "240px";
+    img.style.width = "100%";
+    img.style.height = "auto";
+    img.style.borderRadius = "8px";
+    img.style.marginBottom = content ? "6px" : "0";
 
-  img.onerror = () => {
-    console.error("Image failed:", media.url);
-    img.remove();
+    img.onerror = () => {
+      console.error("Image failed:", media.url);
+      img.remove();
 
-    const fallback = document.createElement("a");
-    fallback.href = media.url;
-    fallback.target = "_blank";
-    fallback.textContent = "فتح الصورة";
-    fallback.style.color = "#53bdeb";
-    bubble.appendChild(fallback);
-  };
+      const fallback = document.createElement("a");
+      fallback.href = media.url;
+      fallback.target = "_blank";
+      fallback.textContent = "فتح الصورة";
+      fallback.style.color = "#53bdeb";
 
-  bubble.appendChild(img);
-}
+      bubble.appendChild(fallback);
+    };
+
+    bubble.appendChild(img);
+  }
 
   if (messageKind === "video" && media?.url) {
     const video = document.createElement("video");
+
     video.src = media.url;
     video.controls = true;
     video.style.maxWidth = "100%";
     video.style.borderRadius = "8px";
     video.style.marginBottom = content ? "6px" : "0";
+
     bubble.appendChild(video);
   }
 
   if (messageObj.reply_to?.content) {
-  const replyBox = document.createElement("div");
-  replyBox.className = "quoted-reply-box";
+    const replyBox = document.createElement("div");
+    replyBox.className = "quoted-reply-box";
+
     replyBox.dataset.replyTargetId =
-  messageObj.reply_to.wa_message_id || "";
+      messageObj.reply_to.wa_message_id || "";
 
-replyBox.style.cursor = "pointer";
+    replyBox.style.cursor = "pointer";
 
-  const replyName = document.createElement("div");
-  replyName.className = "quoted-reply-name";
-  replyName.textContent = messageObj.reply_to.type === "user" ? "العميل" : "أنت";
+    const replyName = document.createElement("div");
+    replyName.className = "quoted-reply-name";
+    replyName.textContent =
+      messageObj.reply_to.type === "user"
+        ? "العميل"
+        : "أنت";
 
-  const replyText = document.createElement("div");
-  replyText.className = "quoted-reply-text";
-  replyText.textContent = messageObj.reply_to.content || "";
+    const replyText = document.createElement("div");
+    replyText.className = "quoted-reply-text";
+    replyText.textContent =
+      messageObj.reply_to.content || "";
 
-  replyBox.appendChild(replyName);
-  replyBox.appendChild(replyText);
-  bubble.appendChild(replyBox);
+    replyBox.appendChild(replyName);
+    replyBox.appendChild(replyText);
+    bubble.appendChild(replyBox);
+
     replyBox.addEventListener("click", (e) => {
-  e.stopPropagation();
+      e.stopPropagation();
 
-  const targetId = replyBox.dataset.replyTargetId;
-  if (!targetId) return;
+      const targetId = replyBox.dataset.replyTargetId;
+      if (!targetId) return;
 
-  const target = messagesEl.querySelector(
-    `[data-wa-message-id="${CSS.escape(targetId)}"]`
-  );
+      const target = messagesEl.querySelector(
+        `[data-wa-message-id="${CSS.escape(targetId)}"]`
+      );
 
-  if (!target) return;
+      if (!target) return;
 
-  target.scrollIntoView({
-    behavior: "smooth",
-    block: "center"
-  });
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
 
-  target.classList.add("message-highlight");
+      target.classList.add("message-highlight");
 
-  setTimeout(() => {
-    target.classList.remove("message-highlight");
-  }, 1200);
-});
-}
+      setTimeout(() => {
+        target.classList.remove("message-highlight");
+      }, 1200);
+    });
+  }
 
-    
   if (content) {
     const textEl = document.createElement("div");
     textEl.className = "message-text";
     textEl.innerHTML = linkifyText(content);
+
     bubble.appendChild(textEl);
   }
 
@@ -439,13 +466,18 @@ replyBox.style.cursor = "pointer";
       buttonEl.className = "wa-button";
       buttonEl.type = "button";
       buttonEl.textContent = btn.title || "زر";
+
       buttonsWrap.appendChild(buttonEl);
     });
 
     bubble.appendChild(buttonsWrap);
   }
 
-  const listData = messageObj.interactive?.list || messageObj.whatsapp_payload?.interactive?.action || null;
+  const listData =
+    messageObj.interactive?.list ||
+    messageObj.whatsapp_payload?.interactive?.action ||
+    null;
+
   if (messageKind === "list" && listData) {
     const listWrap = document.createElement("div");
     listWrap.className = "wa-list";
@@ -453,13 +485,18 @@ replyBox.style.cursor = "pointer";
     const listBtn = document.createElement("button");
     listBtn.className = "wa-list-button";
     listBtn.type = "button";
-    listBtn.textContent = "☰ " + (listData.button || "اختار");
+    listBtn.textContent =
+      "☰ " + (listData.button || "اختار");
 
     listWrap.appendChild(listBtn);
     bubble.appendChild(listWrap);
   }
 
-  const productListData = messageObj.interactive?.product_list || messageObj.whatsapp_payload?.interactive || null;
+  const productListData =
+    messageObj.interactive?.product_list ||
+    messageObj.whatsapp_payload?.interactive ||
+    null;
+
   if (messageKind === "product_list" && productListData) {
     const productWrap = document.createElement("div");
     productWrap.className = "wa-product";
@@ -471,6 +508,7 @@ replyBox.style.cursor = "pointer";
       const img = document.createElement("img");
       img.src = productListData.header_image;
       img.className = "wa-product-image";
+
       header.appendChild(img);
     }
 
@@ -479,11 +517,18 @@ replyBox.style.cursor = "pointer";
 
     const title = document.createElement("div");
     title.className = "wa-product-title";
-    title.textContent = productListData.header || "منتجات";
+    title.textContent =
+      productListData.header || "منتجات";
 
     const count = document.createElement("div");
     count.className = "wa-product-count";
-    count.textContent = `items ${productListData.sections?.reduce((acc, s) => acc + (s.product_items?.length || 0), 0) || 0}`;
+    count.textContent = `items ${
+      productListData.sections?.reduce(
+        (acc, section) =>
+          acc + (section.product_items?.length || 0),
+        0
+      ) || 0
+    }`;
 
     info.appendChild(title);
     info.appendChild(count);
@@ -493,13 +538,22 @@ replyBox.style.cursor = "pointer";
     const btn = document.createElement("button");
     btn.className = "wa-list-button";
     btn.textContent = "View items";
-    productWrap.appendChild(btn);
 
+    productWrap.appendChild(btn);
     bubble.appendChild(productWrap);
+  }
+
+  if (reactionEmoji) {
+    const badge = document.createElement("div");
+    badge.className = "message-reaction";
+    badge.textContent = reactionEmoji;
+
+    bubble.appendChild(badge);
   }
 
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
+
   scrollMessagesToBottom();
 }
 
