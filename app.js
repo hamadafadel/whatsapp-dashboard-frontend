@@ -410,17 +410,24 @@ function appendMessageToUI(msg) {
   enableReplyGesture(wrap, messageObj, messageType);
 
 if (messageType === "user" && realWaMessageId) {
-  const reactButton = document.createElement("button");
-  reactButton.type = "button";
-  reactButton.className = "message-react-trigger";
-  reactButton.textContent = "☺";
+  const actionsButton = document.createElement("button");
 
-  reactButton.addEventListener("click", (e) => {
+  actionsButton.type = "button";
+  actionsButton.className = "message-options-trigger";
+  actionsButton.textContent = "⋮";
+  actionsButton.setAttribute("aria-label", "خيارات الرسالة");
+
+  actionsButton.addEventListener("click", (e) => {
     e.stopPropagation();
-    showMessageActions(messageObj, messageType);
+
+    showMessageOptionsMenu(
+      messageObj,
+      messageType,
+      actionsButton
+    );
   });
 
-  wrap.appendChild(reactButton);
+  wrap.appendChild(actionsButton);
 }
   
   if (messageType === "agent" || messageType === "ai") {
@@ -1043,6 +1050,107 @@ async function toggleAiStatus() {
     console.error(error);
     alert("فشل تغيير حالة AI");
   }
+}
+
+function showMessageOptionsMenu(
+  messageObj,
+  messageType,
+  triggerButton
+) {
+  document.querySelector(".message-options-menu")?.remove();
+  document.querySelector(".message-actions-menu")?.remove();
+
+  const menu = document.createElement("div");
+  menu.className = "message-options-menu";
+
+  const addOption = (icon, label, handler) => {
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.className = "message-option-item";
+
+    button.innerHTML = `
+      <span class="message-option-icon">${icon}</span>
+      <span class="message-option-label">${label}</span>
+    `;
+
+    button.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      menu.remove();
+      await handler();
+    });
+
+    menu.appendChild(button);
+  };
+
+  addOption("😊", "ريأكت", () => {
+    showMessageActions(messageObj, messageType);
+  });
+
+  addOption("↩", "رد", () => {
+    selectReplyMessage(messageObj, messageType);
+  });
+
+  addOption("⧉", "نسخ النص", async () => {
+    const text = String(messageObj.content || "").trim();
+
+    if (!text) {
+      alert("الرسالة لا تحتوي على نص");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+  });
+
+  addOption("➤", "إعادة توجيه", () => {
+    alert("هنضيف إعادة التوجيه في الخطوة التالية");
+  });
+
+  document.body.appendChild(menu);
+
+  const rect = triggerButton.getBoundingClientRect();
+
+  menu.style.position = "fixed";
+  menu.style.zIndex = "10000";
+
+  const menuWidth = 190;
+  const menuHeight = 190;
+
+  let left = rect.left - menuWidth + rect.width;
+  let top = rect.bottom + 6;
+
+  if (left < 8) left = 8;
+
+  if (left + menuWidth > window.innerWidth - 8) {
+    left = window.innerWidth - menuWidth - 8;
+  }
+
+  if (top + menuHeight > window.innerHeight - 8) {
+    top = rect.top - menuHeight - 6;
+  }
+
+  menu.style.left = `${left}px`;
+  menu.style.top = `${Math.max(8, top)}px`;
+
+  setTimeout(() => {
+    document.addEventListener(
+      "click",
+      () => menu.remove(),
+      { once: true }
+    );
+  }, 0);
 }
 
 function showMessageActions(messageObj, messageType) {
