@@ -1,10 +1,6 @@
-const CACHE_NAME = "mehrab-dashboard-auto-update";
+const CACHE_NAME = "mehrab-dashboard-static-v1";
 
-const APP_FILES = [
-  "/",
-  "/index.html",
-  "/app.css",
-  "/app.js",
+const STATIC_FILES = [
   "/manifest.json",
   "/icon-192-v2.png",
   "/icon-512-v2.png"
@@ -16,15 +12,16 @@ self.addEventListener("install", (event) => {
 
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(APP_FILES);
+      return cache.addAll(STATIC_FILES);
     })
   );
 });
 
-// حذف أي Cache قديم وتفعيل النسخة الجديدة فورًا
+// حذف أي كاش قديم وتفعيل النسخة الجديدة فورًا
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys()
+    caches
+      .keys()
       .then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
@@ -38,17 +35,22 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// ملفات التطبيق: هات الأحدث من السيرفر أولًا
+// استقبال أمر التفعيل الفوري
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+// منع كاش ملفات التطبيق البرمجية
 self.addEventListener("fetch", (event) => {
   const request = event.request;
 
-  if (request.method !== "GET") {
-    return;
-  }
+  if (request.method !== "GET") return;
 
   const url = new URL(request.url);
 
-  // لا نتدخل في طلبات الـ API أو ملفات uploads
+  // الـAPI والملفات المرفوعة لا نتدخل فيها
   if (
     url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/uploads/")
@@ -56,21 +58,39 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // الصفحة وملفات الكود: دائمًا من السيرفر بدون كاش
+  if (
+    request.mode === "navigate" ||
+    url.pathname === "/" ||
+    url.pathname.endsWith("/index.html") ||
+    url.pathname.endsWith("/app.js") ||
+    url.pathname.endsWith("/app.css") ||
+    url.pathname.endsWith("/service-worker.js")
+  ) {
+    event.respondWith(
+      fetch(request, {
+        cache: "no-store"
+      })
+    );
+
+    return;
+  }
+
+  // الأيقونات والـmanifest فقط يمكن استخدام الكاش لها
   event.respondWith(
-    fetch(request)
-      .then((networkResponse) => {
-        const responseCopy = networkResponse.clone();
+    caches.match(request).then((cachedResponse) => {
+      return (
+        cachedResponse ||
+        fetch(request).then((networkResponse) => {
+          const responseCopy = networkResponse.clone();
 
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(request, responseCopy);
-        });
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseCopy);
+          });
 
-        return networkResponse;
-      })
-      .catch(() => {
-        return caches.match(request).then((cachedResponse) => {
-          return cachedResponse || caches.match("/index.html");
-        });
-      })
+          return networkResponse;
+        })
+      );
+    })
   );
 });
