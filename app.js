@@ -1080,32 +1080,66 @@ function showMessageActions(messageObj, messageType) {
   basicRow.className = "reaction-basic-row";
 
   const messageWrap = messagesEl.querySelector(
-  `[data-wa-message-id="${CSS.escape(waMessageId)}"]`
-);
-
-const currentReaction =
-  messageWrap?.dataset.currentReaction ||
-  messageObj.reaction?.emoji ||
-  "";
-
-const sendEmoji = async (emoji) => {
-  menu.remove();
-
-  const latestReaction =
-    messageWrap?.dataset.currentReaction ||
-    currentReaction ||
-    "";
-
-  const emojiToSend =
-    latestReaction === emoji
-      ? ""
-      : emoji;
-
-  await sendReactionFromDashboard(
-    waMessageId,
-    emojiToSend
+    `[data-wa-message-id="${CSS.escape(waMessageId)}"]`
   );
-};
+
+  const getCurrentReaction = () => {
+    const badgeEmoji =
+      messageWrap
+        ?.querySelector(".message-reaction")
+        ?.textContent
+        ?.trim() || "";
+
+    const datasetEmoji =
+      messageWrap?.dataset.currentReaction || "";
+
+    const objectEmoji =
+      messageObj.reaction?.emoji || "";
+
+    return badgeEmoji || datasetEmoji || objectEmoji || "";
+  };
+
+  const updateReactionLocally = (emoji) => {
+    if (!messageWrap) return;
+
+    const bubble = messageWrap.querySelector(".message");
+    let badge = bubble?.querySelector(".message-reaction");
+
+    messageWrap.dataset.currentReaction = emoji;
+
+    if (!emoji) {
+      badge?.remove();
+      return;
+    }
+
+    if (!badge && bubble) {
+      badge = document.createElement("div");
+      badge.className = "message-reaction";
+      bubble.appendChild(badge);
+    }
+
+    if (badge) {
+      badge.textContent = emoji;
+    }
+  };
+
+  const sendEmoji = async (emoji) => {
+    const currentReaction = getCurrentReaction();
+
+    const emojiToSend =
+      currentReaction === emoji
+        ? ""
+        : emoji;
+
+    menu.remove();
+
+    updateReactionLocally(emojiToSend);
+
+    await sendReactionFromDashboard(
+      waMessageId,
+      emojiToSend
+    );
+  };
 
   basicEmojis.forEach((emoji) => {
     const button = document.createElement("button");
