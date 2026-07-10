@@ -596,6 +596,32 @@ async function sendMessageFromDashboard() {
   }
 }
 
+async function sendReactionFromDashboard(messageId, emoji) {
+  if (!activeSessionId || !messageId || !emoji) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/send-message`, {
+      method: "POST",
+      headers: getAuthHeaders({
+        "Content-Type": "application/json"
+      }),
+      body: JSON.stringify({
+        sessionId: activeSessionId,
+        messageKind: "reaction",
+        messageId,
+        emoji
+      })
+    });
+
+    if (!res.ok) {
+      throw new Error("فشل إرسال الريأكشن");
+    }
+  } catch (error) {
+    console.error(error);
+    alert("خطأ في إرسال الريأكشن");
+  }
+}
+
 let eventSource = null;
 
 function connectEvents() {
@@ -892,6 +918,66 @@ async function toggleAiStatus() {
   }
 }
 
+function showMessageActions(messageObj, messageType) {
+  if (messageType !== "user") return;
+
+  document.querySelector(".message-actions-menu")?.remove();
+
+  const waMessageId =
+    messageObj.wa_message_id ||
+    messageObj.whatsapp_message?.id ||
+    messageObj.message_id ||
+    messageObj.whatsapp_message_id ||
+    "";
+
+  if (!waMessageId) {
+    selectReplyMessage(messageObj, messageType);
+    return;
+  }
+
+  const menu = document.createElement("div");
+  menu.className = "message-actions-menu";
+
+  const emojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+  emojis.forEach((emoji) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = emoji;
+
+    button.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      menu.remove();
+
+      await sendReactionFromDashboard(waMessageId, emoji);
+    });
+
+    menu.appendChild(button);
+  });
+
+  const replyButton = document.createElement("button");
+  replyButton.type = "button";
+  replyButton.className = "message-action-reply";
+  replyButton.textContent = "↩ رد";
+
+  replyButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.remove();
+    selectReplyMessage(messageObj, messageType);
+  });
+
+  menu.appendChild(replyButton);
+  document.body.appendChild(menu);
+
+  setTimeout(() => {
+    document.addEventListener(
+      "click",
+      () => menu.remove(),
+      { once: true }
+    );
+  }, 0);
+}
+
 function selectReplyMessage(messageObj, messageType) {
   if (messageType !== "user") return;
 
@@ -965,15 +1051,17 @@ function enableReplyGesture(wrap, messageObj, messageType) {
   let didSelect = false;
 
   const select = () => {
-    if (didSelect) return;
-    didSelect = true;
-    selectReplyMessage(messageObj, messageType);
+  if (didSelect) return;
+  didSelect = true;
 
-    wrap.classList.add("reply-swipe-active");
-    setTimeout(() => {
-      wrap.classList.remove("reply-swipe-active");
-    }, 200);
-  };
+  showMessageActions(messageObj, messageType);
+
+  wrap.classList.add("reply-swipe-active");
+
+  setTimeout(() => {
+    wrap.classList.remove("reply-swipe-active");
+  }, 200);
+};
 
   // Desktop click
   wrap.addEventListener("click", () => {
