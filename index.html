@@ -94,28 +94,44 @@
           }
         );
 
-        console.log("Service Worker Registered");
-
-        // افحص وجود نسخة جديدة كل مرة التطبيق يفتح
+        // فحص نسخة جديدة عند كل فتح
         await registration.update();
 
-        // عند اكتشاف Service Worker جديد
+        // لو فيه نسخة جديدة منتظرة، فعّلها فورًا
+        if (registration.waiting) {
+          registration.waiting.postMessage({
+            type: "SKIP_WAITING"
+          });
+        }
+
         registration.addEventListener("updatefound", () => {
           const newWorker = registration.installing;
 
           if (!newWorker) return;
 
           newWorker.addEventListener("statechange", () => {
-            if (
-              newWorker.state === "activated" &&
-              navigator.serviceWorker.controller
-            ) {
-              window.location.reload();
+            if (newWorker.state === "installed") {
+              newWorker.postMessage({
+                type: "SKIP_WAITING"
+              });
             }
           });
         });
+
+        // إعادة تحميل الصفحة مرة واحدة عند تفعيل النسخة الجديدة
+        let refreshing = false;
+
+        navigator.serviceWorker.addEventListener(
+          "controllerchange",
+          () => {
+            if (refreshing) return;
+
+            refreshing = true;
+            window.location.reload();
+          }
+        );
       } catch (error) {
-        console.log("SW Error", error);
+        console.error("Service Worker Error:", error);
       }
     });
   }
