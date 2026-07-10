@@ -223,7 +223,12 @@ function normalizeMessage(msg) {
 
     interactive: messageObj.interactive || msg?.interactive || null,
     whatsapp_payload: whatsappPayload,
-    reply_to: messageObj.reply_to || msg?.reply_to || null
+    reply_to: messageObj.reply_to || msg?.reply_to || null,
+
+    reaction:
+      messageObj.reaction ||
+      msg?.reaction ||
+      null
   };
 }
 
@@ -589,6 +594,26 @@ function connectEvents() {
       return;
     }
 
+if (data.type === "reaction") {
+  const target = messagesEl.querySelector(
+    `[data-wa-message-id="${CSS.escape(data.messageId)}"] .message`
+  );
+
+  if (target) {
+    let badge = target.querySelector(".message-reaction");
+
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.className = "message-reaction";
+      target.appendChild(badge);
+    }
+
+    badge.textContent = data.emoji;
+  }
+
+  return;
+}
+    
     if (data.type === "new_message") {
       if (data.content === "__image__") {
         if (currentSession === eventSession) {
