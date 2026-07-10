@@ -348,6 +348,20 @@ function appendMessageToUI(msg) {
 
   enableReplyGesture(wrap, messageObj, messageType);
 
+if (messageType === "user" && realWaMessageId) {
+  const reactButton = document.createElement("button");
+  reactButton.type = "button";
+  reactButton.className = "message-react-trigger";
+  reactButton.textContent = "☺";
+
+  reactButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showMessageActions(messageObj, messageType);
+  });
+
+  wrap.appendChild(reactButton);
+}
+  
   if (messageType === "agent" || messageType === "ai") {
     const label = document.createElement("div");
     label.className = `message-label ${messageType}`;
