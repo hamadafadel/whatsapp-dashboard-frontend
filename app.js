@@ -177,7 +177,10 @@ messagesEl.innerHTML = `<div class="loading-state">جاري تحميل الرس�
 function normalizeMessage(msg) {
   const messageObj = msg?.message || msg || {};
 
-  let whatsappPayload = messageObj.whatsapp_payload || msg?.whatsapp_payload || null;
+  let whatsappPayload =
+    messageObj.whatsapp_payload ||
+    msg?.whatsapp_payload ||
+    null;
 
   if (typeof whatsappPayload === "string") {
     try {
@@ -187,43 +190,101 @@ function normalizeMessage(msg) {
     }
   }
 
+  const messageKind =
+    messageObj.message_kind ||
+    msg?.message_kind ||
+    messageObj.messageKind ||
+    msg?.messageKind ||
+    messageObj.whatsapp_message?.type ||
+    msg?.whatsapp_message?.type ||
+    "text";
+
+  const whatsappMessage =
+    messageObj.whatsapp_message ||
+    msg?.whatsapp_message ||
+    null;
+
+  let mediaValue =
+    messageObj.media ||
+    msg?.media ||
+    messageObj.mediaUrl ||
+    msg?.mediaUrl ||
+    messageObj.media_url ||
+    msg?.media_url ||
+    null;
+
+  if (!mediaValue && whatsappMessage) {
+    if (messageKind === "image") {
+      mediaValue =
+        whatsappMessage.image?.url ||
+        whatsappMessage.image?.link ||
+        null;
+    } else if (messageKind === "video") {
+      mediaValue =
+        whatsappMessage.video?.url ||
+        whatsappMessage.video?.link ||
+        null;
+    } else if (messageKind === "audio") {
+      mediaValue =
+        whatsappMessage.audio?.url ||
+        whatsappMessage.audio?.link ||
+        null;
+    } else if (messageKind === "document") {
+      mediaValue =
+        whatsappMessage.document?.url ||
+        whatsappMessage.document?.link ||
+        null;
+    }
+  }
+
   return {
     ...messageObj,
 
-    type: messageObj.type || msg?.type || "",
-    content: messageObj.content || msg?.content || "",
-    message_kind: messageObj.message_kind || msg?.message_kind || "text",
+    type:
+      messageObj.type ||
+      msg?.type ||
+      "",
 
-    media:
-      messageObj.media ||
-      msg?.media ||
-      messageObj.mediaUrl ||
-      msg?.mediaUrl ||
-      messageObj.media_url ||
-      msg?.media_url ||
-      null,
+    content:
+      messageObj.content ||
+      msg?.content ||
+      "",
+
+    message_kind: String(messageKind).toLowerCase(),
+
+    media: mediaValue,
 
     media_url:
       messageObj.media_url ||
       msg?.media_url ||
       messageObj.mediaUrl ||
       msg?.mediaUrl ||
+      (typeof mediaValue === "string" ? mediaValue : mediaValue?.url) ||
       "",
 
     wa_message_id:
       messageObj.wa_message_id ||
       msg?.wa_message_id ||
-      messageObj.whatsapp_message?.id ||
-      msg?.whatsapp_message?.id ||
+      whatsappMessage?.id ||
       messageObj.whatsapp_message_id ||
       msg?.whatsapp_message_id ||
       messageObj.message_id ||
       msg?.message_id ||
       "",
 
-    interactive: messageObj.interactive || msg?.interactive || null,
+    whatsapp_message: whatsappMessage,
+
+    interactive:
+      messageObj.interactive ||
+      msg?.interactive ||
+      null,
+
     whatsapp_payload: whatsappPayload,
-    reply_to: messageObj.reply_to || msg?.reply_to || null,
+
+    reply_to:
+      messageObj.reply_to ||
+      msg?.reply_to ||
+      null,
 
     reaction:
       messageObj.reaction ||
@@ -412,6 +473,36 @@ if (messageType === "user" && realWaMessageId) {
 
     bubble.appendChild(video);
   }
+
+  if (messageKind === "audio" && media?.url) {
+  const audio = document.createElement("audio");
+
+  audio.src = media.url;
+  audio.controls = true;
+  audio.preload = "metadata";
+
+  audio.style.display = "block";
+  audio.style.width = "260px";
+  audio.style.maxWidth = "100%";
+  audio.style.marginBottom = content ? "6px" : "0";
+
+  audio.onerror = () => {
+    console.error("Audio failed:", media.url);
+
+    audio.remove();
+
+    const fallback = document.createElement("a");
+    fallback.href = media.url;
+    fallback.target = "_blank";
+    fallback.rel = "noopener noreferrer";
+    fallback.textContent = "فتح الرسالة الصوتية";
+    fallback.style.color = "#53bdeb";
+
+    bubble.appendChild(fallback);
+  };
+
+  bubble.appendChild(audio);
+}
 
   if (messageObj.reply_to?.content) {
     const replyBox = document.createElement("div");
