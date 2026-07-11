@@ -1721,10 +1721,11 @@ try {
 
 function getSupportedAudioMimeType() {
   const types = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
     "audio/ogg;codecs=opus",
-  "audio/ogg",
-  "audio/mp4",
-  "audio/mpeg"
+    "audio/ogg",
+    "audio/mp4"
   ];
 
   return (
@@ -1766,11 +1767,7 @@ async function startAudioRecording() {
       });
 
     const mimeType = getSupportedAudioMimeType();
-    if (!mimeType) {
-  alert("المتصفح الحالي لا يدعم صيغة صوت متوافقة مع واتساب");
-  stopRecordingStream();
-  return;
-}
+  
 
     mediaRecorder = mimeType
       ? new MediaRecorder(recordingStream, {
