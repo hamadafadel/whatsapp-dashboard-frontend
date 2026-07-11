@@ -443,6 +443,39 @@ if (messageType === "user" && realWaMessageId) {
     bubble.appendChild(label);
   }
 
+  if (messageKind === "sticker" && media?.url) {
+  const sticker = document.createElement("img");
+
+  sticker.src = media.url;
+  sticker.alt = "sticker";
+  sticker.loading = "lazy";
+
+  sticker.style.display = "block";
+  sticker.style.width = "160px";
+  sticker.style.maxWidth = "100%";
+  sticker.style.height = "auto";
+  sticker.style.objectFit = "contain";
+  sticker.style.background = "transparent";
+  sticker.style.borderRadius = "0";
+  sticker.style.margin = "0";
+
+  sticker.onerror = () => {
+    console.error("Sticker failed:", media.url);
+    sticker.remove();
+
+    const fallback = document.createElement("a");
+    fallback.href = media.url;
+    fallback.target = "_blank";
+    fallback.rel = "noopener noreferrer";
+    fallback.textContent = "فتح الملصق";
+    fallback.style.color = "#53bdeb";
+
+    bubble.appendChild(fallback);
+  };
+
+  bubble.appendChild(sticker);
+}
+  
   if (messageKind === "image" && media?.url) {
     const img = document.createElement("img");
 
@@ -1338,12 +1371,13 @@ function selectReplyMessage(messageObj, messageType) {
   let content = messageObj.content || "";
 
   if (!content) {
-    if (messageKind === "image") content = "📷 صورة";
-    else if (messageKind === "video") content = "🎥 فيديو";
-    else if (messageKind === "audio") content = "🎙️ رسالة صوتية";
-    else if (messageKind === "document") content = "📄 ملف";
-    else content = "رسالة";
-  }
+  if (messageKind === "image") content = "📷 صورة";
+  else if (messageKind === "video") content = "🎥 فيديو";
+  else if (messageKind === "audio") content = "🎙️ رسالة صوتية";
+  else if (messageKind === "sticker") content = "🖼️ ملصق";
+  else if (messageKind === "document") content = "📄 ملف";
+  else content = "رسالة";
+}
 
   selectedReplyMessage = {
     type: "user",
