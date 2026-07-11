@@ -1008,3 +1008,84 @@ input {
     pointer-events: auto;
   }
 }
+
+.voice-recording-bar {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 22px;
+  background: #2a3942;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  direction: ltr;
+}
+
+.voice-recording-bar.hidden {
+  display: none;
+}
+
+.voice-recording-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  animation: voiceRecordingBlink 1s infinite;
+}
+
+.voice-recording-time {
+  min-width: 42px;
+  color: #e9edef;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.voice-recording-hint {
+  flex: 1;
+  color: #8696a0;
+  font-size: 13px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.voice-recording-lock {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  color: #e9edef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.record-audio-btn.recording {
+  background: #e53935 !important;
+  transform: scale(1.08);
+}
+
+.record-audio-btn.locked {
+  background: #00a884 !important;
+}
+
+@keyframes voiceRecordingBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (max-width: 899px) {
+  .voice-recording-hint {
+    font-size: 12px;
+  }
+}
