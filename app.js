@@ -1883,6 +1883,7 @@ function resetRecordingUi() {
 if (hint) {
   hint.textContent = "اسحب للإلغاء";
 }
+  }
 async function startAudioRecording() {
   if (!activeSessionId) {
     alert("اختر محادثة أولًا");
