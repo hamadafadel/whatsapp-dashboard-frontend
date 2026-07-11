@@ -1125,3 +1125,76 @@ input {
 .send-audio-recording-btn:active {
   transform: scale(0.95);
 }
+
+/* تثبيت شريط الكتابة على سطر واحد */
+.chat-compose {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  min-height: 58px;
+  padding:
+    8px
+    max(8px, env(safe-area-inset-right))
+    calc(8px + env(safe-area-inset-bottom))
+    max(8px, env(safe-area-inset-left));
+}
+
+/* مربع الكتابة */
+.chat-compose #messageInput {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  align-self: center !important;
+}
+
+/* زر الميكروفون فقط */
+.chat-compose #recordAudioBtn {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  height: 42px !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+  align-self: center !important;
+
+  align-items: center !important;
+  justify-content: center !important;
+
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: #00a884 !important;
+  color: #fff !important;
+
+  font-size: 20px !important;
+  line-height: 1 !important;
+
+  transform: none !important;
+  position: relative !important;
+  inset: auto !important;
+}
+
+/* زر الدبوس */
+.chat-compose #attachBtn {
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  height: 42px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  align-self: center !important;
+}
+
+/* زر إرسال النص */
+.chat-compose #sendBtn {
+  flex: 0 0 auto !important;
+  min-width: 70px !important;
+  height: 42px !important;
+  margin: 0 !important;
+  align-self: center !important;
+}
