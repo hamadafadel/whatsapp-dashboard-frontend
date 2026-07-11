@@ -1875,6 +1875,13 @@ function resetRecordingUi() {
   recordingStartY = 0;
   recordingCancelled = false;
   recordingLocked = false;
+  const hint =
+  voiceRecordingBarEl?.querySelector(
+    ".voice-recording-hint"
+  );
+
+if (hint) {
+  hint.textContent = "اسحب للإلغاء";
 }
 async function startAudioRecording() {
   if (!activeSessionId) {
@@ -1915,54 +1922,79 @@ async function startAudioRecording() {
     });
 
     mediaRecorder.addEventListener("stop", async () => {
-      try {
-        const finalMimeType =
-          mediaRecorder?.mimeType ||
-          mimeType ||
-          "audio/ogg";
+  try {
+    // لو المستخدم سحب للإلغاء، ما نبعتش أي حاجة
+    if (recordingCancelled) {
+      audioChunks = [];
+      return;
+    }
 
-        const audioBlob = new Blob(audioChunks, {
-          type: finalMimeType
-        });
+    const finalMimeType =
+      mediaRecorder?.mimeType ||
+      mimeType ||
+      "audio/ogg";
 
-        if (!audioBlob.size) {
-          throw new Error("Audio recording is empty");
-        }
-
-        const extension =
-          getAudioExtension(finalMimeType);
-
-        const audioFile = new File(
-          [audioBlob],
-          `voice-${Date.now()}.${extension}`,
-          {
-            type: finalMimeType
-          }
-        );
-
-        await sendRecordedAudio(audioFile);
-      } catch (error) {
-        console.error("Recorded audio error:", error);
-        alert("فشل تجهيز الرسالة الصوتية");
-      } finally {
-        audioChunks = [];
-        mediaRecorder = null;
-      }
+    const audioBlob = new Blob(audioChunks, {
+      type: finalMimeType
     });
 
-    mediaRecorder.start(250);
-    isRecordingAudio = true;
+    if (!audioBlob.size) {
+      throw new Error("Audio recording is empty");
+    }
 
-    recordAudioBtnEl.classList.add("recording");
-    recordAudioBtnEl.textContent = "⏹";
-    recordAudioBtnEl.setAttribute(
-      "aria-label",
-      "إيقاف التسجيل وإرسال الرسالة الصوتية"
+    const extension =
+      getAudioExtension(finalMimeType);
+
+    const audioFile = new File(
+      [audioBlob],
+      `voice-${Date.now()}.${extension}`,
+      {
+        type: finalMimeType
+      }
     );
 
-    messageInputEl.disabled = true;
-    sendBtnEl.disabled = true;
-    attachBtnEl.disabled = true;
+    await sendRecordedAudio(audioFile);
+  } catch (error) {
+    console.error("Recorded audio error:", error);
+
+    if (!recordingCancelled) {
+      alert("فشل تجهيز الرسالة الصوتية");
+    }
+  } finally {
+    audioChunks = [];
+    mediaRecorder = null;
+    isRecordingAudio = false;
+
+    stopRecordingStream();
+    resetRecordingUi();
+
+    messageInputEl.disabled = false;
+    sendBtnEl.disabled = false;
+    attachBtnEl.disabled = false;
+  }
+});
+
+    mediaRecorder.start(250);
+
+isRecordingAudio = true;
+recordingCancelled = false;
+
+showRecordingBar();
+startRecordingTimer();
+
+recordAudioBtnEl.classList.add("recording");
+recordAudioBtnEl.classList.remove("locked");
+
+recordAudioBtnEl.textContent = "🎤";
+
+recordAudioBtnEl.setAttribute(
+  "aria-label",
+  "استمر بالضغط للتسجيل"
+);
+
+messageInputEl.disabled = true;
+sendBtnEl.disabled = true;
+attachBtnEl.disabled = true;
 
   } catch (error) {
     console.error("Microphone error:", error);
@@ -1982,20 +2014,14 @@ function stopAudioRecording() {
     mediaRecorder.state !== "inactive"
   ) {
     mediaRecorder.stop();
+  } else {
+    stopRecordingStream();
+    resetRecordingUi();
+
+    messageInputEl.disabled = false;
+    sendBtnEl.disabled = false;
+    attachBtnEl.disabled = false;
   }
-
-  stopRecordingStream();
-
-  recordAudioBtnEl.classList.remove("recording");
-  recordAudioBtnEl.textContent = "🎤";
-  recordAudioBtnEl.setAttribute(
-    "aria-label",
-    "تسجيل رسالة صوتية"
-  );
-
-  messageInputEl.disabled = false;
-  sendBtnEl.disabled = false;
-  attachBtnEl.disabled = false;
 }
 
 function stopRecordingStream() {
@@ -2060,10 +2086,135 @@ async function sendRecordedAudio(audioFile) {
   }
 }
 
-recordAudioBtnEl?.addEventListener("click", () => {
-  if (isRecordingAudio) {
+const CANCEL_SWIPE_DISTANCE = 80;
+const LOCK_SWIPE_DISTANCE = 80;
+const RECORD_HOLD_DELAY = 220;
+
+recordAudioBtnEl?.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+
+  // لو التسجيل متثبت، الضغطة ترسله
+  if (recordingLocked && isRecordingAudio) {
     stopAudioRecording();
-  } else {
-    startAudioRecording();
+    return;
+  }
+
+  if (isRecordingAudio) return;
+
+  recordingPointerId = event.pointerId;
+  recordingStartX = event.clientX;
+  recordingStartY = event.clientY;
+
+  recordingCancelled = false;
+  recordingLocked = false;
+
+  recordAudioBtnEl.setPointerCapture?.(event.pointerId);
+
+  clearTimeout(recordingPressTimer);
+
+  recordingPressTimer = setTimeout(async () => {
+    recordingPressTimer = null;
+    await startAudioRecording();
+  }, RECORD_HOLD_DELAY);
+});
+
+recordAudioBtnEl?.addEventListener("pointermove", (event) => {
+  if (
+    event.pointerId !== recordingPointerId ||
+    !isRecordingAudio ||
+    recordingLocked
+  ) {
+    return;
+  }
+
+  const moveX = event.clientX - recordingStartX;
+  const moveY = event.clientY - recordingStartY;
+
+  // السحب ناحية الشمال يلغي التسجيل
+  if (moveX <= -CANCEL_SWIPE_DISTANCE) {
+    recordingCancelled = true;
+
+    const hint =
+      voiceRecordingBarEl?.querySelector(
+        ".voice-recording-hint"
+      );
+
+    if (hint) {
+      hint.textContent = "تم إلغاء التسجيل";
+    }
+
+    stopAudioRecording();
+    return;
+  }
+
+  // السحب لفوق يثبت التسجيل
+  if (moveY <= -LOCK_SWIPE_DISTANCE) {
+    recordingLocked = true;
+
+    recordAudioBtnEl.classList.remove("recording");
+    recordAudioBtnEl.classList.add("locked");
+    recordAudioBtnEl.textContent = "➤";
+
+    recordAudioBtnEl.setAttribute(
+      "aria-label",
+      "إرسال الرسالة الصوتية"
+    );
+
+    const hint =
+      voiceRecordingBarEl?.querySelector(
+        ".voice-recording-hint"
+      );
+
+    if (hint) {
+      hint.textContent = "تم تثبيت التسجيل — اضغط للإرسال";
+    }
+
+    return;
   }
 });
+
+recordAudioBtnEl?.addEventListener("pointerup", (event) => {
+  if (event.pointerId !== recordingPointerId) return;
+
+  clearTimeout(recordingPressTimer);
+  recordingPressTimer = null;
+
+  recordAudioBtnEl.releasePointerCapture?.(
+    event.pointerId
+  );
+
+  recordingPointerId = null;
+
+  // لو ساب الزر قبل بدء التسجيل
+  if (!isRecordingAudio) return;
+
+  // لو التسجيل متثبت، يفضل شغال
+  if (recordingLocked) return;
+
+  // رفع الإصبع يرسل التسجيل
+  stopAudioRecording();
+});
+
+recordAudioBtnEl?.addEventListener(
+  "pointercancel",
+  (event) => {
+    if (event.pointerId !== recordingPointerId) return;
+
+    clearTimeout(recordingPressTimer);
+    recordingPressTimer = null;
+
+    recordingPointerId = null;
+
+    if (isRecordingAudio && !recordingLocked) {
+      recordingCancelled = true;
+      stopAudioRecording();
+    }
+  }
+);
+
+recordAudioBtnEl?.addEventListener(
+  "contextmenu",
+  (event) => {
+    event.preventDefault();
+  }
+);
