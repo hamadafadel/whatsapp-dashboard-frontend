@@ -18,7 +18,7 @@ const loginBtnEl = document.getElementById("loginBtn");
 const loginErrorEl = document.getElementById("loginError");
 const mediaInputEl = document.getElementById("mediaInput");
 const attachBtnEl = document.getElementById("attachBtn");
-
+const recordAudioBtnEl = document.getElementById("recordAudioBtn");
 let currentAiEnabled = true;
 
 let conversationsData = [];
@@ -26,6 +26,10 @@ let activeSessionId = null;
 let typingIndicatorTimeout = null;
 let selectedReplyMessage = null;
 let longPressTimer = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecordingAudio = false;
+let recordingStream = null;
 let authToken = localStorage.getItem("dashboard_token") || "";
 function getAuthHeaders(extraHeaders = {}) {
   return {
