@@ -1096,3 +1096,32 @@ input {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+
+.cancel-audio-recording-btn,
+.send-audio-recording-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.cancel-audio-recording-btn {
+  background: transparent;
+  color: #ff6b6b;
+}
+
+.send-audio-recording-btn {
+  background: #00a884;
+  color: #fff;
+}
+
+.cancel-audio-recording-btn:active,
+.send-audio-recording-btn:active {
+  transform: scale(0.95);
+}
