@@ -19,6 +19,11 @@ const loginErrorEl = document.getElementById("loginError");
 const mediaInputEl = document.getElementById("mediaInput");
 const attachBtnEl = document.getElementById("attachBtn");
 const recordAudioBtnEl = document.getElementById("recordAudioBtn");
+const voiceRecordingBarEl =
+  document.getElementById("voiceRecordingBar");
+
+const voiceRecordingTimeEl =
+  document.getElementById("voiceRecordingTime");
 let currentAiEnabled = true;
 
 let conversationsData = [];
@@ -30,6 +35,17 @@ let mediaRecorder = null;
 let audioChunks = [];
 let isRecordingAudio = false;
 let recordingStream = null;
+
+let recordingStartedAt = 0;
+let recordingTimerInterval = null;
+
+let recordingPointerId = null;
+let recordingStartX = 0;
+let recordingStartY = 0;
+
+let recordingCancelled = false;
+let recordingLocked = false;
+let recordingPressTimer = null;
 let authToken = localStorage.getItem("dashboard_token") || "";
 function getAuthHeaders(extraHeaders = {}) {
   return {
