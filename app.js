@@ -24,6 +24,11 @@ const voiceRecordingBarEl =
 
 const voiceRecordingTimeEl =
   document.getElementById("voiceRecordingTime");
+const cancelAudioRecordingBtnEl =
+  document.getElementById("cancelAudioRecordingBtn");
+
+const sendAudioRecordingBtnEl =
+  document.getElementById("sendAudioRecordingBtn");
 let currentAiEnabled = true;
 
 let conversationsData = [];
@@ -2096,168 +2101,26 @@ const RECORD_HOLD_DELAY = 250;
 
 let desktopRecordingMode = false;
 
-recordAudioBtnEl?.addEventListener("pointerdown", async (event) => {
-  event.preventDefault();
-
-  const isMouse = event.pointerType === "mouse";
-
-  // الكمبيوتر: ضغطة ثانية توقف وترسل
-  if (isMouse && isRecordingAudio) {
-    stopAudioRecording();
-    desktopRecordingMode = false;
-    return;
-  }
-
-  // لو التسجيل متثبت على الموبايل، الضغطة ترسله
-  if (recordingLocked && isRecordingAudio) {
-    stopAudioRecording();
-    return;
-  }
-
+recordAudioBtnEl?.addEventListener("click", async () => {
   if (isRecordingAudio) return;
 
-  recordingPointerId = event.pointerId;
-  recordingStartX = event.clientX;
-  recordingStartY = event.clientY;
-
   recordingCancelled = false;
-  recordingLocked = false;
 
-  clearTimeout(recordingPressTimer);
-
-  // الكمبيوتر يبدأ التسجيل فورًا
-  if (isMouse) {
-    desktopRecordingMode = true;
-    await startAudioRecording();
-    return;
-  }
-
-  // الموبايل يبدأ بعد الضغط المطول
-  recordingPressTimer = setTimeout(async () => {
-    recordingPressTimer = null;
-
-    try {
-      recordAudioBtnEl.setPointerCapture?.(
-        recordingPointerId
-      );
-    } catch (error) {
-      console.log("Pointer capture skipped");
-    }
-
-    await startAudioRecording();
-  }, RECORD_HOLD_DELAY);
+  await startAudioRecording();
 });
 
-recordAudioBtnEl?.addEventListener("pointermove", (event) => {
-  if (
-    event.pointerId !== recordingPointerId ||
-    !isRecordingAudio ||
-    desktopRecordingMode ||
-    recordingLocked
-  ) {
-    return;
-  }
-
-  const moveX = event.clientX - recordingStartX;
-  const moveY = event.clientY - recordingStartY;
-
-  // السحب ناحية الشمال يلغي التسجيل
-  if (moveX <= -CANCEL_SWIPE_DISTANCE) {
-    recordingCancelled = true;
-
-    const hint =
-      voiceRecordingBarEl?.querySelector(
-        ".voice-recording-hint"
-      );
-
-    if (hint) {
-      hint.textContent = "تم إلغاء التسجيل";
-    }
-
-    stopAudioRecording();
-    return;
-  }
-
-  // السحب لفوق يثبت التسجيل
-  if (moveY <= -LOCK_SWIPE_DISTANCE) {
-    recordingLocked = true;
-
-    recordAudioBtnEl.classList.remove("recording");
-    recordAudioBtnEl.classList.add("locked");
-    recordAudioBtnEl.textContent = "➤";
-
-    recordAudioBtnEl.setAttribute(
-      "aria-label",
-      "إرسال الرسالة الصوتية"
-    );
-
-    const hint =
-      voiceRecordingBarEl?.querySelector(
-        ".voice-recording-hint"
-      );
-
-    if (hint) {
-      hint.textContent =
-        "تم تثبيت التسجيل — اضغط للإرسال";
-    }
-
-    return;
-  }
-});
-
-recordAudioBtnEl?.addEventListener("pointerup", (event) => {
-  if (event.pointerId !== recordingPointerId) return;
-
-  clearTimeout(recordingPressTimer);
-  recordingPressTimer = null;
-
-  try {
-    recordAudioBtnEl.releasePointerCapture?.(
-      event.pointerId
-    );
-  } catch (error) {
-    console.log("Pointer release skipped");
-  }
-
-  recordingPointerId = null;
-
-  // الكمبيوتر يفضل يسجل لحد الضغطة الثانية
-  if (desktopRecordingMode) return;
-
-  // لو ساب قبل بدء التسجيل
+cancelAudioRecordingBtnEl?.addEventListener("click", () => {
   if (!isRecordingAudio) return;
 
-  // لو التسجيل متثبت يفضل شغال
-  if (recordingLocked) return;
+  recordingCancelled = true;
 
-  // الموبايل: رفع الإصبع يرسل
   stopAudioRecording();
 });
 
-recordAudioBtnEl?.addEventListener(
-  "pointercancel",
-  (event) => {
-    if (event.pointerId !== recordingPointerId) return;
+sendAudioRecordingBtnEl?.addEventListener("click", () => {
+  if (!isRecordingAudio) return;
 
-    clearTimeout(recordingPressTimer);
-    recordingPressTimer = null;
+  recordingCancelled = false;
 
-    recordingPointerId = null;
-
-    // ما نلغي التسجيل تلقائيًا بسبب pointercancel في الموبايل
-    if (
-      isRecordingAudio &&
-      !recordingLocked &&
-      !desktopRecordingMode
-    ) {
-      stopAudioRecording();
-    }
-  }
-);
-
-recordAudioBtnEl?.addEventListener(
-  "contextmenu",
-  (event) => {
-    event.preventDefault();
-  }
-);
+  stopAudioRecording();
+});
