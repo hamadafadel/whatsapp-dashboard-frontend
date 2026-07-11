@@ -2124,3 +2124,67 @@ sendAudioRecordingBtnEl?.addEventListener("click", () => {
 
   stopAudioRecording();
 });
+
+function restoreVoiceComposerUi() {
+  const recorderIsActuallyRunning =
+    mediaRecorder &&
+    mediaRecorder.state !== "inactive";
+
+  // لو مفيش تسجيل فعلي شغال، رجّع الواجهة للوضع الطبيعي
+  if (!recorderIsActuallyRunning) {
+    isRecordingAudio = false;
+    recordingCancelled = false;
+
+    stopRecordingStream();
+    stopRecordingTimer();
+
+    voiceRecordingBarEl?.classList.add("hidden");
+
+    if (voiceRecordingTimeEl) {
+      voiceRecordingTimeEl.textContent = "00:00";
+    }
+
+    if (recordAudioBtnEl) {
+      recordAudioBtnEl.disabled = false;
+      recordAudioBtnEl.style.display = "inline-flex";
+      recordAudioBtnEl.textContent = "🎤";
+      recordAudioBtnEl.classList.remove(
+        "recording",
+        "locked"
+      );
+
+      recordAudioBtnEl.setAttribute(
+        "aria-label",
+        "تسجيل رسالة صوتية"
+      );
+    }
+
+    if (messageInputEl) {
+      messageInputEl.disabled = false;
+      messageInputEl.style.display = "";
+    }
+
+    if (attachBtnEl) {
+      attachBtnEl.disabled = false;
+      attachBtnEl.style.display = "";
+    }
+
+    if (sendBtnEl) {
+      sendBtnEl.disabled = false;
+      sendBtnEl.style.display = "";
+    }
+  }
+}
+
+// عند فتح التطبيق أو الرجوع له من الخلفية
+window.addEventListener("pageshow", () => {
+  restoreVoiceComposerUi();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    setTimeout(() => {
+      restoreVoiceComposerUi();
+    }, 100);
+  }
+});
