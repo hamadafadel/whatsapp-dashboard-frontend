@@ -2089,9 +2089,6 @@ async function sendRecordedAudio(audioFile) {
   }
 }
 
-const CANCEL_SWIPE_DISTANCE = 80;
-const LOCK_SWIPE_DISTANCE = 80;
-const RECORD_HOLD_DELAY = 220;
 
 const CANCEL_SWIPE_DISTANCE = 80;
 const LOCK_SWIPE_DISTANCE = 80;
