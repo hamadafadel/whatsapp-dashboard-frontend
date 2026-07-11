@@ -1795,6 +1795,87 @@ function getAudioExtension(mimeType) {
   return "audio";
 }
 
+function formatRecordingTime(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return (
+    String(minutes).padStart(2, "0") +
+    ":" +
+    String(seconds).padStart(2, "0")
+  );
+}
+
+function startRecordingTimer() {
+  recordingStartedAt = Date.now();
+
+  if (voiceRecordingTimeEl) {
+    voiceRecordingTimeEl.textContent = "00:00";
+  }
+
+  clearInterval(recordingTimerInterval);
+
+  recordingTimerInterval = setInterval(() => {
+    const elapsedSeconds = Math.floor(
+      (Date.now() - recordingStartedAt) / 1000
+    );
+
+    if (voiceRecordingTimeEl) {
+      voiceRecordingTimeEl.textContent =
+        formatRecordingTime(elapsedSeconds);
+    }
+  }, 500);
+}
+
+function stopRecordingTimer() {
+  if (recordingTimerInterval) {
+    clearInterval(recordingTimerInterval);
+    recordingTimerInterval = null;
+  }
+
+  recordingStartedAt = 0;
+}
+
+function showRecordingBar() {
+  voiceRecordingBarEl?.classList.remove("hidden");
+
+  messageInputEl.style.display = "none";
+  sendBtnEl.style.display = "none";
+  attachBtnEl.style.display = "none";
+}
+
+function hideRecordingBar() {
+  voiceRecordingBarEl?.classList.add("hidden");
+
+  messageInputEl.style.display = "";
+  sendBtnEl.style.display = "";
+  attachBtnEl.style.display = "";
+
+  if (voiceRecordingTimeEl) {
+    voiceRecordingTimeEl.textContent = "00:00";
+  }
+}
+
+function resetRecordingUi() {
+  stopRecordingTimer();
+  hideRecordingBar();
+
+  recordAudioBtnEl?.classList.remove(
+    "recording",
+    "locked"
+  );
+
+  if (recordAudioBtnEl) {
+    recordAudioBtnEl.textContent = "🎤";
+    recordAudioBtnEl.disabled = false;
+  }
+
+  recordingPointerId = null;
+  recordingStartX = 0;
+  recordingStartY = 0;
+  recordingCancelled = false;
+  recordingLocked = false;
+}
 async function startAudioRecording() {
   if (!activeSessionId) {
     alert("اختر محادثة أولًا");
