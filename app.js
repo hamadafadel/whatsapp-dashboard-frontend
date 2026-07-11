@@ -1722,9 +1722,9 @@ try {
 function getSupportedAudioMimeType() {
   const types = [
     "audio/ogg;codecs=opus",
-    "audio/mp4",
-    "audio/webm;codecs=opus",
-    "audio/webm"
+  "audio/ogg",
+  "audio/mp4",
+  "audio/mpeg"
   ];
 
   return (
