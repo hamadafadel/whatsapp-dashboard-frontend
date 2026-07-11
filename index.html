@@ -73,7 +73,28 @@
 
   <button id="attachBtn" type="button">📎</button>
 
-  <textarea id="messageInput" rows="1" style="white-space: pre-wrap;" placeholder="اكتب رسالة..."></textarea>
+  <textarea
+  id="messageInput"
+  rows="1"
+  style="white-space: pre-wrap;"
+  placeholder="اكتب رسالة..."
+></textarea>
+
+<div id="voiceRecordingBar" class="voice-recording-bar hidden">
+  <div class="voice-recording-dot"></div>
+
+  <div id="voiceRecordingTime" class="voice-recording-time">
+    00:00
+  </div>
+
+  <div class="voice-recording-hint">
+    اسحب للإلغاء
+  </div>
+
+  <div class="voice-recording-lock">
+    ↑
+  </div>
+</div>
 
 <button
   id="recordAudioBtn"
@@ -83,6 +104,8 @@
 >
   🎤
 </button>
+
+<button id="sendBtn" type="button">إرسال</button>
         
   <button id="sendBtn" type="button">إرسال</button>
 </footer>
