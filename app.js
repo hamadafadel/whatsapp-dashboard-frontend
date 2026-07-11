@@ -1718,3 +1718,219 @@ try {
   messageInputEl.focus();
 }  });
 }
+
+function getSupportedAudioMimeType() {
+  const types = [
+    "audio/ogg;codecs=opus",
+    "audio/mp4",
+    "audio/webm;codecs=opus",
+    "audio/webm"
+  ];
+
+  return (
+    types.find((type) => MediaRecorder.isTypeSupported(type)) ||
+    ""
+  );
+}
+
+function getAudioExtension(mimeType) {
+  const type = String(mimeType || "").toLowerCase();
+
+  if (type.includes("ogg")) return "ogg";
+  if (type.includes("mp4")) return "m4a";
+  if (type.includes("mpeg")) return "mp3";
+  if (type.includes("webm")) return "webm";
+
+  return "audio";
+}
+
+async function startAudioRecording() {
+  if (!activeSessionId) {
+    alert("اختر محادثة أولًا");
+    return;
+  }
+
+  if (
+    !navigator.mediaDevices ||
+    !navigator.mediaDevices.getUserMedia ||
+    typeof MediaRecorder === "undefined"
+  ) {
+    alert("المتصفح لا يدعم تسجيل الصوت");
+    return;
+  }
+
+  try {
+    recordingStream =
+      await navigator.mediaDevices.getUserMedia({
+        audio: true
+      });
+
+    const mimeType = getSupportedAudioMimeType();
+
+    mediaRecorder = mimeType
+      ? new MediaRecorder(recordingStream, {
+          mimeType
+        })
+      : new MediaRecorder(recordingStream);
+
+    audioChunks = [];
+
+    mediaRecorder.addEventListener("dataavailable", (event) => {
+      if (event.data && event.data.size > 0) {
+        audioChunks.push(event.data);
+      }
+    });
+
+    mediaRecorder.addEventListener("stop", async () => {
+      try {
+        const finalMimeType =
+          mediaRecorder?.mimeType ||
+          mimeType ||
+          "audio/ogg";
+
+        const audioBlob = new Blob(audioChunks, {
+          type: finalMimeType
+        });
+
+        if (!audioBlob.size) {
+          throw new Error("Audio recording is empty");
+        }
+
+        const extension =
+          getAudioExtension(finalMimeType);
+
+        const audioFile = new File(
+          [audioBlob],
+          `voice-${Date.now()}.${extension}`,
+          {
+            type: finalMimeType
+          }
+        );
+
+        await sendRecordedAudio(audioFile);
+      } catch (error) {
+        console.error("Recorded audio error:", error);
+        alert("فشل تجهيز الرسالة الصوتية");
+      } finally {
+        audioChunks = [];
+        mediaRecorder = null;
+      }
+    });
+
+    mediaRecorder.start(250);
+    isRecordingAudio = true;
+
+    recordAudioBtnEl.classList.add("recording");
+    recordAudioBtnEl.textContent = "⏹";
+    recordAudioBtnEl.setAttribute(
+      "aria-label",
+      "إيقاف التسجيل وإرسال الرسالة الصوتية"
+    );
+
+    messageInputEl.disabled = true;
+    sendBtnEl.disabled = true;
+    attachBtnEl.disabled = true;
+
+  } catch (error) {
+    console.error("Microphone error:", error);
+    alert("تعذر الوصول إلى الميكروفون");
+
+    stopRecordingStream();
+  }
+}
+
+function stopAudioRecording() {
+  if (!isRecordingAudio) return;
+
+  isRecordingAudio = false;
+
+  if (
+    mediaRecorder &&
+    mediaRecorder.state !== "inactive"
+  ) {
+    mediaRecorder.stop();
+  }
+
+  stopRecordingStream();
+
+  recordAudioBtnEl.classList.remove("recording");
+  recordAudioBtnEl.textContent = "🎤";
+  recordAudioBtnEl.setAttribute(
+    "aria-label",
+    "تسجيل رسالة صوتية"
+  );
+
+  messageInputEl.disabled = false;
+  sendBtnEl.disabled = false;
+  attachBtnEl.disabled = false;
+}
+
+function stopRecordingStream() {
+  if (recordingStream) {
+    recordingStream
+      .getTracks()
+      .forEach((track) => track.stop());
+  }
+
+  recordingStream = null;
+}
+
+async function sendRecordedAudio(audioFile) {
+  if (!activeSessionId) {
+    throw new Error("No active session");
+  }
+
+  recordAudioBtnEl.disabled = true;
+  recordAudioBtnEl.textContent = "⏳";
+
+  try {
+    const formData = new FormData();
+
+    formData.append("file", audioFile);
+    formData.append("sessionId", activeSessionId);
+    formData.append("caption", "");
+    formData.append("messageKind", "audio");
+
+    const response = await fetch(
+      `${API_BASE}/send-media`,
+      {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: formData
+      }
+    );
+
+    if (handleInvalidToken(response)) return;
+
+    const result =
+      await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        result?.details?.message ||
+        result?.error ||
+        "Failed to send audio"
+      );
+    }
+
+    loadConversations();
+  } catch (error) {
+    console.error("Send recorded audio error:", error);
+    alert("فشل إرسال الرسالة الصوتية");
+  } finally {
+    recordAudioBtnEl.disabled = false;
+    recordAudioBtnEl.textContent = "🎤";
+    messageInputEl.disabled = false;
+    sendBtnEl.disabled = false;
+    attachBtnEl.disabled = false;
+    messageInputEl.focus();
+  }
+}
+
+recordAudioBtnEl?.addEventListener("click", () => {
+  if (isRecordingAudio) {
+    stopAudioRecording();
+  } else {
+    startAudioRecording();
+  }
+});
