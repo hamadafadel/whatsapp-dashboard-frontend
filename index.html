@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" translate="no" class="notranslate">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover"
+  />
+  <meta name="google" content="notranslate" />
+  <meta http-equiv="Content-Language" content="ar" />
+
+  <title>Mehrab Dashboard</title>
+
+  <link rel="manifest" href="manifest.json?v=5" />
+  <link rel="apple-touch-icon" href="mehrab-splash-192-v5.png" />
+  <meta name="theme-color" content="#54105b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <link rel="stylesheet" href="app.css?v=46" />
+  <script
+    type="module"
+    src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.26.0/index.js"
+  ></script>
+</head>
+<body translate="no" class="notranslate">
+
+  <div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <h2>تسجيل الدخول</h2>
+    <input id="loginUsername" type="text" placeholder="Username" autocomplete="username" />
+    <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" />
+    <button id="loginBtn" type="button">دخول</button>
+    <div id="loginError" class="login-error"></div>
+  </div>
+</div>
+
+  <div class="mobile-app" id="mobileApp">
+
+    <!-- Sessions -->
+    <section class="sessions-screen" id="sessionsScreen">
+      <header class="sessions-header">
+        <div class="brand-block">
+          <img class="brand-logo" src="mehrab-splash-192-v5.png" alt="شعار المحراب" />
+          <div>
+          <div class="brand-title">المحادثات</div>
+          <div class="brand-subtitle">Al Mehrab Dashboard</div>
+          </div>
+        </div>
+
+        <button id="refreshBtn" class="icon-btn" type="button">↻</button>
+      </header>
+
+      <div class="mobile-search">
+        <input id="searchInput" type="text" placeholder="ابحث عن Session..." autocomplete="off" />
+      </div>
+
+      <div id="conversations" class="sessions-list"></div>
+    </section>
+
+    <!-- Chat -->
+    <section class="chat-screen" id="chatScreen">
+      <header class="chat-mobile-header">
+        <button id="backBtn" class="back-btn" type="button">‹</button>
+
+        <div class="chat-header-text">
+  <div id="chatTitle" class="chat-title">201011880373</div>
+  <div id="chatSubtitle" class="chat-subtitle">WhatsApp Dashboard</div>
+</div>
+
+        <button id="toggleAiBtn" class="mobile-ai-btn" type="button">إيقاف AI</button>
+      </header>
+
+      <div id="messages" class="messages"></div>
+
+      <footer class="chat-compose">
+  <input
+  id="mediaInput"
+  type="file"
+  accept="image/*,video/*,.jpg,.jpeg,.png,.webp,.mp4,.mov,.3gp"
+  multiple
+  hidden
+/>
+       
+
+  <div id="emojiPickerPanel" class="emoji-picker-panel hidden">
+    <emoji-picker></emoji-picker>
+  </div>
+
+  <button
+    id="emojiBtn"
+    class="emoji-btn"
+    type="button"
+    aria-label="اختيار إيموجي"
+  >☺</button>
+
+  <button id="attachBtn" type="button">📎</button>
+
+  <textarea
+  id="messageInput"
+  rows="1"
+  style="white-space: pre-wrap;"
+  placeholder="اكتب رسالة..."
+></textarea>
+
+<div id="voiceRecordingBar" class="voice-recording-bar hidden">
+  <div class="voice-recording-dot"></div>
+
+  <div id="voiceRecordingTime" class="voice-recording-time">
+    00:00
+  </div>
+
+  <div class="voice-recording-hint">
+    جاري التسجيل...
+  </div>
+
+  <button
+    id="cancelAudioRecordingBtn"
+    class="cancel-audio-recording-btn"
+    type="button"
+    aria-label="إلغاء التسجيل"
+  >
+    🗑️
+  </button>
+
+  <button
+    id="sendAudioRecordingBtn"
+    class="send-audio-recording-btn"
+    type="button"
+    aria-label="إرسال التسجيل"
+  >
+    ➤
+  </button>
+</div>
+
+<button
+  id="recordAudioBtn"
+  class="record-audio-btn"
+  type="button"
+  aria-label="تسجيل رسالة صوتية"
+>
+  🎤
+</button>
+
+<button id="sendBtn" type="button">إرسال</button>
+        
+</footer>
+    </section>
+
+  </div>
+
+  <script src="app.js?v=46"></script>
+
+  <script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", async () => {
+      try {
+        const registration = await navigator.serviceWorker.register(
+          "/service-worker.js",
+          {
+            updateViaCache: "none"
+          }
+        );
+
+        // فحص نسخة جديدة عند كل فتح
+        await registration.update();
+
+        // لو فيه نسخة جديدة منتظرة، فعّلها فورًا
+        if (registration.waiting) {
+          registration.waiting.postMessage({
+            type: "SKIP_WAITING"
+          });
+        }
+
+        registration.addEventListener("updatefound", () => {
+          const newWorker = registration.installing;
+
+          if (!newWorker) return;
+
+          newWorker.addEventListener("statechange", () => {
+            if (newWorker.state === "installed") {
+              newWorker.postMessage({
+                type: "SKIP_WAITING"
+              });
+            }
+          });
+        });
+
+        // إعادة تحميل الصفحة مرة واحدة عند تفعيل النسخة الجديدة
+        let refreshing = false;
+
+        navigator.serviceWorker.addEventListener(
+          "controllerchange",
+          () => {
+            if (refreshing) return;
+
+            refreshing = true;
+            window.location.reload();
+          }
+        );
+      } catch (error) {
+        console.error("Service Worker Error:", error);
+      }
+    });
+  }
+</script>
+
+</body>
+</html>
