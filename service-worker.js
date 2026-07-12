@@ -1,4 +1,4 @@
-const CACHE_NAME = "mehrab-dashboard-static-v1";
+const CACHE_NAME = "mehrab-dashboard-static-v2";
 
 const STATIC_FILES = [
   "/manifest.json",
@@ -42,7 +42,7 @@ self.addEventListener("message", (event) => {
   }
 });
 
-// منع كاش ملفات التطبيق البرمجية
+// التحكم في الطلبات
 self.addEventListener("fetch", (event) => {
   const request = event.request;
 
@@ -50,7 +50,7 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
 
-  // الـAPI والملفات المرفوعة لا نتدخل فيها
+  // لا نتدخل في الـAPI أو الملفات المرفوعة
   if (
     url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/uploads/")
@@ -58,39 +58,60 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // الصفحة وملفات الكود: دائمًا من السيرفر بدون كاش
-  if (
+  const isAppShell =
     request.mode === "navigate" ||
     url.pathname === "/" ||
     url.pathname.endsWith("/index.html") ||
     url.pathname.endsWith("/app.js") ||
     url.pathname.endsWith("/app.css") ||
-    url.pathname.endsWith("/service-worker.js")
-  ) {
+    url.pathname.endsWith("/service-worker.js");
+
+  // ملفات التطبيق البرمجية: دائمًا أحدث نسخة من السيرفر
+  if (isAppShell) {
     event.respondWith(
       fetch(request, {
         cache: "no-store"
+      }).catch(() => {
+        // ما نرجعش نسخة قديمة من app.js أو index.html
+        return new Response(
+          "Network unavailable",
+          {
+            status: 503,
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8"
+            }
+          }
+        );
       })
     );
 
     return;
   }
 
-  // الأيقونات والـmanifest فقط يمكن استخدام الكاش لها
+  // الأيقونات والـmanifest فقط: Cache First
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
-      return (
-        cachedResponse ||
-        fetch(request).then((networkResponse) => {
-          const responseCopy = networkResponse.clone();
+      if (cachedResponse) {
+        return cachedResponse;
+      }
 
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseCopy);
-          });
-
+      return fetch(request).then((networkResponse) => {
+        if (
+          !networkResponse ||
+          !networkResponse.ok ||
+          networkResponse.type !== "basic"
+        ) {
           return networkResponse;
-        })
-      );
+        }
+
+        const responseCopy = networkResponse.clone();
+
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(request, responseCopy);
+        });
+
+        return networkResponse;
+      });
     })
   );
 });
