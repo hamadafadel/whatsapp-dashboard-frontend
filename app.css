@@ -1275,3 +1275,43 @@ input {
   --outline-color: #00a884;
   --category-emoji-padding: 8px;
 }
+
+/* Composer actions: only the send action uses a green background */
+.chat-compose #emojiBtn,
+.chat-compose #attachBtn,
+.chat-compose #recordAudioBtn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  height: 42px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #aebac1 !important;
+  font-size: 25px !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.chat-compose #sendBtn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 78px !important;
+  height: 42px !important;
+  padding: 0 18px !important;
+  border-radius: 22px !important;
+  background: #00a884 !important;
+  color: #fff !important;
+  line-height: 1 !important;
+  text-align: center !important;
+}
+
+.chat-compose #recordAudioBtn.recording {
+  border-radius: 50% !important;
+  background: #e53935 !important;
+}
