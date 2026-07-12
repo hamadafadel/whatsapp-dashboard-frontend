@@ -1203,6 +1203,7 @@ input {
 .chat-compose {
   flex-wrap: wrap !important;
   align-content: center !important;
+  position: relative;
 }
 
 .chat-compose #messageInput {
@@ -1214,15 +1215,15 @@ input {
 }
 
 .chat-compose #attachBtn {
-  order: 2;
-}
-
-.chat-compose #recordAudioBtn {
   order: 3;
 }
 
-.chat-compose #sendBtn {
+.chat-compose #recordAudioBtn {
   order: 4;
+}
+
+.chat-compose #sendBtn {
+  order: 5;
   margin-right: auto !important;
 }
 
@@ -1231,4 +1232,46 @@ input {
   flex: 1 0 100%;
   width: 100%;
   min-height: 48px;
+}
+
+.chat-compose #emojiBtn {
+  order: 2;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  height: 42px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: #aebac1 !important;
+  font-size: 27px !important;
+}
+
+.emoji-picker-panel {
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 8px);
+  z-index: 50;
+  width: min(352px, calc(100vw - 16px));
+  max-height: min(440px, 60vh);
+  overflow: hidden;
+  border-radius: 14px;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.45);
+}
+
+.emoji-picker-panel.hidden {
+  display: none;
+}
+
+.emoji-picker-panel emoji-picker {
+  width: 100%;
+  height: min(420px, 58vh);
+  --background: #202c33;
+  --border-color: #374248;
+  --input-border-color: #374248;
+  --input-font-color: #e9edef;
+  --input-placeholder-color: #8696a0;
+  --outline-color: #00a884;
+  --category-emoji-padding: 8px;
 }
