@@ -2218,30 +2218,42 @@ function restoreVoiceComposerUi() {
 
     if (messageInputEl) {
       messageInputEl.disabled = false;
-      messageInputEl.style.display = "";
+      messageInputEl.style.removeProperty("display");
     }
 
     if (attachBtnEl) {
       attachBtnEl.disabled = false;
-      attachBtnEl.style.display = "";
+      attachBtnEl.style.display = "inline-flex";
+    }
+
+    if (emojiBtnEl) {
+      emojiBtnEl.disabled = false;
+      emojiBtnEl.style.display = "inline-flex";
     }
 
     if (sendBtnEl) {
       sendBtnEl.disabled = false;
-      sendBtnEl.style.display = "";
+      sendBtnEl.style.display = "inline-flex";
     }
+
+    resizeMessageInput();
   }
 }
 
 // عند فتح التطبيق أو الرجوع له من الخلفية
-window.addEventListener("pageshow", () => {
+function scheduleVoiceComposerRestore() {
   restoreVoiceComposerUi();
-});
+  setTimeout(restoreVoiceComposerUi, 150);
+  setTimeout(restoreVoiceComposerUi, 500);
+}
+
+window.addEventListener("pageshow", scheduleVoiceComposerRestore);
+window.addEventListener("focus", scheduleVoiceComposerRestore);
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    setTimeout(() => {
-      restoreVoiceComposerUi();
-    }, 100);
+    scheduleVoiceComposerRestore();
   }
 });
+
+scheduleVoiceComposerRestore();
