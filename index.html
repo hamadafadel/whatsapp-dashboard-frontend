@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <link rel="stylesheet" href="app.css?v=30" />
+  <link rel="stylesheet" href="app.css?v=31" />
   <script
     type="module"
     src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.26.0/index.js"
@@ -34,9 +34,12 @@
     <!-- Sessions -->
     <section class="sessions-screen" id="sessionsScreen">
       <header class="sessions-header">
-        <div>
+        <div class="brand-block">
+          <img class="brand-logo" src="logo-mehrab.png" alt="شعار المحراب" />
+          <div>
           <div class="brand-title">المحادثات</div>
           <div class="brand-subtitle">Al Mehrab Dashboard</div>
+          </div>
         </div>
 
         <button id="refreshBtn" class="icon-btn" type="button">↻</button>
@@ -53,6 +56,8 @@
     <section class="chat-screen" id="chatScreen">
       <header class="chat-mobile-header">
         <button id="backBtn" class="back-btn" type="button">‹</button>
+
+        <img class="chat-brand-logo" src="logo-mehrab.png" alt="شعار المحراب" />
 
         <div class="chat-header-text">
   <div id="chatTitle" class="chat-title">201011880373</div>
@@ -76,7 +81,7 @@
        
 
   <div id="emojiPickerPanel" class="emoji-picker-panel hidden">
-    <emoji-picker class="dark"></emoji-picker>
+    <emoji-picker></emoji-picker>
   </div>
 
   <button
