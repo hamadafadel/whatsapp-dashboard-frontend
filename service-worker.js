@@ -1,4 +1,4 @@
-const CACHE_NAME = "mehrab-dashboard-static-v2";
+const CACHE_NAME = "mehrab-dashboard-static-v3";
 
 const STATIC_FILES = [
   "/manifest.json",
