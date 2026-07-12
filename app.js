@@ -29,6 +29,11 @@ const cancelAudioRecordingBtnEl =
 
 const sendAudioRecordingBtnEl =
   document.getElementById("sendAudioRecordingBtn");
+const emojiBtnEl = document.getElementById("emojiBtn");
+const emojiPickerPanelEl =
+  document.getElementById("emojiPickerPanel");
+const emojiPickerEl =
+  emojiPickerPanelEl?.querySelector("emoji-picker");
 
 function resizeMessageInput() {
   if (!messageInputEl) return;
@@ -48,6 +53,33 @@ function resizeMessageInput() {
 }
 
 messageInputEl?.addEventListener("input", resizeMessageInput);
+
+function closeEmojiPicker() {
+  emojiPickerPanelEl?.classList.add("hidden");
+}
+
+emojiBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  emojiPickerPanelEl?.classList.toggle("hidden");
+});
+
+emojiPickerPanelEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+});
+
+emojiPickerEl?.addEventListener("emoji-click", (event) => {
+  const emoji = event.detail?.unicode || "";
+  if (!emoji || !messageInputEl) return;
+
+  const start = messageInputEl.selectionStart ?? messageInputEl.value.length;
+  const end = messageInputEl.selectionEnd ?? start;
+
+  messageInputEl.setRangeText(emoji, start, end, "end");
+  messageInputEl.dispatchEvent(new Event("input", { bubbles: true }));
+  messageInputEl.focus();
+});
+
+document.addEventListener("click", closeEmojiPicker);
 let currentAiEnabled = true;
 
 let conversationsData = [];
@@ -1864,11 +1896,13 @@ function stopRecordingTimer() {
 }
 
 function showRecordingBar() {
+  closeEmojiPicker();
   voiceRecordingBarEl?.classList.remove("hidden");
 
   messageInputEl.style.display = "none";
   sendBtnEl.style.display = "none";
   attachBtnEl.style.display = "none";
+  if (emojiBtnEl) emojiBtnEl.style.display = "none";
 }
 
 function hideRecordingBar() {
@@ -1877,6 +1911,7 @@ function hideRecordingBar() {
   messageInputEl.style.display = "";
   sendBtnEl.style.display = "";
   attachBtnEl.style.display = "";
+  if (emojiBtnEl) emojiBtnEl.style.display = "";
 
   if (voiceRecordingTimeEl) {
     voiceRecordingTimeEl.textContent = "00:00";
