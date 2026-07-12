@@ -12,6 +12,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
   <link rel="stylesheet" href="app.css?v=30" />
+  <script
+    type="module"
+    src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.26.0/index.js"
+  ></script>
 </head>
 <body>
 
@@ -70,6 +74,17 @@
   hidden
 />
        
+
+  <div id="emojiPickerPanel" class="emoji-picker-panel hidden">
+    <emoji-picker class="dark"></emoji-picker>
+  </div>
+
+  <button
+    id="emojiBtn"
+    class="emoji-btn"
+    type="button"
+    aria-label="اختيار إيموجي"
+  >☺</button>
 
   <button id="attachBtn" type="button">📎</button>
 
