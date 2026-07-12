@@ -1884,6 +1884,26 @@ async function normalizeImageFile(file) {
   });
 }
 
+function getCurrentSenderName() {
+  try {
+    const payloadPart = String(authToken || "").split(".")[1];
+    if (!payloadPart) return "Agent";
+
+    const normalized = payloadPart
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const padded = normalized.padEnd(
+      Math.ceil(normalized.length / 4) * 4,
+      "="
+    );
+    const payload = JSON.parse(atob(padded));
+
+    return payload.displayName || payload.username || "Agent";
+  } catch (error) {
+    return "Agent";
+  }
+}
+
 function appendPendingMedia(file, caption = "") {
   const url = URL.createObjectURL(file);
   const messageKind = file.type.startsWith("video/") ? "video" : "image";
@@ -1898,7 +1918,14 @@ function appendPendingMedia(file, caption = "") {
 
   const label = document.createElement("div");
   label.className = "message-label agent";
-  label.textContent = "Agent";
+  label.textContent = getCurrentSenderName();
+
+  if (label.textContent.toLowerCase() === "admin") {
+    label.classList.add("sender-admin");
+  } else if (label.textContent.toLowerCase() === "agent1") {
+    label.classList.add("sender-agent1");
+  }
+
   bubble.appendChild(label);
 
   if (messageKind === "image") {
@@ -1937,6 +1964,9 @@ function appendPendingMedia(file, caption = "") {
   scrollMessagesToBottom();
 
   return {
+    progress(percent) {
+      overlay.textContent = `جاري الإرسال... ${percent}%`;
+    },
     done() {
       overlay.textContent = "تم الإرسال";
       setTimeout(() => {
@@ -1944,95 +1974,126 @@ function appendPendingMedia(file, caption = "") {
         URL.revokeObjectURL(url);
       }, 500);
     },
-    fail() {
-      overlay.textContent = "فشل الإرسال";
+    fail(message = "فشل الإرسال") {
+      overlay.textContent = message;
       overlay.classList.add("failed");
     }
   };
 }
+
+async function uploadMediaFile(
+  originalFile,
+  caption,
+  pending,
+  targetSessionId
+) {
+  const maxVideoSize = 15 * 1024 * 1024;
+
+  if (
+    originalFile.type.startsWith("video/") &&
+    originalFile.size > maxVideoSize
+  ) {
+    pending.fail("الفيديو أكبر من 15 ميجا");
+    throw new Error(`Video too large: ${originalFile.name}`);
+  }
+
+  const file = await normalizeImageFile(originalFile);
+  const messageKind = file.type.startsWith("video/") ? "video" : "image";
+  const formData = new FormData();
+
+  formData.append("file", file);
+  formData.append("sessionId", targetSessionId);
+  formData.append("caption", caption);
+  formData.append("messageKind", messageKind);
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.open("POST", `${API_BASE}/send-media`);
+    xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+
+      const percent = Math.round((event.loaded / event.total) * 100);
+      pending.progress(percent);
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        pending.done();
+        resolve();
+        return;
+      }
+
+      if (xhr.status === 401 || xhr.status === 403) {
+        logout();
+      }
+
+      pending.fail();
+      reject(new Error(`Failed to send media: ${xhr.status}`));
+    };
+
+    xhr.onerror = () => {
+      pending.fail("خطأ في الاتصال");
+      reject(new Error("Upload error"));
+    };
+
+    xhr.send(formData);
+  });
+}
+
 if (mediaInputEl) {
   mediaInputEl.addEventListener("change", async () => {
     const files = Array.from(mediaInputEl.files || []);
-    alert("عدد الملفات المختارة: " + files.length);
 
-if (!files.length) return;
+    if (!files.length) return;
 
-if (files.length > 15) {
-  alert("الحد الأقصى 15 ملف مرة واحدة");
-  mediaInputEl.value = "";
-  return;
-}
+    if (files.length > 15) {
+      alert("الحد الأقصى 15 ملف مرة واحدة");
+      mediaInputEl.value = "";
+      return;
+    }
 
     if (!activeSessionId) {
       alert("اختر محادثة أولًا");
       mediaInputEl.value = "";
       return;
     }
-const maxVideoSize = 15 * 1024 * 1024;
-const caption = messageInputEl.value.trim();
 
-sendBtnEl.disabled = true;
-attachBtnEl.disabled = true;
+    const caption = messageInputEl.value.trim();
+    const targetSessionId = activeSessionId;
+    const uploads = files.map((file) => ({
+      file,
+      pending: appendPendingMedia(file, caption)
+    }));
 
-try {
-  for (const originalFile of files) {
+    sendBtnEl.disabled = true;
+    attachBtnEl.disabled = true;
+    mediaInputEl.value = "";
+    messageInputEl.value = "";
+    resizeMessageInput();
 
-  const file = await normalizeImageFile(originalFile);
-    const pending = appendPendingMedia(file, caption);
+    try {
+      const results = await Promise.allSettled(
+        uploads.map(({ file, pending }) =>
+          uploadMediaFile(file, caption, pending, targetSessionId)
+        )
+      );
 
-    if (file.type.startsWith("video/") && file.size > maxVideoSize) {
-      alert(`الفيديو ${file.name} كبير جدًا. اختار فيديو أقل من 15 ميجا.`);
-      continue;
+      const failedCount = results.filter(
+        (result) => result.status === "rejected"
+      ).length;
+
+      if (failedCount) {
+        alert(`فشل إرسال ${failedCount} ملف`);
+      }
+    } finally {
+      sendBtnEl.disabled = false;
+      attachBtnEl.disabled = false;
+      messageInputEl.focus();
     }
-
-    const messageKind = file.type.startsWith("video/") ? "video" : "image";
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("sessionId", activeSessionId);
-    formData.append("caption", caption);
-    formData.append("messageKind", messageKind);
-
-    await new Promise((resolve, reject) => {
-  const xhr = new XMLHttpRequest();
-
-  xhr.open("POST", `${API_BASE}/send-media`);
-
-  xhr.upload.onprogress = (event) => {
-    if (!event.lengthComputable) return;
-
-    const percent = Math.round((event.loaded / event.total) * 100);
-    setUploadProgress(percent);
-  };
-
-  xhr.onload = () => {
-    if (xhr.status >= 200 && xhr.status < 300) {
-      
-      pending.done();
-      resolve();
-    } else {
-      reject(new Error("Failed to send media"));
-    }
-  };
-
-  xhr.onerror = () => reject(new Error("Upload error"));
-
-  xhr.send(formData);
-});
-  }
-
-  messageInputEl.value = "";
-  resizeMessageInput();
-  mediaInputEl.value = "";
-} catch (err) {
-  console.error(err);
-  pending?.fail?.();
-  alert("فشل إرسال الميديا");
-} finally {
-  sendBtnEl.disabled = false;
-  attachBtnEl.disabled = false;
-  messageInputEl.focus();
-}  });
+  });
 }
 
 function getSupportedAudioMimeType() {
