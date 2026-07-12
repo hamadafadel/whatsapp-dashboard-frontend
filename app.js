@@ -29,6 +29,25 @@ const cancelAudioRecordingBtnEl =
 
 const sendAudioRecordingBtnEl =
   document.getElementById("sendAudioRecordingBtn");
+
+function resizeMessageInput() {
+  if (!messageInputEl) return;
+
+  const minHeight = 48;
+  const maxHeight = 120;
+
+  messageInputEl.style.height = "auto";
+  const nextHeight = Math.min(
+    Math.max(messageInputEl.scrollHeight, minHeight),
+    maxHeight
+  );
+
+  messageInputEl.style.height = `${nextHeight}px`;
+  messageInputEl.style.overflowY =
+    messageInputEl.scrollHeight > maxHeight ? "auto" : "hidden";
+}
+
+messageInputEl?.addEventListener("input", resizeMessageInput);
 let currentAiEnabled = true;
 
 let conversationsData = [];
@@ -757,6 +776,7 @@ async function sendMessageFromDashboard() {
     if (!res.ok) throw new Error("فشل الإرسال");
 
     messageInputEl.value = "";
+    resizeMessageInput();
     clearSelectedReply();
     loadConversations();
 
@@ -1042,6 +1062,7 @@ messageInputEl.addEventListener("keydown", (e) => {
       value.substring(0, start) + "\n" + value.substring(end);
 
     messageInputEl.selectionStart = messageInputEl.selectionEnd = start + 1;
+    resizeMessageInput();
     return;
   }
 
@@ -1762,6 +1783,7 @@ try {
   }
 
   messageInputEl.value = "";
+  resizeMessageInput();
   mediaInputEl.value = "";
 } catch (err) {
   console.error(err);
