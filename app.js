@@ -13,6 +13,8 @@ const chatTitleEl = document.getElementById("chatTitle");
 const chatSubtitleEl = document.getElementById("chatSubtitle");
 const chatHeaderTextEl = document.querySelector(".chat-header-text");
 const searchInputEl = document.getElementById("searchInput");
+const markAllReadBtnEl = document.getElementById("markAllReadBtn");
+const labelFilterRowEl = document.getElementById("labelFilterRow");
 const messageInputEl = document.getElementById("messageInput");
 const sendBtnEl = document.getElementById("sendBtn");
 const backBtnEl = document.getElementById("backBtn");
@@ -44,6 +46,34 @@ const emojiPickerPanelEl =
   document.getElementById("emojiPickerPanel");
 const emojiPickerEl =
   emojiPickerPanelEl?.querySelector("emoji-picker");
+
+// مربع البحث جوه الإيموجي بيكر مش محتاجينه، بنستخدمه للاختيار السريع بس
+function hideEmojiSearchBox() {
+  const root = emojiPickerEl?.shadowRoot;
+  if (!root) return false;
+
+  const searchWrapper = root.querySelector(".search-wrapper");
+  if (!searchWrapper) return false;
+
+  searchWrapper.style.display = "none";
+  return true;
+}
+
+if (emojiPickerEl) {
+  customElements.whenDefined("emoji-picker").then(() => {
+    if (hideEmojiSearchBox()) return;
+
+    const root = emojiPickerEl.shadowRoot;
+    if (!root) return;
+
+    const observer = new MutationObserver(() => {
+      if (hideEmojiSearchBox()) observer.disconnect();
+    });
+
+    observer.observe(root, { childList: true, subtree: true });
+  });
+}
+
 const savedRepliesBtnEl = document.getElementById("savedRepliesBtn");
 const savedRepliesOverlayEl = document.getElementById("savedRepliesOverlay");
 const savedRepliesListEl = document.getElementById("savedRepliesList");
@@ -1215,6 +1245,7 @@ let labelsCanManage = false;
 let conversationLabelsCache = [];
 let labelEditingId = null;
 let labelSelectedColor = LABEL_COLOR_PALETTE[0];
+let activeLabelFilterId = null;
 
 async function fetchAllLabels() {
   const response = await fetch(`${API_BASE}/labels`, {
@@ -1450,9 +1481,70 @@ async function refreshAllLabels() {
     allLabelsCache = labels;
     labelsCanManage = canManage;
     renderLabelsList();
+    renderLabelFilterRow();
   } catch (error) {
     console.error(error);
   }
+}
+
+function renderLabelFilterRow() {
+  if (!labelFilterRowEl) return;
+
+  if (!allLabelsCache.length) {
+    labelFilterRowEl.innerHTML = "";
+    return;
+  }
+
+  const allChip = `<button type="button" class="label-filter-chip${
+    activeLabelFilterId === null ? " active" : ""
+  }" data-label-id="">الكل</button>`;
+
+  const labelChips = allLabelsCache
+    .map(
+      (label) =>
+        `<button type="button" class="label-filter-chip${
+          activeLabelFilterId === label.id ? " active" : ""
+        }" data-label-id="${label.id}">
+          <span class="label-filter-dot" style="background:${escapeHtml(
+            label.color || "#54105b"
+          )}"></span>${escapeHtml(label.name)}
+        </button>`
+    )
+    .join("");
+
+  labelFilterRowEl.innerHTML = allChip + labelChips;
+
+  labelFilterRowEl.querySelectorAll(".label-filter-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const id = chip.dataset.labelId;
+      activeLabelFilterId = id ? Number(id) : null;
+      renderLabelFilterRow();
+      applyConversationFilters();
+    });
+  });
+}
+
+function applyConversationFilters() {
+  const value = searchInputEl.value.trim().toLowerCase();
+  let filtered = conversationsData;
+
+  if (activeLabelFilterId !== null) {
+    filtered = filtered.filter(
+      (conv) =>
+        Array.isArray(conv.labels) &&
+        conv.labels.some((l) => l.id === activeLabelFilterId)
+    );
+  }
+
+  if (value) {
+    filtered = filtered.filter(
+      (conv) =>
+        String(conv.session_id || "").toLowerCase().includes(value) ||
+        String(conv.content || "").toLowerCase().includes(value)
+    );
+  }
+
+  renderConversations(filtered);
 }
 
 async function refreshConversationLabels() {
@@ -3104,6 +3196,25 @@ async function markConversationRead(sessionId) {
   }
 }
 
+markAllReadBtnEl?.addEventListener("click", async () => {
+  markAllReadBtnEl.disabled = true;
+
+  try {
+    await fetch(`${API_BASE}/conversations/mark-all-read`, {
+      method: "POST",
+      headers: getAuthHeaders()
+    });
+
+    conversationsData.forEach((c) => { c.unread_count = 0; });
+    renderConversations(conversationsData);
+  } catch (error) {
+    console.error(error);
+    alert("حدث خطأ، حاول مرة أخرى");
+  } finally {
+    markAllReadBtnEl.disabled = false;
+  }
+});
+
 function updateGlobalUnreadIndicator() {
   const total = conversationsData.reduce(
     (sum, c) => sum + Number(c.unread_count || 0),
@@ -3170,6 +3281,12 @@ function connectEvents() {
     }
 
     if (data.type === "unread_changed") {
+      if (data.all) {
+        conversationsData.forEach((c) => { c.unread_count = 0; });
+        renderConversations(conversationsData);
+        return;
+      }
+
       const conv = conversationsData.find(
         (c) => c.session_id === data.sessionId
       );
@@ -3184,6 +3301,7 @@ function connectEvents() {
 
     if (data.type === "label_changed") {
       loadConversations();
+      refreshAllLabels();
 
       if (
         String(activeSessionId || "") === String(data.sessionId || "") &&
@@ -3435,12 +3553,7 @@ function linkifyText(text) {
 }
 
 searchInputEl.addEventListener("input", () => {
-  const value = searchInputEl.value.trim().toLowerCase();
-  const filtered = conversationsData.filter((conv) => {
-    return String(conv.session_id || "").toLowerCase().includes(value) ||
-      String(conv.content || "").toLowerCase().includes(value);
-  });
-  renderConversations(filtered);
+  applyConversationFilters();
 });
 
 sendBtnEl.addEventListener("click", sendMessageFromDashboard);
@@ -4011,6 +4124,7 @@ async function login() {
 
     connectEvents();
     loadConversations();
+    refreshAllLabels();
     ensurePushSubscription();
 
   } catch (err) {
@@ -4031,6 +4145,7 @@ if (authToken) {
 
 if (authToken) {
   loadConversations();
+  refreshAllLabels();
 }
 if (appEl && window.innerWidth > 900) {
   appEl.classList.remove("chat-open");
