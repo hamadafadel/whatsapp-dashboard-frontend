@@ -42,6 +42,58 @@ self.addEventListener("message", (event) => {
   }
 });
 
+// إشعار رسالة جديدة (يشتغل حتى لو التطبيق قافل خالص)
+self.addEventListener("push", (event) => {
+  let data = {};
+
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = {};
+  }
+
+  const title = data.title || "رسالة جديدة";
+
+  const options = {
+    body: data.body || "",
+    icon: "/mehrab-splash-192-v5.png",
+    badge: "/mehrab-splash-192-v5.png",
+    data: {
+      sessionId: data.sessionId || "",
+      url: data.url || "/"
+    },
+    tag: data.sessionId ? `session-${data.sessionId}` : undefined,
+    renotify: true
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// الضغط على الإشعار: فتح التطبيق والانتقال للمحادثة المطلوبة
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const sessionId = event.notification.data?.sessionId || "";
+  const targetUrl = event.notification.data?.url || "/";
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clientsArr) => {
+        for (const client of clientsArr) {
+          if ("focus" in client) {
+            client.postMessage({ type: "OPEN_SESSION", sessionId });
+            return client.focus();
+          }
+        }
+
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+      })
+  );
+});
+
 // التحكم في الطلبات
 self.addEventListener("fetch", (event) => {
   const request = event.request;

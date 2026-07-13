@@ -79,6 +79,18 @@ const selectionCountTextEl = document.getElementById("selectionCountText");
 const cancelSelectionBtnEl = document.getElementById("cancelSelectionBtn");
 const sendSelectedBtnEl = document.getElementById("sendSelectedBtn");
 
+const conversationLabelsBtnEl = document.getElementById("conversationLabelsBtn");
+const chatLabelsRowEl = document.getElementById("chatLabelsRow");
+const labelsOverlayEl = document.getElementById("labelsOverlay");
+const addLabelBtnEl = document.getElementById("addLabelBtn");
+const closeLabelsBtnEl = document.getElementById("closeLabelsBtn");
+const labelsListEl = document.getElementById("labelsList");
+const labelFormEl = document.getElementById("labelForm");
+const labelNameInputEl = document.getElementById("labelNameInput");
+const labelColorPickerEl = document.getElementById("labelColorPicker");
+const cancelLabelFormBtnEl = document.getElementById("cancelLabelFormBtn");
+const saveLabelFormBtnEl = document.getElementById("saveLabelFormBtn");
+
 function resizeMessageInput() {
   if (!messageInputEl) return;
 
@@ -1193,6 +1205,379 @@ confirmSavedMediaSendBtnEl?.addEventListener("click", async (event) => {
   }
 });
 
+const LABEL_COLOR_PALETTE = [
+  "#54105b", "#c5a66d", "#00a884", "#e53935",
+  "#1e88e5", "#f39c12", "#8e44ad", "#16a085"
+];
+
+let allLabelsCache = [];
+let labelsCanManage = false;
+let conversationLabelsCache = [];
+let labelEditingId = null;
+let labelSelectedColor = LABEL_COLOR_PALETTE[0];
+
+async function fetchAllLabels() {
+  const response = await fetch(`${API_BASE}/labels`, {
+    headers: getAuthHeaders()
+  });
+
+  if (handleInvalidToken(response)) return { labels: [], canManage: false };
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to load labels");
+  }
+
+  return {
+    labels: Array.isArray(data.labels) ? data.labels : [],
+    canManage: !!data.canManage
+  };
+}
+
+async function fetchConversationLabels(sessionId) {
+  const response = await fetch(
+    `${API_BASE}/conversations/${encodeURIComponent(sessionId)}/labels`,
+    { headers: getAuthHeaders() }
+  );
+
+  if (handleInvalidToken(response)) return [];
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to load conversation labels");
+  }
+
+  return Array.isArray(data.labels) ? data.labels : [];
+}
+
+async function createLabel(name, color) {
+  const response = await fetch(`${API_BASE}/labels`, {
+    method: "POST",
+    headers: getAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ name, color })
+  });
+
+  if (handleInvalidToken(response)) return;
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "فشل إنشاء الليبل");
+  }
+}
+
+async function updateLabel(id, name, color) {
+  const response = await fetch(`${API_BASE}/labels/${id}`, {
+    method: "PUT",
+    headers: getAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ name, color })
+  });
+
+  if (handleInvalidToken(response)) return;
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "فشل تعديل الليبل");
+  }
+}
+
+async function deleteLabel(id) {
+  const response = await fetch(`${API_BASE}/labels/${id}`, {
+    method: "DELETE",
+    headers: getAuthHeaders()
+  });
+
+  if (handleInvalidToken(response)) return;
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "فشل حذف الليبل");
+  }
+}
+
+async function attachLabelToConversation(sessionId, labelId) {
+  const response = await fetch(
+    `${API_BASE}/conversations/${encodeURIComponent(sessionId)}/labels`,
+    {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ labelId })
+    }
+  );
+
+  if (handleInvalidToken(response)) return;
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "فشل إضافة الليبل");
+  }
+}
+
+async function detachLabelFromConversation(sessionId, labelId) {
+  const response = await fetch(
+    `${API_BASE}/conversations/${encodeURIComponent(sessionId)}/labels/${labelId}`,
+    {
+      method: "DELETE",
+      headers: getAuthHeaders()
+    }
+  );
+
+  if (handleInvalidToken(response)) return;
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "فشل إزالة الليبل");
+  }
+}
+
+function renderChatLabelsRow() {
+  if (!chatLabelsRowEl) return;
+
+  chatLabelsRowEl.innerHTML = conversationLabelsCache
+    .map(
+      (label) =>
+        `<span class="chat-label-chip" style="background:${escapeHtml(
+          label.color || "#54105b"
+        )}">${escapeHtml(label.name)}</span>`
+    )
+    .join("");
+}
+
+function renderLabelsList() {
+  if (!labelsListEl) return;
+
+  labelsListEl.innerHTML = "";
+  addLabelBtnEl?.classList.toggle("hidden", !labelsCanManage);
+
+  if (!allLabelsCache.length) {
+    const empty = document.createElement("div");
+    empty.className = "labels-empty";
+    empty.textContent = labelsCanManage
+      ? "لا يوجد ليبلز بعد. اضغط + لإضافة أول ليبل."
+      : "لا يوجد ليبلز متاحة.";
+    labelsListEl.appendChild(empty);
+    return;
+  }
+
+  const attachedIds = new Set(conversationLabelsCache.map((l) => l.id));
+
+  allLabelsCache.forEach((label) => {
+    const row = document.createElement("div");
+    row.className = "label-row";
+    if (attachedIds.has(label.id)) row.classList.add("attached");
+
+    const dot = document.createElement("div");
+    dot.className = "label-color-dot";
+    dot.style.background = label.color || "#54105b";
+
+    const name = document.createElement("div");
+    name.className = "label-row-name";
+    name.textContent = label.name;
+
+    const check = document.createElement("div");
+    check.className = "label-row-check";
+    check.textContent = "✓";
+
+    row.appendChild(dot);
+    row.appendChild(name);
+    row.appendChild(check);
+
+    row.addEventListener("click", async () => {
+      if (!activeSessionId) return;
+
+      const isAttached = attachedIds.has(label.id);
+
+      try {
+        if (isAttached) {
+          await detachLabelFromConversation(activeSessionId, label.id);
+        } else {
+          await attachLabelToConversation(activeSessionId, label.id);
+        }
+
+        await refreshConversationLabels();
+        loadConversations();
+      } catch (error) {
+        console.error(error);
+        alert(error.message || "حدث خطأ، حاول مرة أخرى");
+      }
+    });
+
+    if (labelsCanManage) {
+      const actions = document.createElement("div");
+      actions.className = "label-row-actions";
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "label-edit";
+      editBtn.textContent = "✎";
+      editBtn.setAttribute("aria-label", "تعديل");
+      editBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openLabelForm(label);
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "label-delete";
+      deleteBtn.textContent = "🗑";
+      deleteBtn.setAttribute("aria-label", "حذف");
+      deleteBtn.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        if (!confirm(`حذف ليبل "${label.name}" من كل المحادثات؟`)) return;
+
+        try {
+          await deleteLabel(label.id);
+          await refreshAllLabels();
+          await refreshConversationLabels();
+          loadConversations();
+        } catch (error) {
+          console.error(error);
+          alert(error.message || "حدث خطأ، حاول مرة أخرى");
+        }
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(deleteBtn);
+      row.appendChild(actions);
+    }
+
+    labelsListEl.appendChild(row);
+  });
+}
+
+async function refreshAllLabels() {
+  try {
+    const { labels, canManage } = await fetchAllLabels();
+    allLabelsCache = labels;
+    labelsCanManage = canManage;
+    renderLabelsList();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function refreshConversationLabels() {
+  if (!activeSessionId) return;
+
+  try {
+    conversationLabelsCache = await fetchConversationLabels(activeSessionId);
+    renderLabelsList();
+    renderChatLabelsRow();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function renderLabelColorPicker() {
+  if (!labelColorPickerEl) return;
+
+  labelColorPickerEl.innerHTML = "";
+
+  LABEL_COLOR_PALETTE.forEach((color) => {
+    const swatch = document.createElement("button");
+    swatch.type = "button";
+    swatch.className = "label-color-swatch";
+    swatch.style.background = color;
+    if (color === labelSelectedColor) swatch.classList.add("selected");
+
+    swatch.addEventListener("click", () => {
+      labelSelectedColor = color;
+      renderLabelColorPicker();
+    });
+
+    labelColorPickerEl.appendChild(swatch);
+  });
+}
+
+function openLabelForm(label) {
+  labelEditingId = label ? label.id : null;
+  if (labelNameInputEl) labelNameInputEl.value = label ? label.name : "";
+  labelSelectedColor = label
+    ? label.color || LABEL_COLOR_PALETTE[0]
+    : LABEL_COLOR_PALETTE[0];
+  renderLabelColorPicker();
+  labelFormEl?.classList.remove("hidden");
+  labelNameInputEl?.focus();
+}
+
+function closeLabelForm() {
+  labelEditingId = null;
+  if (labelNameInputEl) labelNameInputEl.value = "";
+  labelFormEl?.classList.add("hidden");
+}
+
+function openLabelsOverlay() {
+  closeEmojiPicker();
+  closeQuickActions();
+  closeLabelForm();
+  labelsOverlayEl?.classList.remove("hidden");
+  document.body.classList.add("labels-open");
+  refreshAllLabels();
+  refreshConversationLabels();
+}
+
+function closeLabelsOverlay() {
+  labelsOverlayEl?.classList.add("hidden");
+  document.body.classList.remove("labels-open");
+  closeLabelForm();
+}
+
+conversationLabelsBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+
+  if (!activeSessionId) {
+    alert("اختر محادثة أولًا");
+    return;
+  }
+
+  openLabelsOverlay();
+});
+
+labelsOverlayEl?.addEventListener("click", (event) => {
+  if (event.target === labelsOverlayEl) closeLabelsOverlay();
+});
+
+closeLabelsBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  closeLabelsOverlay();
+});
+
+addLabelBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  openLabelForm(null);
+});
+
+cancelLabelFormBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  closeLabelForm();
+});
+
+saveLabelFormBtnEl?.addEventListener("click", async (event) => {
+  event.stopPropagation();
+
+  const name = labelNameInputEl?.value.trim();
+  if (!name) return;
+
+  saveLabelFormBtnEl.disabled = true;
+
+  try {
+    if (labelEditingId) {
+      await updateLabel(labelEditingId, name, labelSelectedColor);
+    } else {
+      await createLabel(name, labelSelectedColor);
+    }
+
+    closeLabelForm();
+    await refreshAllLabels();
+    await refreshConversationLabels();
+    loadConversations();
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "حدث خطأ، حاول مرة أخرى");
+  } finally {
+    saveLabelFormBtnEl.disabled = false;
+  }
+});
+
 let currentAiEnabled = true;
 
 let conversationsData = [];
@@ -1694,6 +2079,20 @@ function renderConversations(conversations) {
       item.classList.add("active");
     }
 
+    const unreadCount = Number(conv.unread_count || 0);
+    const labels = Array.isArray(conv.labels) ? conv.labels : [];
+
+    const labelsHtml = labels.length
+      ? `<div class="session-labels">${labels
+          .map(
+            (label) =>
+              `<span class="session-label-dot" style="background:${escapeHtml(
+                label.color || "#54105b"
+              )}" title="${escapeHtml(label.name || "")}"></span>`
+          )
+          .join("")}</div>`
+      : "";
+
     item.innerHTML = `
       <div class="session-row">
         <div class="session-id">
@@ -1702,8 +2101,16 @@ function renderConversations(conversations) {
     ${escapeHtml(conv.session_id || "")}
   </div>
 </div>
+        ${
+          unreadCount > 0
+            ? `<div class="unread-badge">${
+                unreadCount > 99 ? "99+" : unreadCount
+              }</div>`
+            : ""
+        }
       </div>
       <div class="session-preview">${escapeHtml(conv.content || "")}</div>
+      ${labelsHtml}
     `;
 
     item.addEventListener("click", () => {
@@ -1712,6 +2119,15 @@ function renderConversations(conversations) {
         messagesEl.childElementCount > 0;
 
       activeSessionId = conv.session_id;
+
+      if (conv.unread_count) {
+        conv.unread_count = 0;
+        markConversationRead(conv.session_id);
+      }
+
+      conversationLabelsCache = Array.isArray(conv.labels) ? conv.labels : [];
+      renderChatLabelsRow();
+
       renderConversations(conversationsData);
       openChat();
 
@@ -1729,6 +2145,8 @@ function renderConversations(conversations) {
 
     conversationsEl.appendChild(item);
   });
+
+  updateGlobalUnreadIndicator();
 }
 
 function openChat() {
@@ -2608,6 +3026,104 @@ async function sendReactionFromDashboard(messageId, emoji) {
   }
 }
 
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
+async function ensurePushSubscription() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  if (typeof Notification === "undefined") return;
+  if (Notification.permission === "denied") return;
+
+  try {
+    const permission =
+      Notification.permission === "granted"
+        ? "granted"
+        : await Notification.requestPermission();
+
+    if (permission !== "granted") return;
+
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+
+    if (!subscription) {
+      const keyRes = await fetch(`${API_BASE}/push/public-key`, {
+        headers: getAuthHeaders()
+      });
+      const { publicKey } = await keyRes.json();
+      if (!publicKey) return;
+
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+    }
+
+    await fetch(`${API_BASE}/push-subscribe`, {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(subscription)
+    });
+  } catch (error) {
+    console.error("Push subscription failed:", error);
+  }
+}
+
+navigator.serviceWorker?.addEventListener?.("message", (event) => {
+  if (event.data?.type === "OPEN_SESSION" && event.data.sessionId) {
+    const target = conversationsEl.querySelector(
+      `[data-session-id="${CSS.escape(event.data.sessionId)}"]`
+    );
+
+    if (target) {
+      target.click();
+    } else {
+      activeSessionId = event.data.sessionId;
+      openChat();
+      loadMessages(event.data.sessionId);
+    }
+  }
+});
+
+async function markConversationRead(sessionId) {
+  try {
+    await fetch(
+      `${API_BASE}/conversations/${encodeURIComponent(sessionId)}/mark-read`,
+      {
+        method: "POST",
+        headers: getAuthHeaders()
+      }
+    );
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function updateGlobalUnreadIndicator() {
+  const total = conversationsData.reduce(
+    (sum, c) => sum + Number(c.unread_count || 0),
+    0
+  );
+
+  document.title =
+    total > 0
+      ? `(${total > 99 ? "99+" : total}) Al Mehrab Dashboard`
+      : "Al Mehrab Dashboard";
+
+  if (navigator.setAppBadge) {
+    if (total > 0) {
+      navigator.setAppBadge(total).catch(() => {});
+    } else if (navigator.clearAppBadge) {
+      navigator.clearAppBadge().catch(() => {});
+    }
+  }
+}
+
 let eventSource = null;
 
 function connectEvents() {
@@ -2648,6 +3164,32 @@ function connectEvents() {
         !savedRepliesOverlayEl.classList.contains("hidden")
       ) {
         refreshSavedReplies();
+      }
+
+      return;
+    }
+
+    if (data.type === "unread_changed") {
+      const conv = conversationsData.find(
+        (c) => c.session_id === data.sessionId
+      );
+
+      if (conv) {
+        conv.unread_count = Number(data.unreadCount || 0);
+        renderConversations(conversationsData);
+      }
+
+      return;
+    }
+
+    if (data.type === "label_changed") {
+      loadConversations();
+
+      if (
+        String(activeSessionId || "") === String(data.sessionId || "") &&
+        typeof refreshConversationLabels === "function"
+      ) {
+        refreshConversationLabels();
       }
 
       return;
@@ -3469,6 +4011,7 @@ async function login() {
 
     connectEvents();
     loadConversations();
+    ensurePushSubscription();
 
   } catch (err) {
     console.error(err);
@@ -3481,6 +4024,7 @@ loginBtnEl?.addEventListener("click", login);
 if (authToken) {
   hideLogin();
   connectEvents();
+  ensurePushSubscription();
 } else {
   showLogin();
 }
