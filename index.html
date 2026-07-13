@@ -51,13 +51,50 @@
 
         <button id="markAllReadBtn" class="icon-btn" type="button" aria-label="تحديد الكل كمقروء" title="تحديد الكل كمقروء">✓✓</button>
         <button id="refreshBtn" class="icon-btn" type="button">↻</button>
+
+        <div class="conversations-menu-wrap">
+          <button id="conversationsMenuBtn" class="icon-btn" type="button" aria-label="قائمة">⋮</button>
+
+          <div id="conversationsMenuPanel" class="conversations-menu-panel hidden">
+            <div class="conversations-menu-user">
+              <div id="currentUserName" class="conversations-menu-user-name"></div>
+              <div id="currentUserRole" class="conversations-menu-user-role"></div>
+            </div>
+
+            <button id="toggleSessionSelectBtn" class="conversations-menu-item" type="button">تحديد محادثات</button>
+            <button id="viewHiddenBtn" class="conversations-menu-item" type="button">المحادثات المخفية</button>
+
+            <div class="conversations-menu-divider"></div>
+
+            <button id="logoutBtn" class="conversations-menu-item conversations-menu-logout" type="button">تسجيل الخروج</button>
+          </div>
+        </div>
       </header>
+
+      <div id="hiddenViewBar" class="hidden-view-bar hidden">
+        <button id="backFromHiddenBtn" class="hidden-view-back" type="button">‹ رجوع</button>
+        <div class="hidden-view-title">المحادثات المخفية</div>
+      </div>
 
       <div class="mobile-search">
         <input id="searchInput" type="text" placeholder="ابحث عن Session..." autocomplete="off" />
       </div>
 
       <div id="labelFilterRow" class="label-filter-row"></div>
+
+      <div id="sessionsSelectionBar" class="sessions-selection-bar hidden">
+        <span id="sessionsSelectionCount" class="sessions-selection-count">تم تحديد 0</span>
+        <button id="sessionsSelectionCancelBtn" type="button">إلغاء</button>
+        <button id="sessionsSelectionHideBtn" type="button">إخفاء</button>
+        <button id="sessionsSelectionReadBtn" type="button">تحديد كمقروء</button>
+        <button id="sessionsSelectionLabelBtn" type="button">إضافة ليبل</button>
+      </div>
+
+      <div id="bulkLabelPicker" class="bulk-label-picker hidden">
+        <div class="bulk-label-picker-title">اختار ليبل تضيفه للمحادثات المحددة</div>
+        <div id="bulkLabelPickerList" class="bulk-label-picker-list"></div>
+        <button id="bulkLabelPickerCancelBtn" type="button" class="bulk-label-picker-cancel">إلغاء</button>
+      </div>
 
       <div id="conversations" class="sessions-list"></div>
     </section>

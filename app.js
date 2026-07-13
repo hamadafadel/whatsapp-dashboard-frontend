@@ -14,6 +14,24 @@ const chatSubtitleEl = document.getElementById("chatSubtitle");
 const chatHeaderTextEl = document.querySelector(".chat-header-text");
 const searchInputEl = document.getElementById("searchInput");
 const markAllReadBtnEl = document.getElementById("markAllReadBtn");
+const conversationsMenuBtnEl = document.getElementById("conversationsMenuBtn");
+const conversationsMenuPanelEl = document.getElementById("conversationsMenuPanel");
+const currentUserNameEl = document.getElementById("currentUserName");
+const currentUserRoleEl = document.getElementById("currentUserRole");
+const toggleSessionSelectBtnEl = document.getElementById("toggleSessionSelectBtn");
+const viewHiddenBtnEl = document.getElementById("viewHiddenBtn");
+const logoutBtnEl = document.getElementById("logoutBtn");
+const hiddenViewBarEl = document.getElementById("hiddenViewBar");
+const backFromHiddenBtnEl = document.getElementById("backFromHiddenBtn");
+const sessionsSelectionBarEl = document.getElementById("sessionsSelectionBar");
+const sessionsSelectionCountEl = document.getElementById("sessionsSelectionCount");
+const sessionsSelectionCancelBtnEl = document.getElementById("sessionsSelectionCancelBtn");
+const sessionsSelectionHideBtnEl = document.getElementById("sessionsSelectionHideBtn");
+const sessionsSelectionReadBtnEl = document.getElementById("sessionsSelectionReadBtn");
+const sessionsSelectionLabelBtnEl = document.getElementById("sessionsSelectionLabelBtn");
+const bulkLabelPickerEl = document.getElementById("bulkLabelPicker");
+const bulkLabelPickerListEl = document.getElementById("bulkLabelPickerList");
+const bulkLabelPickerCancelBtnEl = document.getElementById("bulkLabelPickerCancelBtn");
 const labelFilterRowEl = document.getElementById("labelFilterRow");
 const messageInputEl = document.getElementById("messageInput");
 const sendBtnEl = document.getElementById("sendBtn");
@@ -1547,6 +1565,305 @@ function applyConversationFilters() {
   renderConversations(filtered);
 }
 
+let sessionsSelectMode = false;
+let selectedSessionIds = new Set();
+let viewingHiddenConversations = false;
+
+function decodeAuthToken() {
+  try {
+    const payloadPart = String(authToken || "").split(".")[1];
+    if (!payloadPart) return null;
+
+    const normalized = payloadPart
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const padded = normalized.padEnd(
+      Math.ceil(normalized.length / 4) * 4,
+      "="
+    );
+
+    return JSON.parse(atob(padded));
+  } catch (error) {
+    return null;
+  }
+}
+
+function getCurrentUserRole() {
+  return decodeAuthToken()?.role || "";
+}
+
+function renderCurrentUserInfo() {
+  if (currentUserNameEl) currentUserNameEl.textContent = getCurrentSenderName();
+
+  if (currentUserRoleEl) {
+    const role = getCurrentUserRole();
+    currentUserRoleEl.textContent =
+      role === "admin" ? "أدمن" : role ? "إيجنت" : "";
+  }
+}
+
+function openConversationsMenu() {
+  renderCurrentUserInfo();
+  conversationsMenuPanelEl?.classList.remove("hidden");
+}
+
+function closeConversationsMenu() {
+  conversationsMenuPanelEl?.classList.add("hidden");
+}
+
+conversationsMenuBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const willOpen = conversationsMenuPanelEl?.classList.contains("hidden");
+  closeConversationsMenu();
+  if (willOpen) openConversationsMenu();
+});
+
+conversationsMenuPanelEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+});
+
+document.addEventListener("click", closeConversationsMenu);
+
+logoutBtnEl?.addEventListener("click", () => {
+  closeConversationsMenu();
+  logout();
+});
+
+function updateSessionsSelectionBar() {
+  if (sessionsSelectionCountEl) {
+    sessionsSelectionCountEl.textContent = `تم تحديد ${selectedSessionIds.size}`;
+  }
+}
+
+function enterSessionsSelectMode() {
+  sessionsSelectMode = true;
+  selectedSessionIds = new Set();
+  sessionsSelectionBarEl?.classList.remove("hidden");
+  updateSessionsSelectionBar();
+  renderConversations(conversationsData);
+}
+
+function exitSessionsSelectMode() {
+  sessionsSelectMode = false;
+  selectedSessionIds = new Set();
+  sessionsSelectionBarEl?.classList.add("hidden");
+  bulkLabelPickerEl?.classList.add("hidden");
+  renderConversations(conversationsData);
+}
+
+toggleSessionSelectBtnEl?.addEventListener("click", () => {
+  closeConversationsMenu();
+
+  if (sessionsSelectMode) {
+    exitSessionsSelectMode();
+  } else {
+    enterSessionsSelectMode();
+  }
+});
+
+sessionsSelectionCancelBtnEl?.addEventListener("click", () => {
+  exitSessionsSelectMode();
+});
+
+async function hideConversationsRequest(sessionIds) {
+  await fetch(`${API_BASE}/conversations/hide`, {
+    method: "POST",
+    headers: getAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ sessionIds })
+  });
+}
+
+async function unhideConversationsRequest(sessionIds) {
+  await fetch(`${API_BASE}/conversations/unhide`, {
+    method: "POST",
+    headers: getAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ sessionIds })
+  });
+}
+
+async function markConversationsReadBatchRequest(sessionIds) {
+  await fetch(`${API_BASE}/conversations/mark-read-batch`, {
+    method: "POST",
+    headers: getAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ sessionIds })
+  });
+}
+
+async function assignLabelBatchRequest(labelId, sessionIds) {
+  await fetch(`${API_BASE}/labels/${labelId}/assign-batch`, {
+    method: "POST",
+    headers: getAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ sessionIds })
+  });
+}
+
+sessionsSelectionHideBtnEl?.addEventListener("click", async () => {
+  if (!selectedSessionIds.size) return;
+  if (!confirm(`إخفاء ${selectedSessionIds.size} محادثة من القايمة؟`)) return;
+
+  try {
+    await hideConversationsRequest([...selectedSessionIds]);
+    exitSessionsSelectMode();
+    loadConversations();
+  } catch (error) {
+    console.error(error);
+    alert("حدث خطأ، حاول مرة أخرى");
+  }
+});
+
+sessionsSelectionReadBtnEl?.addEventListener("click", async () => {
+  if (!selectedSessionIds.size) return;
+
+  try {
+    await markConversationsReadBatchRequest([...selectedSessionIds]);
+
+    selectedSessionIds.forEach((sessionId) => {
+      const conv = conversationsData.find((c) => c.session_id === sessionId);
+      if (conv) conv.unread_count = 0;
+    });
+
+    exitSessionsSelectMode();
+  } catch (error) {
+    console.error(error);
+    alert("حدث خطأ، حاول مرة أخرى");
+  }
+});
+
+sessionsSelectionLabelBtnEl?.addEventListener("click", () => {
+  if (!selectedSessionIds.size) return;
+  renderBulkLabelPicker();
+  bulkLabelPickerEl?.classList.remove("hidden");
+});
+
+bulkLabelPickerCancelBtnEl?.addEventListener("click", () => {
+  bulkLabelPickerEl?.classList.add("hidden");
+});
+
+function renderBulkLabelPicker() {
+  if (!bulkLabelPickerListEl) return;
+
+  bulkLabelPickerListEl.innerHTML = "";
+
+  if (!allLabelsCache.length) {
+    bulkLabelPickerListEl.innerHTML =
+      '<div class="labels-empty">لا يوجد ليبلز متاحة</div>';
+    return;
+  }
+
+  allLabelsCache.forEach((label) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.innerHTML = `<span class="label-filter-dot" style="background:${escapeHtml(
+      label.color || "#54105b"
+    )}"></span>${escapeHtml(label.name)}`;
+
+    btn.addEventListener("click", async () => {
+      try {
+        await assignLabelBatchRequest(label.id, [...selectedSessionIds]);
+        bulkLabelPickerEl?.classList.add("hidden");
+        exitSessionsSelectMode();
+        loadConversations();
+      } catch (error) {
+        console.error(error);
+        alert("حدث خطأ، حاول مرة أخرى");
+      }
+    });
+
+    bulkLabelPickerListEl.appendChild(btn);
+  });
+}
+
+function renderHiddenConversations(conversations) {
+  if (!conversations.length) {
+    conversationsEl.innerHTML =
+      '<div class="empty-state">لا توجد محادثات مخفية</div>';
+    return;
+  }
+
+  conversationsEl.classList.remove("select-mode");
+  conversationsEl.innerHTML = "";
+
+  conversations.forEach((conv) => {
+    const item = document.createElement("div");
+    item.className = "session-item";
+    item.dataset.sessionId = conv.session_id || "";
+
+    const row = document.createElement("div");
+    row.className = "session-row";
+    row.innerHTML = `
+      <div class="session-id">
+        ${escapeHtml(conv.customer_name || "عميل")}
+        <div style="font-size:12px;color:#8696a0">
+          ${escapeHtml(conv.session_id || "")}
+        </div>
+      </div>
+    `;
+
+    const unhideBtn = document.createElement("button");
+    unhideBtn.type = "button";
+    unhideBtn.className = "session-unhide-btn";
+    unhideBtn.textContent = "إظهار";
+    unhideBtn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+
+      try {
+        await unhideConversationsRequest([conv.session_id]);
+        loadHiddenConversations();
+      } catch (error) {
+        console.error(error);
+        alert("حدث خطأ، حاول مرة أخرى");
+      }
+    });
+
+    row.appendChild(unhideBtn);
+    item.appendChild(row);
+    conversationsEl.appendChild(item);
+  });
+}
+
+async function loadHiddenConversations() {
+  conversationsEl.innerHTML =
+    '<div class="loading-state">جاري تحميل المحادثات المخفية...</div>';
+
+  try {
+    const res = await fetch(`${API_BASE}/conversations?hidden=1`, {
+      cache: "no-store",
+      headers: getAuthHeaders()
+    });
+
+    if (handleInvalidToken(res)) return;
+    if (!res.ok) throw new Error("Failed hidden conversations");
+
+    const list = await res.json();
+    renderHiddenConversations(Array.isArray(list) ? list : []);
+  } catch (error) {
+    conversationsEl.innerHTML =
+      '<div class="error-state">فشل تحميل المحادثات المخفية</div>';
+    console.error(error);
+  }
+}
+
+function enterHiddenView() {
+  viewingHiddenConversations = true;
+  closeConversationsMenu();
+  exitSessionsSelectMode();
+  hiddenViewBarEl?.classList.remove("hidden");
+  document.querySelector(".mobile-search")?.classList.add("hidden");
+  labelFilterRowEl?.classList.add("hidden");
+  loadHiddenConversations();
+}
+
+function exitHiddenView() {
+  viewingHiddenConversations = false;
+  hiddenViewBarEl?.classList.add("hidden");
+  document.querySelector(".mobile-search")?.classList.remove("hidden");
+  labelFilterRowEl?.classList.remove("hidden");
+  loadConversations();
+}
+
+viewHiddenBtnEl?.addEventListener("click", enterHiddenView);
+backFromHiddenBtnEl?.addEventListener("click", exitHiddenView);
+
 async function refreshConversationLabels() {
   if (!activeSessionId) return;
 
@@ -2113,6 +2430,12 @@ function hideLogin() {
 function logout() {
   localStorage.removeItem("dashboard_token");
   authToken = "";
+
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+
   showLogin();
 }
 
@@ -2160,6 +2483,7 @@ function renderConversations(conversations) {
     return;
   }
 
+  conversationsEl.classList.toggle("select-mode", sessionsSelectMode);
   conversationsEl.innerHTML = "";
 
   conversations.forEach((conv) => {
@@ -2169,6 +2493,10 @@ function renderConversations(conversations) {
 
     if (conv.session_id === activeSessionId) {
       item.classList.add("active");
+    }
+
+    if (selectedSessionIds.has(conv.session_id)) {
+      item.classList.add("selected");
     }
 
     const unreadCount = Number(conv.unread_count || 0);
@@ -2186,6 +2514,7 @@ function renderConversations(conversations) {
       : "";
 
     item.innerHTML = `
+      <div class="session-item-check">✓</div>
       <div class="session-row">
         <div class="session-id">
   ${escapeHtml(conv.customer_name || "عميل")}
@@ -2206,6 +2535,18 @@ function renderConversations(conversations) {
     `;
 
     item.addEventListener("click", () => {
+      if (sessionsSelectMode) {
+        if (selectedSessionIds.has(conv.session_id)) {
+          selectedSessionIds.delete(conv.session_id);
+        } else {
+          selectedSessionIds.add(conv.session_id);
+        }
+
+        item.classList.toggle("selected");
+        updateSessionsSelectionBar();
+        return;
+      }
+
       const hasCachedConversation =
         messagesEl.dataset.loadedSessionId === conv.session_id &&
         messagesEl.childElementCount > 0;
@@ -2714,7 +3055,7 @@ function appendMessageToUI(msg) {
 
   enableReplyGesture(wrap, messageObj, messageType);
 
-if (messageType === "user" && realWaMessageId) {
+if ((messageType === "user" || messageType === "agent") && realWaMessageId) {
   const actionsButton = document.createElement("button");
 
   actionsButton.type = "button";
@@ -3050,15 +3391,119 @@ if (messageType === "user" && realWaMessageId) {
   scrollMessagesToBottom();
 }
 
+function appendOptimisticTextMessage(content, replyTo) {
+  const wrap = document.createElement("div");
+  wrap.className = "message-wrap agent";
+  wrap.dataset.pendingAgent = "true";
+  wrap.dataset.pendingContent = content;
+
+  const bubble = document.createElement("div");
+  bubble.className = "message agent";
+
+  const label = document.createElement("div");
+  label.className = "message-label agent";
+  label.textContent = getCurrentSenderName();
+
+  if (label.textContent.toLowerCase() === "admin") {
+    label.classList.add("sender-admin");
+  } else if (label.textContent.toLowerCase() === "agent1") {
+    label.classList.add("sender-agent1");
+  }
+
+  bubble.appendChild(label);
+
+  if (replyTo && replyTo.content) {
+    const replyBox = document.createElement("div");
+    replyBox.className = "quoted-reply-box";
+    replyBox.dataset.replyTargetId = replyTo.wa_message_id || "";
+    replyBox.style.cursor = "pointer";
+
+    const replyName = document.createElement("div");
+    replyName.className = "quoted-reply-name";
+    replyName.textContent = replyTo.type === "user" ? "العميل" : "أنت";
+
+    const replyText = document.createElement("div");
+    replyText.className = "quoted-reply-text";
+    replyText.textContent = replyTo.content || "";
+
+    replyBox.appendChild(replyName);
+    replyBox.appendChild(replyText);
+    bubble.appendChild(replyBox);
+
+    replyBox.addEventListener("click", (e) => {
+      e.stopPropagation();
+
+      const targetId = replyBox.dataset.replyTargetId;
+      if (!targetId) return;
+
+      const target = messagesEl.querySelector(
+        `[data-wa-message-id="${CSS.escape(targetId)}"]`
+      );
+
+      if (!target) return;
+
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.classList.add("message-highlight");
+
+      setTimeout(() => {
+        target.classList.remove("message-highlight");
+      }, 1200);
+    });
+  }
+
+  const textEl = document.createElement("div");
+  textEl.className = "message-text";
+  textEl.innerHTML = linkifyText(content);
+  bubble.appendChild(textEl);
+
+  const timestampEl = document.createElement("div");
+  timestampEl.className = "message-timestamp";
+  timestampEl.textContent = formatMessageTimestamp(
+    new Date().toISOString()
+  );
+  bubble.appendChild(timestampEl);
+
+  wrap.appendChild(bubble);
+  messagesEl.appendChild(wrap);
+  scrollMessagesToBottom();
+}
+
+function markOptimisticMessageFailed(content) {
+  const lastBubble = messagesEl.lastElementChild;
+
+  if (
+    lastBubble?.dataset?.pendingAgent === "true" &&
+    lastBubble.dataset.pendingContent === content
+  ) {
+    delete lastBubble.dataset.pendingAgent;
+    delete lastBubble.dataset.pendingContent;
+    lastBubble.classList.add("message-send-failed");
+
+    const bubble = lastBubble.querySelector(".message");
+    if (bubble && !bubble.querySelector(".message-send-failed-note")) {
+      const note = document.createElement("div");
+      note.className = "message-send-failed-note";
+      note.textContent = "⚠ فشل الإرسال";
+      bubble.appendChild(note);
+    }
+  }
+}
+
 async function sendMessageFromDashboard() {
   const message = messageInputEl.value.trim();
 
   if (!activeSessionId) return alert("اختر محادثة أولًا");
   if (!message) return;
 
+  const replyTo = selectedReplyMessage;
+
   sendBtnEl.disabled = true;
   messageInputEl.disabled = true;
+  messageInputEl.value = "";
+  resizeMessageInput();
+  clearSelectedReply();
 
+  appendOptimisticTextMessage(message, replyTo);
 
   try {
     const res = await fetch(`${API_BASE}/send-message`, {
@@ -3069,20 +3514,18 @@ async function sendMessageFromDashboard() {
       body: JSON.stringify({
   sessionId: activeSessionId,
   message,
-  replyTo: selectedReplyMessage
+  replyTo
 })
     });
 
     if (!res.ok) throw new Error("فشل الإرسال");
 
-    messageInputEl.value = "";
-    resizeMessageInput();
-    clearSelectedReply();
     loadConversations();
 
   } catch (error) {
     console.error(error);
     alert("خطأ في الإرسال");
+    markOptimisticMessageFailed(message);
   } finally {
     sendBtnEl.disabled = false;
     messageInputEl.disabled = false;
@@ -3300,7 +3743,12 @@ function connectEvents() {
     }
 
     if (data.type === "label_changed") {
-      loadConversations();
+      if (viewingHiddenConversations) {
+        loadHiddenConversations();
+      } else {
+        loadConversations();
+      }
+
       refreshAllLabels();
 
       if (
@@ -3308,6 +3756,16 @@ function connectEvents() {
         typeof refreshConversationLabels === "function"
       ) {
         refreshConversationLabels();
+      }
+
+      return;
+    }
+
+    if (data.type === "conversations_changed") {
+      if (viewingHiddenConversations) {
+        loadHiddenConversations();
+      } else {
+        loadConversations();
       }
 
       return;
@@ -3324,10 +3782,7 @@ function connectEvents() {
     }
 
     if (data.type === "ai_typing") {
-      if (currentSession === eventSession) {
-        showAiTypingIndicator();
-      }
-
+      // متعطل بناءً على الطلب — مش محتاجين مؤشر "AI بيكتب"
       return;
     }
 
@@ -3528,6 +3983,7 @@ function removeAiTypingIndicator() {
 }
 
 function updateConversationPreview() {
+  if (viewingHiddenConversations) return;
   loadConversations();
 }
 
@@ -3593,7 +4049,13 @@ backBtnEl.addEventListener("click", () => {
     closeChat();
   }
 });
-refreshBtnEl.addEventListener("click", loadConversations);
+refreshBtnEl.addEventListener("click", () => {
+  if (viewingHiddenConversations) {
+    loadHiddenConversations();
+  } else {
+    loadConversations();
+  }
+});
 
 window.addEventListener("popstate", () => {
   if (mediaViewerEl) {
@@ -3796,7 +4258,7 @@ function rememberReactionEmoji(emoji) {
 }
 
 function showMessageActions(messageObj, messageType) {
-  if (messageType !== "user") return;
+  if (messageType !== "user" && messageType !== "agent") return;
 
   document.querySelector(".message-actions-menu")?.remove();
 
@@ -3949,7 +4411,7 @@ function showMessageActions(messageObj, messageType) {
 }
 
 function selectReplyMessage(messageObj, messageType) {
-  if (messageType !== "user") return;
+  if (messageType !== "user" && messageType !== "agent") return;
 
   const waMessageId =
     messageObj.wa_message_id ||
@@ -3972,7 +4434,7 @@ function selectReplyMessage(messageObj, messageType) {
 }
 
   selectedReplyMessage = {
-    type: "user",
+    type: messageType,
     content,
     message_kind: messageKind,
     wa_message_id: waMessageId
@@ -3997,9 +4459,12 @@ function renderReplyBar() {
   replyBar.id = "replyBar";
   replyBar.className = "reply-bar";
 
+  const replyTitle =
+    selectedReplyMessage.type === "agent" ? "رد على رسالتك" : "رد على العميل";
+
   replyBar.innerHTML = `
     <div class="reply-bar-content">
-      <div class="reply-bar-title">رد على العميل</div>
+      <div class="reply-bar-title">${escapeHtml(replyTitle)}</div>
       <div class="reply-bar-text">${escapeHtml(selectedReplyMessage.content || "")}</div>
     </div>
     <button type="button" class="reply-bar-close">×</button>
@@ -4012,7 +4477,7 @@ function renderReplyBar() {
 }
 
 function enableReplyGesture(wrap, messageObj, messageType) {
-  if (messageType !== "user") return;
+  if (messageType !== "user" && messageType !== "agent") return;
 
   wrap.style.cursor = "pointer";
 
