@@ -1719,6 +1719,14 @@ async function assignLabelBatchRequest(labelId, sessionIds) {
   });
 }
 
+async function unassignLabelBatchRequest(labelId, sessionIds) {
+  await fetch(`${API_BASE}/labels/${labelId}/unassign-batch`, {
+    method: "POST",
+    headers: getAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ sessionIds })
+  });
+}
+
 sessionsSelectionHideBtnEl?.addEventListener("click", async () => {
   if (!selectedSessionIds.size) return;
   if (!confirm(`إخفاء ${selectedSessionIds.size} محادثة من القايمة؟`)) return;
@@ -1772,16 +1780,34 @@ function renderBulkLabelPicker() {
     return;
   }
 
+  const selectedIds = [...selectedSessionIds];
+
   allLabelsCache.forEach((label) => {
+    const allHaveLabel =
+      selectedIds.length > 0 &&
+      selectedIds.every((sid) => {
+        const conv = conversationsData.find((c) => c.session_id === sid);
+        return (
+          Array.isArray(conv?.labels) &&
+          conv.labels.some((l) => l.id === label.id)
+        );
+      });
+
     const btn = document.createElement("button");
     btn.type = "button";
+    if (allHaveLabel) btn.classList.add("attached");
     btn.innerHTML = `<span class="label-filter-dot" style="background:${escapeHtml(
       label.color || "#54105b"
-    )}"></span>${escapeHtml(label.name)}`;
+    )}"></span>${escapeHtml(label.name)}${allHaveLabel ? " ✓" : ""}`;
 
     btn.addEventListener("click", async () => {
       try {
-        await assignLabelBatchRequest(label.id, [...selectedSessionIds]);
+        if (allHaveLabel) {
+          await unassignLabelBatchRequest(label.id, selectedIds);
+        } else {
+          await assignLabelBatchRequest(label.id, selectedIds);
+        }
+
         bulkLabelPickerEl?.classList.add("hidden");
         exitSessionsSelectMode();
         loadConversations();

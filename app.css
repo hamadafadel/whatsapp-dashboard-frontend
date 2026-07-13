@@ -3698,6 +3698,12 @@ body.labels-open {
   font-weight: 700;
 }
 
+.bulk-label-picker-list button.attached {
+  border-color: var(--mehrab-purple);
+  background: rgba(84, 16, 91, 0.1);
+  color: var(--mehrab-purple-dark);
+}
+
 /* يوتيليتي عام: بيغلب أي display معرّف على العنصر نفسه، عشان .hidden
    يشتغل حتى لو العنصر عنده كلاس تاني بيحدد display (زي flex) */
 .hidden {
