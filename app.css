@@ -1547,6 +1547,10 @@ body,
   border-right-color: var(--mehrab-purple) !important;
 }
 
+.quoted-reply-text {
+  color: var(--mehrab-ink) !important;
+}
+
 .chat-compose {
   background: rgba(251, 245, 236, 0.98) !important;
   border-top: 1px solid rgba(197, 166, 109, 0.45) !important;
