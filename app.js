@@ -1197,6 +1197,7 @@ let currentAiEnabled = true;
 
 let conversationsData = [];
 let activeSessionId = null;
+let messagesRequestToken = 0;
 let currentLoadedMessageCount = 0;
 let oldestLoadedMessageId = null;
 let hasMoreMessages = false;
@@ -1758,6 +1759,11 @@ function renderChatMeta(sessionId, total) {
 async function loadMessages(sessionId) {
   const conv = conversationsData.find(c => c.session_id === sessionId);
 
+  // لو المستخدم فتح محادثة تانية قبل ما الطلب ده يخلص، النتيجة القديمة
+  // ما ينفعش تتكتب فوق المحادثة الجديدة. الـ token ده بيتأكد إن آخر
+  // استدعاء بس هو اللي يرسم النتيجة، حتى لو الردود رجعت بترتيب مقلوب.
+  const requestToken = ++messagesRequestToken;
+
   delete messagesEl.dataset.loadedSessionId;
   chatTitleEl.textContent = conv?.customer_name || "عميل";
   renderChatMeta(sessionId, 0);
@@ -1783,6 +1789,11 @@ async function loadMessages(sessionId) {
     if (!res.ok) throw new Error("Failed messages");
 
     const data = await res.json();
+
+    if (requestToken !== messagesRequestToken || sessionId !== activeSessionId) {
+      return;
+    }
+
     const messages = Array.isArray(data) ? data : (data.messages || []);
 
     messagesEl.innerHTML = "";
@@ -1800,6 +1811,10 @@ async function loadMessages(sessionId) {
     messages.forEach((msg) => appendMessageToUI(msg));
     scrollMessagesToBottom();
   } catch (error) {
+    if (requestToken !== messagesRequestToken || sessionId !== activeSessionId) {
+      return;
+    }
+
     messagesEl.innerHTML = `<div class="error-state">فشل تحميل الرسائل</div>`;
     console.error(error);
   }
@@ -1813,6 +1828,8 @@ async function loadOlderMessages() {
     !oldestLoadedMessageId
   ) return;
 
+  const requestToken = messagesRequestToken;
+  const targetSessionId = activeSessionId;
   isLoadingOlderMessages = true;
   const previousScrollHeight = messagesEl.scrollHeight;
 
@@ -1823,7 +1840,7 @@ async function loadOlderMessages() {
 
   try {
     const res = await fetch(
-      `${API_BASE}/messages/${encodeURIComponent(activeSessionId)}` +
+      `${API_BASE}/messages/${encodeURIComponent(targetSessionId)}` +
       `?limit=100&beforeId=${encodeURIComponent(oldestLoadedMessageId)}`,
       {
         cache: "no-store",
@@ -1834,6 +1851,15 @@ async function loadOlderMessages() {
     if (!res.ok) throw new Error("Failed older messages");
 
     const data = await res.json();
+
+    if (
+      requestToken !== messagesRequestToken ||
+      targetSessionId !== activeSessionId
+    ) {
+      loader.remove();
+      return;
+    }
+
     const olderMessages = data.messages || [];
 
     loader.remove();
