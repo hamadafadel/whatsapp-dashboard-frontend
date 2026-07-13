@@ -639,6 +639,36 @@ input {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
 }
+
+.quoted-reply-box.has-thumb {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  max-height: 52px !important;
+}
+
+.quoted-reply-textwrap {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.quoted-reply-thumb {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+
+.reply-bar-thumb {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: 5px;
+  object-fit: cover;
+  margin: 0 6px;
+}
 .reply-bar {
   display: flex;
   align-items: center;
@@ -3662,6 +3692,12 @@ body.labels-open {
   color: var(--mehrab-ink);
   font-size: 12px;
   font-weight: 700;
+}
+
+/* يوتيليتي عام: بيغلب أي display معرّف على العنصر نفسه، عشان .hidden
+   يشتغل حتى لو العنصر عنده كلاس تاني بيحدد display (زي flex) */
+.hidden {
+  display: none !important;
 }
 
 .bulk-label-picker-cancel {

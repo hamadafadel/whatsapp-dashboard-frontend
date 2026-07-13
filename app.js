@@ -13,7 +13,6 @@ const chatTitleEl = document.getElementById("chatTitle");
 const chatSubtitleEl = document.getElementById("chatSubtitle");
 const chatHeaderTextEl = document.querySelector(".chat-header-text");
 const searchInputEl = document.getElementById("searchInput");
-const markAllReadBtnEl = document.getElementById("markAllReadBtn");
 const conversationsMenuBtnEl = document.getElementById("conversationsMenuBtn");
 const conversationsMenuPanelEl = document.getElementById("conversationsMenuPanel");
 const currentUserNameEl = document.getElementById("currentUserName");
@@ -29,6 +28,7 @@ const sessionsSelectionCancelBtnEl = document.getElementById("sessionsSelectionC
 const sessionsSelectionHideBtnEl = document.getElementById("sessionsSelectionHideBtn");
 const sessionsSelectionReadBtnEl = document.getElementById("sessionsSelectionReadBtn");
 const sessionsSelectionLabelBtnEl = document.getElementById("sessionsSelectionLabelBtn");
+const sessionsSelectionSelectAllBtnEl = document.getElementById("sessionsSelectionSelectAllBtn");
 const bulkLabelPickerEl = document.getElementById("bulkLabelPicker");
 const bulkLabelPickerListEl = document.getElementById("bulkLabelPickerList");
 const bulkLabelPickerCancelBtnEl = document.getElementById("bulkLabelPickerCancelBtn");
@@ -1592,14 +1592,25 @@ function getCurrentUserRole() {
   return decodeAuthToken()?.role || "";
 }
 
+function applyRolePermissionsToUI() {
+  const role = getCurrentUserRole();
+
+  // إخفاء المحادثات وشاشة المحادثات المخفية للأدمن بس
+  viewHiddenBtnEl?.classList.toggle("hidden", role !== "admin");
+  sessionsSelectionHideBtnEl?.classList.toggle("hidden", role !== "admin");
+}
+
 function renderCurrentUserInfo() {
   if (currentUserNameEl) currentUserNameEl.textContent = getCurrentSenderName();
 
+  const role = getCurrentUserRole();
+
   if (currentUserRoleEl) {
-    const role = getCurrentUserRole();
     currentUserRoleEl.textContent =
       role === "admin" ? "أدمن" : role ? "إيجنت" : "";
   }
+
+  applyRolePermissionsToUI();
 }
 
 function openConversationsMenu() {
@@ -1663,6 +1674,17 @@ toggleSessionSelectBtnEl?.addEventListener("click", () => {
 
 sessionsSelectionCancelBtnEl?.addEventListener("click", () => {
   exitSessionsSelectMode();
+});
+
+sessionsSelectionSelectAllBtnEl?.addEventListener("click", () => {
+  const items = [...conversationsEl.querySelectorAll(".session-item")];
+
+  items.forEach((item) => {
+    selectedSessionIds.add(item.dataset.sessionId);
+    item.classList.add("selected");
+  });
+
+  updateSessionsSelectionBar();
 });
 
 async function hideConversationsRequest(sessionIds) {
@@ -2534,7 +2556,46 @@ function renderConversations(conversations) {
       ${labelsHtml}
     `;
 
+    let longPressTimer = null;
+    let longPressFired = false;
+
+    const clearLongPressTimer = () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
+    item.addEventListener("pointerdown", (event) => {
+      if (event.button !== undefined && event.button !== 0) return;
+
+      longPressFired = false;
+      clearLongPressTimer();
+
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+
+        if (!sessionsSelectMode) {
+          sessionsSelectMode = true;
+          sessionsSelectionBarEl?.classList.remove("hidden");
+        }
+
+        selectedSessionIds.add(conv.session_id);
+        updateSessionsSelectionBar();
+        renderConversations(conversationsData);
+      }, 500);
+    });
+
+    item.addEventListener("pointerup", clearLongPressTimer);
+    item.addEventListener("pointerleave", clearLongPressTimer);
+    item.addEventListener("pointercancel", clearLongPressTimer);
+
     item.addEventListener("click", () => {
+      if (longPressFired) {
+        longPressFired = false;
+        return;
+      }
+
       if (sessionsSelectMode) {
         if (selectedSessionIds.has(conv.session_id)) {
           selectedSessionIds.delete(conv.session_id);
@@ -3237,8 +3298,31 @@ if ((messageType === "user" || messageType === "agent") && realWaMessageId) {
     replyText.textContent =
       messageObj.reply_to.content || "";
 
-    replyBox.appendChild(replyName);
-    replyBox.appendChild(replyText);
+    const replyThumbUrl =
+      messageObj.reply_to.message_kind === "image"
+        ? messageObj.reply_to.media_url || ""
+        : "";
+
+    if (replyThumbUrl) {
+      replyBox.classList.add("has-thumb");
+
+      const textWrap = document.createElement("div");
+      textWrap.className = "quoted-reply-textwrap";
+      textWrap.appendChild(replyName);
+      textWrap.appendChild(replyText);
+
+      const thumb = document.createElement("img");
+      thumb.className = "quoted-reply-thumb";
+      thumb.src = replyThumbUrl;
+      thumb.alt = "";
+
+      replyBox.appendChild(thumb);
+      replyBox.appendChild(textWrap);
+    } else {
+      replyBox.appendChild(replyName);
+      replyBox.appendChild(replyText);
+    }
+
     bubble.appendChild(replyBox);
 
     replyBox.addEventListener("click", (e) => {
@@ -3426,8 +3510,29 @@ function appendOptimisticTextMessage(content, replyTo) {
     replyText.className = "quoted-reply-text";
     replyText.textContent = replyTo.content || "";
 
-    replyBox.appendChild(replyName);
-    replyBox.appendChild(replyText);
+    const replyThumbUrl =
+      replyTo.message_kind === "image" ? replyTo.media_url || "" : "";
+
+    if (replyThumbUrl) {
+      replyBox.classList.add("has-thumb");
+
+      const textWrap = document.createElement("div");
+      textWrap.className = "quoted-reply-textwrap";
+      textWrap.appendChild(replyName);
+      textWrap.appendChild(replyText);
+
+      const thumb = document.createElement("img");
+      thumb.className = "quoted-reply-thumb";
+      thumb.src = replyThumbUrl;
+      thumb.alt = "";
+
+      replyBox.appendChild(thumb);
+      replyBox.appendChild(textWrap);
+    } else {
+      replyBox.appendChild(replyName);
+      replyBox.appendChild(replyText);
+    }
+
     bubble.appendChild(replyBox);
 
     replyBox.addEventListener("click", (e) => {
@@ -3638,25 +3743,6 @@ async function markConversationRead(sessionId) {
     console.error(error);
   }
 }
-
-markAllReadBtnEl?.addEventListener("click", async () => {
-  markAllReadBtnEl.disabled = true;
-
-  try {
-    await fetch(`${API_BASE}/conversations/mark-all-read`, {
-      method: "POST",
-      headers: getAuthHeaders()
-    });
-
-    conversationsData.forEach((c) => { c.unread_count = 0; });
-    renderConversations(conversationsData);
-  } catch (error) {
-    console.error(error);
-    alert("حدث خطأ، حاول مرة أخرى");
-  } finally {
-    markAllReadBtnEl.disabled = false;
-  }
-});
 
 function updateGlobalUnreadIndicator() {
   const total = conversationsData.reduce(
@@ -4421,6 +4507,7 @@ function selectReplyMessage(messageObj, messageType) {
     "";
 
   const messageKind = messageObj.message_kind || "text";
+  const mediaUrl = messageObj.media_url || "";
 
   let content = messageObj.content || "";
 
@@ -4437,7 +4524,8 @@ function selectReplyMessage(messageObj, messageType) {
     type: messageType,
     content,
     message_kind: messageKind,
-    wa_message_id: waMessageId
+    wa_message_id: waMessageId,
+    media_url: mediaUrl
   };
 
   renderReplyBar();
@@ -4462,11 +4550,20 @@ function renderReplyBar() {
   const replyTitle =
     selectedReplyMessage.type === "agent" ? "رد على رسالتك" : "رد على العميل";
 
+  const hasImageThumb =
+    selectedReplyMessage.message_kind === "image" &&
+    selectedReplyMessage.media_url;
+
   replyBar.innerHTML = `
     <div class="reply-bar-content">
       <div class="reply-bar-title">${escapeHtml(replyTitle)}</div>
       <div class="reply-bar-text">${escapeHtml(selectedReplyMessage.content || "")}</div>
     </div>
+    ${
+      hasImageThumb
+        ? `<img class="reply-bar-thumb" src="${escapeHtml(selectedReplyMessage.media_url)}" alt="" />`
+        : ""
+    }
     <button type="button" class="reply-bar-close">×</button>
   `;
 
@@ -4590,6 +4687,7 @@ async function login() {
     connectEvents();
     loadConversations();
     refreshAllLabels();
+    applyRolePermissionsToUI();
     ensurePushSubscription();
 
   } catch (err) {
@@ -4611,6 +4709,7 @@ if (authToken) {
 if (authToken) {
   loadConversations();
   refreshAllLabels();
+  applyRolePermissionsToUI();
 }
 if (appEl && window.innerWidth > 900) {
   appEl.classList.remove("chat-open");
