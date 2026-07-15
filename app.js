@@ -1750,6 +1750,7 @@ sessionsSelectionReadBtnEl?.addEventListener("click", async () => {
     selectedSessionIds.forEach((sessionId) => {
       const conv = conversationsData.find((c) => c.session_id === sessionId);
       if (conv) conv.unread_count = 0;
+      dismissNotificationsForSession(sessionId);
     });
 
     exitSessionsSelectMode();
@@ -2898,6 +2899,14 @@ function normalizeMessage(msg) {
   return {
     ...messageObj,
 
+    // ده الـ id بتاع الصف في القاعدة، مش رقم واتساب الحقيقي — بيتفقد وقت
+    // الـ normalize لو ما ضفناهوش هنا صراحة، وبنستخدمه كـ fallback للريبلاي
+    // لما الرسالة (زي صور اختيار المسار) معندهاش wa_message_id حقيقي محفوظ
+    id:
+      msg?.id ||
+      messageObj.id ||
+      "",
+
     type:
       messageObj.type ||
       msg?.type ||
@@ -3756,7 +3765,26 @@ navigator.serviceWorker?.addEventListener?.("message", (event) => {
   }
 });
 
+// بيقفل أي إشعار نظام حقيقي فاضل معلّق لمحادثة معينة، عشان عداد أيقونة
+// التطبيق يتحدث لوحده لما تقرا الرسايل من جوه التطبيق (مش بس لو مسحتها يدوي)
+async function dismissNotificationsForSession(sessionId) {
+  if (!sessionId || !("serviceWorker" in navigator)) return;
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const notifications = await registration.getNotifications({
+      tag: `session-${sessionId}`
+    });
+
+    notifications.forEach((notification) => notification.close());
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 async function markConversationRead(sessionId) {
+  dismissNotificationsForSession(sessionId);
+
   try {
     await fetch(
       `${API_BASE}/conversations/${encodeURIComponent(sessionId)}/mark-read`,
