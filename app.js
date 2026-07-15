@@ -3151,7 +3151,12 @@ function appendMessageToUI(msg) {
 
   enableReplyGesture(wrap, messageObj, messageType);
 
-if ((messageType === "user" || messageType === "agent") && realWaMessageId) {
+if (
+  (messageType === "user" ||
+    messageType === "agent" ||
+    messageType === "ai") &&
+  realWaMessageId
+) {
   const actionsButton = document.createElement("button");
 
   actionsButton.type = "button";
@@ -4398,7 +4403,11 @@ function rememberReactionEmoji(emoji) {
 }
 
 function showMessageActions(messageObj, messageType) {
-  if (messageType !== "user" && messageType !== "agent") return;
+  if (
+    messageType !== "user" &&
+    messageType !== "agent" &&
+    messageType !== "ai"
+  ) return;
 
   document.querySelector(".message-actions-menu")?.remove();
 
@@ -4551,7 +4560,11 @@ function showMessageActions(messageObj, messageType) {
 }
 
 function selectReplyMessage(messageObj, messageType) {
-  if (messageType !== "user" && messageType !== "agent") return;
+  if (
+    messageType !== "user" &&
+    messageType !== "agent" &&
+    messageType !== "ai"
+  ) return;
 
   const waMessageId =
     messageObj.wa_message_id ||
@@ -4602,7 +4615,7 @@ function renderReplyBar() {
   replyBar.className = "reply-bar";
 
   const replyTitle =
-    selectedReplyMessage.type === "agent" ? "رد على رسالتك" : "رد على العميل";
+    selectedReplyMessage.type === "user" ? "رد على العميل" : "رد على رسالتك";
 
   const hasImageThumb =
     selectedReplyMessage.message_kind === "image" &&
@@ -4628,7 +4641,11 @@ function renderReplyBar() {
 }
 
 function enableReplyGesture(wrap, messageObj, messageType) {
-  if (messageType !== "user" && messageType !== "agent") return;
+  if (
+    messageType !== "user" &&
+    messageType !== "agent" &&
+    messageType !== "ai"
+  ) return;
 
   wrap.style.cursor = "pointer";
 
