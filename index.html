@@ -121,6 +121,10 @@
 
       <div id="messages" class="messages"></div>
 
+      <div id="windowExpiredBanner" class="window-expired-banner hidden">
+        ⚠️ مر أكتر من 24 ساعة من غير رد على آخر رسالة من العميل — التواصل النصي العادي مش متاح دلوقتي، لازم تبعت تيمبليت من زرار المسارات.
+      </div>
+
       <footer class="chat-compose">
   <input
   id="mediaInput"
@@ -218,7 +222,17 @@
   <button type="button" data-action-id="foam">إسفنج</button>
   <button type="button" data-action-id="wholesale">جملة</button>
   <button type="button" data-action-id="regular">عادي</button>
+  <button id="openTemplatesBtn" type="button">📨 إرسال تيمبليت</button>
   <div id="quickActionsStatus" class="quick-actions-status"></div>
+</div>
+
+<div id="templatesPanel" class="quick-actions-panel hidden">
+  <div class="quick-actions-title">
+    <button id="backToActionsBtn" type="button" class="templates-back-btn">‹</button>
+    اختيار التيمبليت
+  </div>
+  <div id="templatesList"></div>
+  <div id="templatesStatus" class="quick-actions-status"></div>
 </div>
 
 <button

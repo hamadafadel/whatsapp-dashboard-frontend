@@ -49,6 +49,12 @@ const recordAudioBtnEl = document.getElementById("recordAudioBtn");
 const quickActionsBtnEl = document.getElementById("quickActionsBtn");
 const quickActionsPanelEl = document.getElementById("quickActionsPanel");
 const quickActionsStatusEl = document.getElementById("quickActionsStatus");
+const openTemplatesBtnEl = document.getElementById("openTemplatesBtn");
+const templatesPanelEl = document.getElementById("templatesPanel");
+const backToActionsBtnEl = document.getElementById("backToActionsBtn");
+const templatesListEl = document.getElementById("templatesList");
+const templatesStatusEl = document.getElementById("templatesStatus");
+const windowExpiredBannerEl = document.getElementById("windowExpiredBanner");
 const voiceRecordingBarEl =
   document.getElementById("voiceRecordingBar");
 
@@ -187,6 +193,7 @@ document.addEventListener("click", closeEmojiPicker);
 
 function closeQuickActions() {
   quickActionsPanelEl?.classList.add("hidden");
+  templatesPanelEl?.classList.add("hidden");
   quickActionsBtnEl?.setAttribute("aria-expanded", "false");
 }
 
@@ -249,6 +256,108 @@ quickActionsPanelEl?.querySelectorAll("[data-action-id]").forEach((button) => {
       actionButtons.forEach((item) => { item.disabled = false; });
     }
   });
+});
+
+let templatesCache = null;
+
+async function fetchTemplates() {
+  if (templatesCache) return templatesCache;
+
+  const response = await fetch(`${API_BASE}/templates`, {
+    headers: getAuthHeaders()
+  });
+
+  if (handleInvalidToken(response)) return [];
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to load templates");
+  }
+
+  templatesCache = Array.isArray(data.templates) ? data.templates : [];
+  return templatesCache;
+}
+
+async function renderTemplatesList() {
+  if (!templatesListEl) return;
+
+  templatesListEl.innerHTML = '<div class="quick-actions-status">جاري التحميل...</div>';
+  if (templatesStatusEl) templatesStatusEl.textContent = "";
+
+  try {
+    const templates = await fetchTemplates();
+    templatesListEl.innerHTML = "";
+
+    if (!templates.length) {
+      templatesListEl.innerHTML =
+        '<div class="quick-actions-status">لا يوجد تيمبليتات متاحة</div>';
+      return;
+    }
+
+    templates.forEach((template) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "template-item-btn";
+      button.textContent = template.label;
+
+      button.addEventListener("click", async () => {
+        if (!activeSessionId) return;
+
+        const allButtons = templatesListEl.querySelectorAll(".template-item-btn");
+        allButtons.forEach((b) => { b.disabled = true; });
+        if (templatesStatusEl) templatesStatusEl.textContent = "جاري إرسال التيمبليت...";
+
+        try {
+          const response = await fetch(`${API_BASE}/send-template`, {
+            method: "POST",
+            headers: getAuthHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({
+              sessionId: activeSessionId,
+              templateId: template.id
+            })
+          });
+
+          if (handleInvalidToken(response)) return;
+
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(result.error || "Failed to send template");
+          }
+
+          if (templatesStatusEl) templatesStatusEl.textContent = "تم إرسال التيمبليت";
+          setTimeout(closeQuickActions, 500);
+        } catch (error) {
+          console.error(error);
+          if (templatesStatusEl) templatesStatusEl.textContent = "فشل إرسال التيمبليت";
+        } finally {
+          allButtons.forEach((b) => { b.disabled = false; });
+        }
+      });
+
+      templatesListEl.appendChild(button);
+    });
+  } catch (error) {
+    console.error(error);
+    templatesListEl.innerHTML =
+      '<div class="quick-actions-status">تعذر تحميل التيمبليتات</div>';
+  }
+}
+
+openTemplatesBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  quickActionsPanelEl?.classList.add("hidden");
+  templatesPanelEl?.classList.remove("hidden");
+  renderTemplatesList();
+});
+
+backToActionsBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  templatesPanelEl?.classList.add("hidden");
+  quickActionsPanelEl?.classList.remove("hidden");
+});
+
+templatesPanelEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
 });
 
 document.addEventListener("click", closeQuickActions);
@@ -2655,6 +2764,7 @@ function renderConversations(conversations) {
       if (hasCachedConversation) {
         chatTitleEl.textContent = conv.customer_name || "عميل";
         renderChatMeta(conv.session_id, currentLoadedMessageCount);
+        reapplyMessagingWindowCheckFromCache();
       } else {
         loadMessages(conv.session_id);
       }
@@ -2695,8 +2805,55 @@ function renderChatMeta(sessionId, total) {
   chatSubtitleEl.replaceChildren(phone, count);
 }
 
+// بيتحقق لو آخر رسالة في المحادثة من العميل ومر عليها 24 ساعة أو أكتر —
+// في الحالة دي واتساب مش بيسمح برسايل نصية عادية، لازم تيمبليت
+function checkMessagingWindow(messages) {
+  if (!windowExpiredBannerEl) return;
+
+  const lastMsg = messages[messages.length - 1];
+
+  if (!lastMsg || lastMsg.type !== "user") {
+    windowExpiredBannerEl.classList.add("hidden");
+    messagesEl.dataset.lastMessageType = lastMsg?.type || "";
+    messagesEl.dataset.lastMessageTime = "";
+    return;
+  }
+
+  const lastTime = new Date(
+    lastMsg.created_at || lastMsg.timestamp || 0
+  ).getTime();
+
+  messagesEl.dataset.lastMessageType = lastMsg.type;
+  messagesEl.dataset.lastMessageTime = String(lastTime || "");
+
+  if (!lastTime) {
+    windowExpiredBannerEl.classList.add("hidden");
+    return;
+  }
+
+  const hoursPassed = (Date.now() - lastTime) / (1000 * 60 * 60);
+  windowExpiredBannerEl.classList.toggle("hidden", hoursPassed < 24);
+}
+
+function reapplyMessagingWindowCheckFromCache() {
+  if (!windowExpiredBannerEl) return;
+
+  const type = messagesEl.dataset.lastMessageType;
+  const timeStr = messagesEl.dataset.lastMessageTime;
+
+  if (type !== "user" || !timeStr) {
+    windowExpiredBannerEl.classList.add("hidden");
+    return;
+  }
+
+  const hoursPassed = (Date.now() - Number(timeStr)) / (1000 * 60 * 60);
+  windowExpiredBannerEl.classList.toggle("hidden", hoursPassed < 24);
+}
+
 async function loadMessages(sessionId) {
   const conv = conversationsData.find(c => c.session_id === sessionId);
+
+  windowExpiredBannerEl?.classList.add("hidden");
 
   // لو المستخدم فتح محادثة تانية قبل ما الطلب ده يخلص، النتيجة القديمة
   // ما ينفعش تتكتب فوق المحادثة الجديدة. الـ token ده بيتأكد إن آخر
@@ -2741,6 +2898,7 @@ async function loadMessages(sessionId) {
     hasMoreMessages = Boolean(data.hasMore);
     renderChatMeta(sessionId, currentLoadedMessageCount);
     messagesEl.dataset.loadedSessionId = sessionId;
+    checkMessagingWindow(messages);
 
     if (!messages.length) {
       messagesEl.innerHTML = `<div class="empty-state">لا توجد رسائل</div>`;
