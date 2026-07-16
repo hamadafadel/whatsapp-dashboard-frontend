@@ -1229,7 +1229,7 @@ savedMediaFileInputEl?.addEventListener("change", async () => {
   addSavedMediaBtnEl.disabled = true;
 
   let uploaded = 0;
-  let failed = 0;
+  const failReasons = [];
 
   for (const file of files) {
     try {
@@ -1237,15 +1237,18 @@ savedMediaFileInputEl?.addEventListener("change", async () => {
       uploaded++;
     } catch (error) {
       console.error(error);
-      failed++;
+      failReasons.push(`${file.name}: ${error.message || "خطأ غير معروف"}`);
     }
   }
 
   addSavedMediaBtnEl.disabled = false;
   await loadSavedMediaItems();
 
-  if (failed) {
-    alert(`تم رفع ${uploaded} من ${files.length}، وفشل رفع ${failed}`);
+  if (failReasons.length) {
+    alert(
+      `تم رفع ${uploaded} من ${files.length}، وفشل رفع ${failReasons.length}:\n` +
+      failReasons.join("\n")
+    );
   }
 });
 
@@ -2791,6 +2794,7 @@ function openChat() {
 function closeChat() {
   appEl.classList.remove("chat-open");
   removeAiTypingIndicator();
+  document.querySelector(".message-actions-menu")?.remove();
 }
 
 function renderChatMeta(sessionId, total) {
@@ -3797,6 +3801,11 @@ async function sendMessageFromDashboard() {
 
   if (!activeSessionId) return alert("اختر محادثة أولًا");
   if (!message) return;
+
+  if (windowExpiredBannerEl && !windowExpiredBannerEl.classList.contains("hidden")) {
+    alert("مرّ أكثر من 24 ساعة على آخر رسالة من العميل، لا يمكن إرسال رسالة نصية عادية. استخدم زرار إرسال تيمبليت.");
+    return;
+  }
 
   const replyTo = selectedReplyMessage;
 
@@ -4811,6 +4820,7 @@ function enableReplyGesture(wrap, messageObj, messageType) {
   let startX = 0;
   let startY = 0;
   let didSelect = false;
+  let touchHandled = false;
 
   const select = () => {
   if (didSelect) return;
@@ -4825,8 +4835,14 @@ function enableReplyGesture(wrap, messageObj, messageType) {
   }, 200);
 };
 
-  // Desktop click
+  // Desktop click. على الموبايل بيتنفذ برضه لأن اللمسة بتولّد click بعدها،
+  // فبنستخدم touchHandled عشان نمنع فتح القايمة مرتين لنفس اللمسة.
   wrap.addEventListener("click", () => {
+    if (touchHandled) {
+      touchHandled = false;
+      return;
+    }
+
     select();
   });
 
@@ -4839,6 +4855,7 @@ function enableReplyGesture(wrap, messageObj, messageType) {
   // Mobile long press
   wrap.addEventListener("touchstart", (e) => {
     didSelect = false;
+    touchHandled = true;
 
     const t = e.touches[0];
     startX = t.clientX;
@@ -4870,6 +4887,7 @@ function enableReplyGesture(wrap, messageObj, messageType) {
 
   wrap.addEventListener("touchcancel", () => {
     clearTimeout(pressTimer);
+    touchHandled = false;
   });
 }
 
