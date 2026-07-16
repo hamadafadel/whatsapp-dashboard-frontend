@@ -55,6 +55,8 @@ const backToActionsBtnEl = document.getElementById("backToActionsBtn");
 const templatesListEl = document.getElementById("templatesList");
 const templatesStatusEl = document.getElementById("templatesStatus");
 const windowExpiredBannerEl = document.getElementById("windowExpiredBanner");
+const sendTemplateInsteadBtnEl = document.getElementById("sendTemplateInsteadBtn");
+const chatComposeEl = document.querySelector(".chat-compose");
 const voiceRecordingBarEl =
   document.getElementById("voiceRecordingBar");
 
@@ -358,6 +360,21 @@ backToActionsBtnEl?.addEventListener("click", (event) => {
 
 templatesPanelEl?.addEventListener("click", (event) => {
   event.stopPropagation();
+});
+
+sendTemplateInsteadBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+
+  if (!activeSessionId) {
+    alert("اختر محادثة أولًا");
+    return;
+  }
+
+  closeEmojiPicker();
+  quickActionsPanelEl?.classList.add("hidden");
+  templatesPanelEl?.classList.remove("hidden");
+  quickActionsBtnEl?.setAttribute("aria-expanded", "true");
+  renderTemplatesList();
 });
 
 document.addEventListener("click", closeQuickActions);
@@ -1230,10 +1247,21 @@ savedMediaFileInputEl?.addEventListener("change", async () => {
 
   let uploaded = 0;
   const failReasons = [];
+  const maxVideoSize = 15 * 1024 * 1024;
 
   for (const file of files) {
     try {
-      await uploadSavedMediaItem(savedMediaCurrentFolder.id, file);
+      if (file.type.startsWith("video/") && file.size > maxVideoSize) {
+        throw new Error("الفيديو أكبر من 15 ميجا");
+      }
+
+      // نفس الضغط المستخدم مع الصور المبعوتة عن طريق دبوس الإرفاق
+      // (تحويل لـ JPEG بجودة 92%) عشان الصور المحفوظة توصل للعميل بنفس الطريقة
+      const uploadFile = file.type.startsWith("image/")
+        ? await normalizeImageFile(file)
+        : file;
+
+      await uploadSavedMediaItem(savedMediaCurrentFolder.id, uploadFile);
       uploaded++;
     } catch (error) {
       console.error(error);
@@ -1275,8 +1303,12 @@ sendFolderBtnEl?.addEventListener("click", async (event) => {
     closeSavedMedia();
 
     if (result?.failed) {
+      const reasons = Array.isArray(result.failReasons) && result.failReasons.length
+        ? "\n" + result.failReasons.join("\n")
+        : "";
+
       alert(
-        `تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}`
+        `تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}${reasons}`
       );
     }
   } catch (error) {
@@ -1319,8 +1351,12 @@ sendSelectedBtnEl?.addEventListener("click", async (event) => {
     closeSavedMedia();
 
     if (result?.failed) {
+      const reasons = Array.isArray(result.failReasons) && result.failReasons.length
+        ? "\n" + result.failReasons.join("\n")
+        : "";
+
       alert(
-        `تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}`
+        `تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}${reasons}`
       );
     }
   } catch (error) {
@@ -2809,55 +2845,60 @@ function renderChatMeta(sessionId, total) {
   chatSubtitleEl.replaceChildren(phone, count);
 }
 
-// بيتحقق لو آخر رسالة في المحادثة من العميل ومر عليها 24 ساعة أو أكتر —
-// في الحالة دي واتساب مش بيسمح برسايل نصية عادية، لازم تيمبليت
+// بيتحقق من وقت آخر رسالة من العميل نفسه — حتى لو احنا (أو الـ AI) رددنا
+// بعدها برسايل تانية. نافذة الـ 24 ساعة بتتحسب من آخر رسالة العميل بالظبط
+// وما بتتجددش لمجرد إننا رددنا، فلو مر عليها 24 ساعة واتساب مش بيسمح
+// برسايل نصية عادية، لازم تيمبليت.
+function findLastUserMessageTime(messages) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.type === "user") {
+      return new Date(
+        messages[i].created_at || messages[i].timestamp || 0
+      ).getTime() || 0;
+    }
+  }
+
+  return 0;
+}
+
+function applyMessagingWindowState(lastUserTime) {
+  if (!windowExpiredBannerEl) return;
+
+  const expired =
+    lastUserTime > 0 &&
+    (Date.now() - lastUserTime) / (1000 * 60 * 60) >= 24;
+
+  windowExpiredBannerEl.classList.toggle("hidden", !expired);
+  chatComposeEl?.classList.toggle("window-expired", expired);
+}
+
 function checkMessagingWindow(messages) {
   if (!windowExpiredBannerEl) return;
 
-  const lastMsg = messages[messages.length - 1];
-
-  if (!lastMsg || lastMsg.type !== "user") {
-    windowExpiredBannerEl.classList.add("hidden");
-    messagesEl.dataset.lastMessageType = lastMsg?.type || "";
-    messagesEl.dataset.lastMessageTime = "";
-    return;
-  }
-
-  const lastTime = new Date(
-    lastMsg.created_at || lastMsg.timestamp || 0
-  ).getTime();
-
-  messagesEl.dataset.lastMessageType = lastMsg.type;
-  messagesEl.dataset.lastMessageTime = String(lastTime || "");
-
-  if (!lastTime) {
-    windowExpiredBannerEl.classList.add("hidden");
-    return;
-  }
-
-  const hoursPassed = (Date.now() - lastTime) / (1000 * 60 * 60);
-  windowExpiredBannerEl.classList.toggle("hidden", hoursPassed < 24);
+  const lastUserTime = findLastUserMessageTime(messages);
+  messagesEl.dataset.lastUserMessageTime = String(lastUserTime || "");
+  applyMessagingWindowState(lastUserTime);
 }
 
 function reapplyMessagingWindowCheckFromCache() {
   if (!windowExpiredBannerEl) return;
 
-  const type = messagesEl.dataset.lastMessageType;
-  const timeStr = messagesEl.dataset.lastMessageTime;
+  const timeStr = messagesEl.dataset.lastUserMessageTime;
 
-  if (type !== "user" || !timeStr) {
+  if (!timeStr) {
     windowExpiredBannerEl.classList.add("hidden");
+    chatComposeEl?.classList.remove("window-expired");
     return;
   }
 
-  const hoursPassed = (Date.now() - Number(timeStr)) / (1000 * 60 * 60);
-  windowExpiredBannerEl.classList.toggle("hidden", hoursPassed < 24);
+  applyMessagingWindowState(Number(timeStr));
 }
 
 async function loadMessages(sessionId) {
   const conv = conversationsData.find(c => c.session_id === sessionId);
 
   windowExpiredBannerEl?.classList.add("hidden");
+  chatComposeEl?.classList.remove("window-expired");
 
   // لو المستخدم فتح محادثة تانية قبل ما الطلب ده يخلص، النتيجة القديمة
   // ما ينفعش تتكتب فوق المحادثة الجديدة. الـ token ده بيتأكد إن آخر

@@ -2473,6 +2473,41 @@ body.media-gallery-open {
   box-shadow: none !important;
 }
 
+/* بعد انتهاء نافذة الـ 24 ساعة: يختفي مربع الكتابة وكل أزرار الإرسال
+   العادي ويظهر زرار واحد يوديك على مسار إرسال التيمبليت */
+.chat-compose #sendTemplateInsteadBtn {
+  display: none;
+  order: 1;
+  flex: 1 0 100% !important;
+  width: 100% !important;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  margin: 0 !important;
+  border-radius: 24px !important;
+  border: 1px solid rgba(197, 166, 109, 0.55) !important;
+  background: rgba(197, 166, 109, 0.15) !important;
+  color: var(--mehrab-purple) !important;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.chat-compose.window-expired #sendTemplateInsteadBtn {
+  display: flex !important;
+}
+
+.chat-compose.window-expired #messageInput,
+.chat-compose.window-expired #emojiBtn,
+.chat-compose.window-expired #attachBtn,
+.chat-compose.window-expired #recordAudioBtn,
+.chat-compose.window-expired #savedRepliesBtn,
+.chat-compose.window-expired #savedMediaBtn,
+.chat-compose.window-expired #quickActionsBtn,
+.chat-compose.window-expired #sendBtn {
+  display: none !important;
+}
+
 .chat-compose #savedRepliesBtn svg,
 .chat-compose #savedMediaBtn svg {
   width: 21px;
