@@ -2851,7 +2851,9 @@ function renderChatMeta(sessionId, total) {
 // برسايل نصية عادية، لازم تيمبليت.
 function findLastUserMessageTime(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i]?.type === "user") {
+    const type = messages[i]?.type;
+
+    if (type === "user" || type === "human") {
       return new Date(
         messages[i].created_at || messages[i].timestamp || 0
       ).getTime() || 0;
