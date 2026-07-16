@@ -2504,7 +2504,8 @@ body.media-gallery-open {
 .chat-compose.window-expired #savedRepliesBtn,
 .chat-compose.window-expired #savedMediaBtn,
 .chat-compose.window-expired #quickActionsBtn,
-.chat-compose.window-expired #sendBtn {
+.chat-compose.window-expired #sendBtn,
+.chat-compose.window-expired #quickActionsPanel {
   display: none !important;
 }
 

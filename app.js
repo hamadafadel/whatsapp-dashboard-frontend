@@ -253,7 +253,7 @@ quickActionsPanelEl?.querySelectorAll("[data-action-id]").forEach((button) => {
       setTimeout(closeQuickActions, 500);
     } catch (error) {
       console.error(error);
-      quickActionsStatusEl.textContent = "فشل تشغيل المسار";
+      quickActionsStatusEl.textContent = error.message || "فشل تشغيل المسار";
     } finally {
       actionButtons.forEach((item) => { item.disabled = false; });
     }
@@ -2872,6 +2872,9 @@ function applyMessagingWindowState(lastUserTime) {
 
   windowExpiredBannerEl.classList.toggle("hidden", !expired);
   chatComposeEl?.classList.toggle("window-expired", expired);
+
+  // لو المسارات أو الرد كانوا مفتوحين قبل ما الوقت ينتهي، اقفلهم فورًا
+  if (expired) closeQuickActions();
 }
 
 function checkMessagingWindow(messages) {
