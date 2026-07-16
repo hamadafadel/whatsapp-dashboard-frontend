@@ -4239,6 +4239,11 @@ if (data.type === "reaction") {
       if (currentSession === eventSession) {
         removeAiTypingIndicator();
 
+        const realtimeTimestamp =
+          data.timestamp ||
+          data.created_at ||
+          new Date().toISOString();
+
         appendRealtimeMessage({
           type: data.messageType || "ai",
           content: data.content || "",
@@ -4256,11 +4261,16 @@ if (data.type === "reaction") {
 
           whatsapp_message: data.whatsapp_message || null,
           reply_to: data.reply_to || null,
-          timestamp:
-            data.timestamp ||
-            data.created_at ||
-            new Date().toISOString()
+          timestamp: realtimeTimestamp
         });
+
+        // العميل بعت رسالة جديدة دلوقتي — نافذة الـ 24 ساعة بتتجدد على
+        // طول من غير ما نحتاج نعمل reload كامل للمحادثة
+        if (data.messageType === "user" || data.messageType === "human") {
+          const time = new Date(realtimeTimestamp).getTime() || Date.now();
+          messagesEl.dataset.lastUserMessageTime = String(time);
+          applyMessagingWindowState(time);
+        }
       }
 
       updateConversationPreview();
