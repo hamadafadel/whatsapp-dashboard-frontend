@@ -35,20 +35,18 @@
       <button id="galleryLogoutBtn" class="gallery-logout-btn" type="button">خروج</button>
     </header>
 
-    <div id="galleryFoldersView" class="gallery-view">
+    <div id="galleryBrowseView" class="gallery-view">
       <div id="galleryFoldersGrid" class="gallery-folders-grid"></div>
-      <div id="galleryFoldersStatus" class="gallery-status"></div>
-    </div>
 
-    <div id="galleryItemsView" class="gallery-view hidden">
-      <div class="gallery-items-toolbar">
+      <div id="galleryItemsToolbar" class="gallery-items-toolbar hidden">
         <button id="gallerySelectModeBtn" type="button" class="gallery-toolbar-btn">تحديد</button>
-        <button id="galleryDownloadFolderBtn" type="button" class="gallery-toolbar-btn">⬇ تحميل الفولدر كامل</button>
+        <button id="galleryDownloadFolderBtn" type="button" class="gallery-toolbar-btn">⬇ تحميل كل الملفات هنا</button>
         <button id="galleryDownloadSelectedBtn" type="button" class="gallery-toolbar-btn hidden">⬇ تحميل المحدد</button>
         <button id="galleryCancelSelectBtn" type="button" class="gallery-toolbar-btn hidden">إلغاء</button>
       </div>
       <div id="galleryItemsGrid" class="gallery-items-grid"></div>
-      <div id="galleryItemsStatus" class="gallery-status"></div>
+
+      <div id="galleryBrowseStatus" class="gallery-status"></div>
     </div>
 
     <input id="galleryUploadInput" type="file" accept="image/*,video/*" multiple hidden />

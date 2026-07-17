@@ -11,13 +11,10 @@ const backBtnEl = document.getElementById("galleryBackBtn");
 const headerTitleEl = document.getElementById("galleryHeaderTitle");
 const logoutBtnEl = document.getElementById("galleryLogoutBtn");
 
-const foldersViewEl = document.getElementById("galleryFoldersView");
 const foldersGridEl = document.getElementById("galleryFoldersGrid");
-const foldersStatusEl = document.getElementById("galleryFoldersStatus");
-
-const itemsViewEl = document.getElementById("galleryItemsView");
+const itemsToolbarEl = document.getElementById("galleryItemsToolbar");
 const itemsGridEl = document.getElementById("galleryItemsGrid");
-const itemsStatusEl = document.getElementById("galleryItemsStatus");
+const browseStatusEl = document.getElementById("galleryBrowseStatus");
 
 const selectModeBtnEl = document.getElementById("gallerySelectModeBtn");
 const downloadFolderBtnEl = document.getElementById("galleryDownloadFolderBtn");
@@ -33,12 +30,27 @@ const previewBodyEl = document.getElementById("galleryPreviewBody");
 const previewDownloadBtnEl = document.getElementById("galleryPreviewDownloadBtn");
 
 let authToken = localStorage.getItem("dashboard_token") || "";
-let currentFolderId = null;
-let currentFolderName = "";
+
+// كل عنصر في الستاك ده {id, name} — أول ما نفتح فولدر بنضيفه هنا، وبالرجوع
+// بنشيله، فبندعم تداخل فولدرات جوه بعض من غير حد لعدد المستويات
+let folderStack = [];
 let currentItems = [];
 let selectMode = false;
 let selectedItemIds = new Set();
 let previewItem = null;
+let myUploadFolderId = null;
+
+function currentFolderId() {
+  return folderStack.length ? folderStack[folderStack.length - 1].id : null;
+}
+
+function currentFolderName() {
+  return folderStack.length ? folderStack[folderStack.length - 1].name : "المعرض";
+}
+
+function isMyOwnFolder(folderId) {
+  return Boolean(folderId) && folderId === myUploadFolderId;
+}
 
 function getAuthHeaders(extraHeaders = {}) {
   return { ...extraHeaders, Authorization: `Bearer ${authToken}` };
@@ -116,7 +128,8 @@ async function login() {
     localStorage.setItem("dashboard_token", authToken);
 
     showApp();
-    loadFolders();
+    folderStack = [];
+    loadCurrent();
   } catch (err) {
     console.error(err);
     loginErrorEl.textContent = "فشل تسجيل الدخول";
@@ -129,102 +142,81 @@ loginPasswordEl.addEventListener("keydown", (e) => {
 });
 logoutBtnEl.addEventListener("click", logout);
 
-// ===== الفولدرات =====
-function showFoldersView() {
-  currentFolderId = null;
-  currentFolderName = "";
+// ===== التصفح (فولدرات + ملفات في نفس الشاشة) =====
+async function loadCurrent() {
   exitSelectMode();
 
-  foldersViewEl.classList.remove("hidden");
-  itemsViewEl.classList.add("hidden");
-  backBtnEl.classList.add("hidden");
-  uploadFabEl.classList.remove("hidden");
-  headerTitleEl.textContent = "المعرض";
-}
+  const folderId = currentFolderId();
+  headerTitleEl.textContent = currentFolderName();
+  backBtnEl.classList.toggle("hidden", folderStack.length === 0);
+  uploadFabEl.classList.toggle("hidden", !isMyOwnFolder(folderId));
 
-async function loadFolders() {
-  showFoldersView();
   foldersGridEl.innerHTML = "";
-  foldersStatusEl.textContent = "جاري التحميل...";
+  itemsGridEl.innerHTML = "";
+  itemsToolbarEl.classList.add("hidden");
+  browseStatusEl.textContent = "جاري التحميل...";
+  currentItems = [];
 
   try {
-    const res = await fetch(`${API_BASE}/gallery/folders`, {
-      headers: getAuthHeaders()
-    });
+    const url = folderId
+      ? `${API_BASE}/gallery/browse/${encodeURIComponent(folderId)}`
+      : `${API_BASE}/gallery/browse`;
+
+    const res = await fetch(url, { headers: getAuthHeaders() });
 
     if (handleInvalidToken(res)) return;
 
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "فشل تحميل الفولدرات");
+    if (!res.ok) throw new Error(data.error || "فشل تحميل المحتوى");
 
     const folders = Array.isArray(data.folders) ? data.folders : [];
-    foldersStatusEl.textContent = folders.length ? "" : "لا يوجد فولدرات حتى الآن";
+    const items = Array.isArray(data.items) ? data.items : [];
 
-    folders.forEach((folder) => {
-      const card = document.createElement("div");
-      card.className = "gallery-folder-card";
+    if (!folderStack.length) {
+      const ownFolder = folders.find((f) => f.isOwnUploadFolder);
+      myUploadFolderId = ownFolder ? ownFolder.id : null;
+      uploadFabEl.classList.toggle("hidden", !isMyOwnFolder(folderId));
+    }
 
-      const icon = document.createElement("div");
-      icon.className = "gallery-folder-icon";
-      icon.textContent = "📁";
+    renderFolders(folders);
 
-      const name = document.createElement("div");
-      name.className = "gallery-folder-name";
-      name.textContent = folder.name || "فولدر";
-
-      card.appendChild(icon);
-      card.appendChild(name);
-
-      card.addEventListener("click", () => {
-        openFolder(folder.id, folder.name || "فولدر");
-      });
-
-      foldersGridEl.appendChild(card);
-    });
-  } catch (error) {
-    console.error(error);
-    foldersStatusEl.textContent = error.message || "تعذر تحميل الفولدرات";
-  }
-}
-
-// ===== محتويات الفولدر =====
-function openFolder(folderId, folderName) {
-  currentFolderId = folderId;
-  currentFolderName = folderName;
-  exitSelectMode();
-
-  foldersViewEl.classList.add("hidden");
-  itemsViewEl.classList.remove("hidden");
-  backBtnEl.classList.remove("hidden");
-  uploadFabEl.classList.add("hidden");
-  headerTitleEl.textContent = folderName;
-
-  loadItems(folderId);
-}
-
-async function loadItems(folderId) {
-  itemsGridEl.innerHTML = "";
-  itemsStatusEl.textContent = "جاري التحميل...";
-
-  try {
-    const res = await fetch(
-      `${API_BASE}/gallery/folders/${encodeURIComponent(folderId)}/items`,
-      { headers: getAuthHeaders() }
-    );
-
-    if (handleInvalidToken(res)) return;
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "فشل تحميل الملفات");
-
-    currentItems = Array.isArray(data.items) ? data.items : [];
-    itemsStatusEl.textContent = currentItems.length ? "" : "الفولدر فارغ";
-
+    currentItems = items;
     renderItems();
+    itemsToolbarEl.classList.toggle("hidden", !items.length);
+
+    browseStatusEl.textContent =
+      folders.length || items.length ? "" : "الفولدر فارغ";
   } catch (error) {
     console.error(error);
-    itemsStatusEl.textContent = error.message || "تعذر تحميل الملفات";
+    browseStatusEl.textContent = error.message || "تعذر تحميل المحتوى";
   }
+}
+
+function renderFolders(folders) {
+  foldersGridEl.innerHTML = "";
+
+  folders.forEach((folder) => {
+    const card = document.createElement("div");
+    card.className = "gallery-folder-card";
+
+    const icon = document.createElement("div");
+    icon.className = "gallery-folder-icon";
+    icon.textContent = "📁";
+
+    const name = document.createElement("div");
+    name.className = "gallery-folder-name";
+    name.textContent = folder.name || "فولدر";
+
+    card.appendChild(icon);
+    card.appendChild(name);
+
+    card.addEventListener("click", () => {
+      folderStack.push({ id: folder.id, name: folder.name || "فولدر" });
+      loadCurrent();
+    });
+
+    foldersGridEl.appendChild(card);
+  });
 }
 
 function renderItems() {
@@ -257,6 +249,35 @@ function renderItems() {
     check.textContent = "✓";
     card.appendChild(check);
 
+    if (isMyOwnFolder(currentFolderId()) && !selectMode) {
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "gallery-item-delete";
+      deleteBtn.textContent = "🗑";
+      deleteBtn.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        if (!confirm("حذف الملف ده؟")) return;
+
+        try {
+          const res = await fetch(`${API_BASE}/gallery/items/${encodeURIComponent(item.id)}`, {
+            method: "DELETE",
+            headers: getAuthHeaders()
+          });
+
+          if (handleInvalidToken(res)) return;
+
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "فشل الحذف");
+
+          loadCurrent();
+        } catch (error) {
+          console.error(error);
+          alert(error.message || "فشل حذف الملف");
+        }
+      });
+      card.appendChild(deleteBtn);
+    }
+
     card.addEventListener("click", () => {
       if (selectMode) {
         toggleItemSelection(item.id);
@@ -281,6 +302,8 @@ function toggleItemSelection(itemId) {
 }
 
 function enterSelectMode() {
+  if (!currentItems.length) return;
+
   selectMode = true;
   selectedItemIds.clear();
 
@@ -312,7 +335,10 @@ selectModeBtnEl.addEventListener("click", () => {
 
 cancelSelectBtnEl.addEventListener("click", exitSelectMode);
 
-backBtnEl.addEventListener("click", loadFolders);
+backBtnEl.addEventListener("click", () => {
+  folderStack.pop();
+  loadCurrent();
+});
 
 // ===== التحميل =====
 async function downloadBlobFromZipEndpoint(payload, downloadName) {
@@ -343,22 +369,23 @@ async function downloadBlobFromZipEndpoint(payload, downloadName) {
 }
 
 downloadFolderBtnEl.addEventListener("click", async () => {
-  if (!currentFolderId) return;
+  const folderId = currentFolderId();
+  if (!folderId) return;
 
   downloadFolderBtnEl.disabled = true;
   downloadFolderBtnEl.textContent = "جاري التحضير...";
 
   try {
     await downloadBlobFromZipEndpoint(
-      { folderId: currentFolderId },
-      `${currentFolderName || "folder"}.zip`
+      { folderId },
+      `${currentFolderName() || "folder"}.zip`
     );
   } catch (error) {
     console.error(error);
-    alert(error.message || "فشل تحميل الفولدر");
+    alert(error.message || "فشل تحميل الملفات");
   } finally {
     downloadFolderBtnEl.disabled = false;
-    downloadFolderBtnEl.textContent = "⬇ تحميل الفولدر كامل";
+    downloadFolderBtnEl.textContent = "⬇ تحميل كل الملفات هنا";
   }
 });
 
@@ -371,7 +398,7 @@ downloadSelectedBtnEl.addEventListener("click", async () => {
   try {
     await downloadBlobFromZipEndpoint(
       { fileIds: ids },
-      `${currentFolderName || "selected"}.zip`
+      `${currentFolderName() || "selected"}.zip`
     );
   } catch (error) {
     console.error(error);
@@ -480,7 +507,7 @@ uploadInputEl.addEventListener("change", async () => {
     alert(`تم رفع ${uploaded} ملف بنجاح`);
   }
 
-  if (!currentFolderId) loadFolders();
+  loadCurrent();
 });
 
 // ===== البداية =====
@@ -488,7 +515,7 @@ const galleryTokenRole = decodeAuthToken()?.role;
 
 if (authToken && (galleryTokenRole === "gallery" || galleryTokenRole === "admin")) {
   showApp();
-  loadFolders();
+  loadCurrent();
 } else {
   if (authToken) logout();
   showLogin();

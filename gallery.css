@@ -258,6 +258,23 @@ button {
   outline: 3px solid var(--mehrab-gold);
 }
 
+.gallery-item-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
 /* ===== زر الرفع العائم ===== */
 .gallery-upload-fab {
   position: fixed;
