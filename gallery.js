@@ -467,16 +467,40 @@ previewOverlayEl.addEventListener("click", (event) => {
   if (event.target === previewOverlayEl) closePreview();
 });
 
-previewDownloadBtnEl.addEventListener("click", () => {
+previewDownloadBtnEl.addEventListener("click", async () => {
   if (!previewItem) return;
 
-  const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(previewItem.id)}/download?token=${encodeURIComponent(authToken)}`;
-  const link = document.createElement("a");
-  link.href = fileUrl;
-  link.download = previewItem.name || "file";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  const originalText = previewDownloadBtnEl.textContent;
+  previewDownloadBtnEl.disabled = true;
+  previewDownloadBtnEl.textContent = "جاري التحميل...";
+
+  try {
+    const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(previewItem.id)}/download?token=${encodeURIComponent(authToken)}`;
+    const res = await fetch(fileUrl);
+
+    if (!res.ok) throw new Error("فشل التحميل");
+
+    // لازم نجيب الملف كـ blob ونحمّله بلينك محلي (blob:) بدل ما نحط لينك
+    // API الأصلي مباشرة على <a download> — سمة download بيتجاهلها المتصفح
+    // لو اللينك من دومين مختلف (وده حالتنا هنا)
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = previewItem.name || "file";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "فشل تحميل الملف");
+  } finally {
+    previewDownloadBtnEl.disabled = false;
+    previewDownloadBtnEl.textContent = originalText;
+  }
 });
 
 // ===== رفع ملفات جديدة =====
