@@ -309,6 +309,162 @@ async function moveNodeToFolder(nodeId, targetFolderId) {
   }
 }
 
+// ===== نقل بالسحب على الموبايل (اللمس مش بيدعم HTML5 drag/drop الأصلي) =====
+let mobileDragState = null;
+
+function startMobileDrag(nodeId, sourceCard, x, y) {
+  const ghost = document.createElement("div");
+  ghost.className = "gallery-drag-ghost";
+  ghost.textContent = "📄";
+  ghost.style.left = `${x}px`;
+  ghost.style.top = `${y}px`;
+  document.body.appendChild(ghost);
+
+  sourceCard.classList.add("dragging");
+  mobileDragState = { nodeId, ghost };
+}
+
+function updateMobileDrag(x, y) {
+  if (!mobileDragState) return;
+
+  mobileDragState.ghost.style.left = `${x}px`;
+  mobileDragState.ghost.style.top = `${y}px`;
+
+  document
+    .querySelectorAll(".gallery-folder-card.drop-target")
+    .forEach((el) => el.classList.remove("drop-target"));
+
+  mobileDragState.ghost.style.display = "none";
+  const el = document.elementFromPoint(x, y);
+  mobileDragState.ghost.style.display = "";
+
+  const folderCard = el?.closest(".gallery-folder-card");
+  if (folderCard) folderCard.classList.add("drop-target");
+}
+
+function endMobileDrag(x, y) {
+  if (!mobileDragState) return;
+
+  const { nodeId, ghost } = mobileDragState;
+
+  ghost.style.display = "none";
+  const el = document.elementFromPoint(x, y);
+  const folderCard = el?.closest(".gallery-folder-card");
+
+  document
+    .querySelectorAll(".dragging")
+    .forEach((c) => c.classList.remove("dragging"));
+  document
+    .querySelectorAll(".gallery-folder-card.drop-target")
+    .forEach((c) => c.classList.remove("drop-target"));
+
+  ghost.remove();
+  mobileDragState = null;
+
+  if (folderCard?.dataset.folderId) {
+    moveNodeToFolder(nodeId, folderCard.dataset.folderId);
+  }
+}
+
+function cancelMobileDrag() {
+  if (!mobileDragState) return;
+
+  mobileDragState.ghost.remove();
+  document
+    .querySelectorAll(".dragging")
+    .forEach((c) => c.classList.remove("dragging"));
+  document
+    .querySelectorAll(".gallery-folder-card.drop-target")
+    .forEach((c) => c.classList.remove("drop-target"));
+  mobileDragState = null;
+}
+
+// بيربط كارت بلمسة طويلة (قايمة إجراءات) وسحب (نقل) وضغطة عادية (تاب)،
+// مع تفادي تكرار حدث الـ click الاصطناعي اللي المتصفح بيولده بعد اللمس
+function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
+  let startX = 0;
+  let startY = 0;
+  let longPressTimer = null;
+  let longPressFired = false;
+  let dragging = false;
+  let touchHandled = false;
+
+  const clearLongPressTimer = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+
+  card.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) return;
+
+    const t = event.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+    longPressFired = false;
+    dragging = false;
+    touchHandled = true;
+
+    longPressTimer = setTimeout(() => {
+      longPressFired = true;
+      if (navigator.vibrate) navigator.vibrate(15);
+      onLongPress?.(startX, startY);
+    }, 500);
+  }, { passive: true });
+
+  card.addEventListener("touchmove", (event) => {
+    const t = event.touches[0];
+    const dist = Math.hypot(t.clientX - startX, t.clientY - startY);
+
+    if (dist > 12 && !longPressFired && !dragging) {
+      clearLongPressTimer();
+
+      if (draggableId && canWriteHere()) {
+        dragging = true;
+        startMobileDrag(draggableId, card, t.clientX, t.clientY);
+      }
+    }
+
+    if (dragging) {
+      updateMobileDrag(t.clientX, t.clientY);
+      event.preventDefault();
+    }
+  }, { passive: false });
+
+  card.addEventListener("touchend", (event) => {
+    clearLongPressTimer();
+
+    if (dragging) {
+      const t = event.changedTouches[0];
+      endMobileDrag(t.clientX, t.clientY);
+      dragging = false;
+      return;
+    }
+
+    if (!longPressFired) {
+      onTap?.();
+    }
+  });
+
+  card.addEventListener("touchcancel", () => {
+    clearLongPressTimer();
+    if (dragging) {
+      cancelMobileDrag();
+      dragging = false;
+    }
+  });
+
+  // الديسكتوب: نفس منطق الرفع القديم، مع تجاهل الـ click الاصطناعي بعد اللمس
+  card.addEventListener("click", () => {
+    if (touchHandled) {
+      touchHandled = false;
+      return;
+    }
+    onTap?.();
+  });
+}
+
 function renderFolders(folders) {
   foldersGridEl.innerHTML = "";
 
@@ -316,6 +472,7 @@ function renderFolders(folders) {
     const card = document.createElement("div");
     card.className = "gallery-folder-card";
     card.draggable = canWriteHere();
+    card.dataset.folderId = folder.id;
 
     const icon = document.createElement("div");
     icon.className = "gallery-folder-icon";
@@ -328,12 +485,17 @@ function renderFolders(folders) {
     card.appendChild(icon);
     card.appendChild(name);
 
-    card.addEventListener("click", () => {
+    const openFolder = () => {
       folderStack.push({ id: folder.id, name: folder.name || "فولدر" });
       loadCurrent();
+    };
+
+    enableCardGestures(card, {
+      onTap: openFolder,
+      draggableId: folder.id
     });
 
-    // نقل فولدر/ملف تاني جوه الفولدر ده بالسحب والإفلات
+    // نقل فولدر/ملف تاني جوه الفولدر ده بالسحب والإفلات (ديسكتوب)
     card.addEventListener("dragstart", (event) => {
       event.stopPropagation();
       event.dataTransfer.setData(DRAG_MIME, folder.id);
@@ -383,6 +545,10 @@ function renderItems() {
 
     card.addEventListener("dragend", () => {
       card.classList.remove("dragging");
+    });
+
+    card.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
     });
 
     const isVideo =
@@ -457,16 +623,73 @@ function renderItems() {
       card.appendChild(deleteBtn);
     }
 
-    card.addEventListener("click", () => {
-      if (selectMode) {
-        toggleItemSelection(item.id);
-      } else {
-        openPreview(item);
-      }
+    enableCardGestures(card, {
+      onTap: () => {
+        if (selectMode) {
+          toggleItemSelection(item.id);
+        } else {
+          openPreview(item);
+        }
+      },
+      onLongPress: (x, y) => {
+        if (!selectMode) showItemActionMenu(item, x, y);
+      },
+      draggableId: selectMode ? null : item.id
     });
 
     itemsGridEl.appendChild(card);
   });
+}
+
+// قايمة إجراءات بتظهر بضغطة طويلة على صورة/فيديو: تحديد / فتح / تحميل
+function showItemActionMenu(item, x, y) {
+  document.querySelector(".gallery-item-action-menu")?.remove();
+
+  const menu = document.createElement("div");
+  menu.className = "gallery-item-action-menu";
+
+  const selectBtn = document.createElement("button");
+  selectBtn.type = "button";
+  selectBtn.textContent = "✓ تحديد";
+  selectBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    menu.remove();
+    if (!selectMode) enterSelectMode();
+    toggleItemSelection(item.id);
+  });
+
+  const openBtn = document.createElement("button");
+  openBtn.type = "button";
+  openBtn.textContent = "👁 فتح";
+  openBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    menu.remove();
+    openPreview(item);
+  });
+
+  const downloadBtn = document.createElement("button");
+  downloadBtn.type = "button";
+  downloadBtn.textContent = "⬇ تحميل";
+  downloadBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    menu.remove();
+    downloadSingleItem(item);
+  });
+
+  menu.appendChild(selectBtn);
+  menu.appendChild(openBtn);
+  menu.appendChild(downloadBtn);
+  document.body.appendChild(menu);
+
+  const menuWidth = 180;
+  const menuHeight = 150;
+  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8))}px`;
+
+  setTimeout(() => {
+    document.addEventListener("click", () => menu.remove(), { once: true });
+    document.addEventListener("touchstart", () => menu.remove(), { once: true });
+  }, 0);
 }
 
 function toggleItemSelection(itemId) {
@@ -631,19 +854,14 @@ previewOverlayEl.addEventListener("click", (event) => {
   if (event.target === previewOverlayEl) closePreview();
 });
 
-previewDownloadBtnEl.addEventListener("click", async () => {
-  if (!previewItem) return;
-
-  const originalText = previewDownloadBtnEl.textContent;
-  previewDownloadBtnEl.disabled = true;
-  previewDownloadBtnEl.textContent = "جاري التحضير...";
+async function downloadSingleItem(item, onDone) {
   showProgressToast("جاري التحضير...");
 
   try {
     // لازم نجيب الملف كـ blob ونحمّله بلينك محلي (blob:) بدل ما نحط لينك
     // API الأصلي مباشرة على <a download> — سمة download بيتجاهلها المتصفح
     // لو اللينك من دومين مختلف (وده حالتنا هنا)
-    const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(previewItem.id)}/download?token=${encodeURIComponent(authToken)}`;
+    const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/download?token=${encodeURIComponent(authToken)}`;
     const blob = await fetchBlobWithProgress(
       fileUrl,
       {},
@@ -656,7 +874,7 @@ previewDownloadBtnEl.addEventListener("click", async () => {
 
     const link = document.createElement("a");
     link.href = url;
-    link.download = previewItem.name || "file";
+    link.download = item.name || "file";
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -667,9 +885,21 @@ previewDownloadBtnEl.addEventListener("click", async () => {
     alert(error.message || "فشل تحميل الملف");
   } finally {
     hideProgressToast();
+    if (onDone) onDone();
+  }
+}
+
+previewDownloadBtnEl.addEventListener("click", async () => {
+  if (!previewItem) return;
+
+  const originalText = previewDownloadBtnEl.textContent;
+  previewDownloadBtnEl.disabled = true;
+  previewDownloadBtnEl.textContent = "جاري التحضير...";
+
+  await downloadSingleItem(previewItem, () => {
     previewDownloadBtnEl.disabled = false;
     previewDownloadBtnEl.textContent = originalText;
-  }
+  });
 });
 
 // ===== رفع ملفات جديدة =====
