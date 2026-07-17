@@ -432,7 +432,13 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
   let longPressTimer = null;
   let longPressFired = false;
   let dragging = false;
+  let moved = false;
   let touchHandled = false;
+
+  // شاشات اللمس الحقيقية بتسجل رعشة إصباع طبيعية حتى لو الضغطة "ساكنة"
+  // فعليًا — 10px كانت حساسة جدًا وكانت بتلغي تاب حقيقي وتعتبره سكرول.
+  // 24px بتفرّق صح بين رعشة عادية وسكرول حقيقي
+  const TAP_MOVE_THRESHOLD = 24;
 
   const clearLongPressTimer = () => {
     if (longPressTimer) {
@@ -449,6 +455,7 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
     startY = t.clientY;
     longPressFired = false;
     dragging = false;
+    moved = false;
     touchHandled = true;
 
     // بعد نص ثانية إمساك من غير ما الإصباع يتحرك: نهز الموبايل كإشارة، وبعدين
@@ -464,9 +471,13 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
     const dist = Math.hypot(t.clientX - startX, t.clientY - startY);
 
     if (!longPressFired) {
-      // قبل ما الضغطة الطويلة تحصل، أي تحريك يبقى سكرول عادي للصفحة —
-      // نلغي مؤقت الضغطة الطويلة ونسيب المتصفح يسكرول عادي
-      if (dist > 12) clearLongPressTimer();
+      // قبل ما الضغطة الطويلة تحصل، أي تحريك واضح يبقى سكرول عادي للصفحة —
+      // نلغي مؤقت الضغطة الطويلة ونمنع onTap يشتغل بعدين في touchend،
+      // ونسيب المتصفح يسكرول عادي (من غير preventDefault)
+      if (dist > TAP_MOVE_THRESHOLD) {
+        moved = true;
+        clearLongPressTimer();
+      }
       return;
     }
 
@@ -491,6 +502,9 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
       dragging = false;
       return;
     }
+
+    // اتحرك أكتر من عتبة الرعشة الطبيعية من غير ما نوصل لمرحلة السحب = سكرول حقيقي، مش تاب
+    if (moved) return;
 
     if (longPressFired) {
       // إمساك ساكن وسايبه من غير ما يسحب = افتح القايمة لو فيه واحدة،
