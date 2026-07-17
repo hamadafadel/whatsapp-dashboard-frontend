@@ -292,7 +292,7 @@ button {
   cursor: pointer;
 }
 
-/* ===== زر الرفع العائم ===== */
+/* ===== أزرار الرفع/الإنشاء العائمة ===== */
 .gallery-upload-fab {
   position: fixed;
   bottom: calc(20px + env(safe-area-inset-bottom));
@@ -308,6 +308,13 @@ button {
   box-shadow: 0 6px 18px rgba(0,0,0,0.3);
   cursor: pointer;
   z-index: 20;
+}
+
+.gallery-new-folder-fab {
+  left: 88px;
+  font-size: 18px;
+  background: var(--mehrab-gold);
+  color: var(--mehrab-purple-dark);
 }
 
 /* ===== معاينة الملف ===== */

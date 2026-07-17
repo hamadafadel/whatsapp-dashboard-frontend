@@ -23,6 +23,7 @@ const cancelSelectBtnEl = document.getElementById("galleryCancelSelectBtn");
 
 const uploadFabEl = document.getElementById("galleryUploadFab");
 const uploadInputEl = document.getElementById("galleryUploadInput");
+const newFolderFabEl = document.getElementById("galleryNewFolderFab");
 
 const previewOverlayEl = document.getElementById("galleryPreviewOverlay");
 const previewCloseBtnEl = document.getElementById("galleryPreviewCloseBtn");
@@ -50,6 +51,17 @@ function currentFolderName() {
 
 function isMyOwnFolder(folderId) {
   return Boolean(folderId) && folderId === myUploadFolderId;
+}
+
+// الأدمن يقدر يضيف فولدرات/ملفات في أي مكان. content_team1 يقدر بس جوه
+// فولدره الخاص أو أي فولدر فرعي منه (على أي عمق)
+function canWriteHere() {
+  if (decodeAuthToken()?.role === "admin") return true;
+
+  return (
+    isMyOwnFolder(currentFolderId()) ||
+    folderStack.some((f) => f.id === myUploadFolderId)
+  );
 }
 
 function getAuthHeaders(extraHeaders = {}) {
@@ -149,7 +161,8 @@ async function loadCurrent() {
   const folderId = currentFolderId();
   headerTitleEl.textContent = currentFolderName();
   backBtnEl.classList.toggle("hidden", folderStack.length === 0);
-  uploadFabEl.classList.toggle("hidden", !isMyOwnFolder(folderId));
+  uploadFabEl.classList.toggle("hidden", !canWriteHere());
+  newFolderFabEl.classList.toggle("hidden", !canWriteHere());
 
   foldersGridEl.innerHTML = "";
   itemsGridEl.innerHTML = "";
@@ -175,7 +188,8 @@ async function loadCurrent() {
     if (!folderStack.length) {
       const ownFolder = folders.find((f) => f.isOwnUploadFolder);
       myUploadFolderId = ownFolder ? ownFolder.id : null;
-      uploadFabEl.classList.toggle("hidden", !isMyOwnFolder(folderId));
+      uploadFabEl.classList.toggle("hidden", !canWriteHere());
+      newFolderFabEl.classList.toggle("hidden", !canWriteHere());
     }
 
     renderFolders(folders);
@@ -525,6 +539,7 @@ uploadInputEl.addEventListener("change", async () => {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      if (currentFolderId()) formData.append("targetFolderId", currentFolderId());
 
       const res = await fetch(`${API_BASE}/gallery/upload`, {
         method: "POST",
@@ -554,6 +569,39 @@ uploadInputEl.addEventListener("change", async () => {
   }
 
   loadCurrent();
+});
+
+// ===== إنشاء فولدر جديد =====
+newFolderFabEl.addEventListener("click", async () => {
+  const name = prompt("اسم الفولدر الجديد:");
+  if (!name || !name.trim()) return;
+
+  newFolderFabEl.disabled = true;
+
+  try {
+    const folderId = currentFolderId();
+    const url = folderId
+      ? `${API_BASE}/gallery/browse/${encodeURIComponent(folderId)}/folders`
+      : `${API_BASE}/gallery/browse/folders`;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ name: name.trim() })
+    });
+
+    if (handleInvalidToken(res)) return;
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "فشل إنشاء الفولدر");
+
+    loadCurrent();
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "فشل إنشاء الفولدر");
+  } finally {
+    newFolderFabEl.disabled = false;
+  }
 });
 
 // ===== البداية =====
