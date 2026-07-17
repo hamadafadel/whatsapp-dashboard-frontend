@@ -107,7 +107,7 @@ async function login() {
       return;
     }
 
-    if (data.user?.role !== "gallery") {
+    if (data.user?.role !== "gallery" && data.user?.role !== "admin") {
       loginErrorEl.textContent = "الحساب ده مش حساب معرض صور";
       return;
     }
@@ -484,7 +484,9 @@ uploadInputEl.addEventListener("change", async () => {
 });
 
 // ===== البداية =====
-if (authToken && decodeAuthToken()?.role === "gallery") {
+const galleryTokenRole = decodeAuthToken()?.role;
+
+if (authToken && (galleryTokenRole === "gallery" || galleryTokenRole === "admin")) {
   showApp();
   loadFolders();
 } else {

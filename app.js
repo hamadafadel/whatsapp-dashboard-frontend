@@ -19,6 +19,7 @@ const currentUserNameEl = document.getElementById("currentUserName");
 const currentUserRoleEl = document.getElementById("currentUserRole");
 const toggleSessionSelectBtnEl = document.getElementById("toggleSessionSelectBtn");
 const viewHiddenBtnEl = document.getElementById("viewHiddenBtn");
+const openGalleryBtnEl = document.getElementById("openGalleryBtn");
 const logoutBtnEl = document.getElementById("logoutBtn");
 const hiddenViewBarEl = document.getElementById("hiddenViewBar");
 const backFromHiddenBtnEl = document.getElementById("backFromHiddenBtn");
@@ -1746,7 +1747,12 @@ function applyRolePermissionsToUI() {
   // إخفاء المحادثات وشاشة المحادثات المخفية للأدمن بس
   viewHiddenBtnEl?.classList.toggle("hidden", role !== "admin");
   sessionsSelectionHideBtnEl?.classList.toggle("hidden", role !== "admin");
+  openGalleryBtnEl?.classList.toggle("hidden", role !== "admin");
 }
+
+openGalleryBtnEl?.addEventListener("click", () => {
+  window.location.href = "/gallery.html";
+});
 
 function renderCurrentUserInfo() {
   if (currentUserNameEl) currentUserNameEl.textContent = getCurrentSenderName();
