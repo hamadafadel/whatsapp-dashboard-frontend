@@ -406,10 +406,11 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
     dragging = false;
     touchHandled = true;
 
+    // بعد نص ثانية إمساك من غير ما الإصباع يتحرك: نهز الموبايل كإشارة، وبعدين
+    // بنقرر في touchend لو هيفتح قايمة (سايبه ساكن) أو هيبدأ سحب (لو اتحرك)
     longPressTimer = setTimeout(() => {
       longPressFired = true;
       if (navigator.vibrate) navigator.vibrate(15);
-      onLongPress?.(startX, startY);
     }, 500);
   }, { passive: true });
 
@@ -417,19 +418,23 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
     const t = event.touches[0];
     const dist = Math.hypot(t.clientX - startX, t.clientY - startY);
 
-    if (dist > 12 && !longPressFired && !dragging) {
-      clearLongPressTimer();
+    if (!longPressFired) {
+      // قبل ما الضغطة الطويلة تحصل، أي تحريك يبقى سكرول عادي للصفحة —
+      // نلغي مؤقت الضغطة الطويلة ونسيب المتصفح يسكرول عادي
+      if (dist > 12) clearLongPressTimer();
+      return;
+    }
 
-      if (draggableId && canWriteHere()) {
-        dragging = true;
-        startMobileDrag(draggableId, card, t.clientX, t.clientY);
-      }
+    if (!dragging && dist > 6 && draggableId && canWriteHere()) {
+      dragging = true;
+      startMobileDrag(draggableId, card, t.clientX, t.clientY);
     }
 
     if (dragging) {
       updateMobileDrag(t.clientX, t.clientY);
-      event.preventDefault();
     }
+
+    event.preventDefault();
   }, { passive: false });
 
   card.addEventListener("touchend", (event) => {
@@ -442,9 +447,18 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
       return;
     }
 
-    if (!longPressFired) {
-      onTap?.();
+    if (longPressFired) {
+      // إمساك ساكن وسايبه من غير ما يسحب = افتح القايمة لو فيه واحدة،
+      // وإلا (زي وضع التحديد) يبقى نفس تأثير الضغطة العادية
+      if (onLongPress) {
+        onLongPress(startX, startY);
+      } else {
+        onTap?.();
+      }
+      return;
     }
+
+    onTap?.();
   });
 
   card.addEventListener("touchcancel", () => {
@@ -631,9 +645,7 @@ function renderItems() {
           openPreview(item);
         }
       },
-      onLongPress: (x, y) => {
-        if (!selectMode) showItemActionMenu(item, x, y);
-      },
+      onLongPress: selectMode ? null : (x, y) => showItemActionMenu(item, x, y),
       draggableId: selectMode ? null : item.id
     });
 
@@ -647,6 +659,11 @@ function showItemActionMenu(item, x, y) {
 
   const menu = document.createElement("div");
   menu.className = "gallery-item-action-menu";
+
+  // من غير ده، أول لمسة على أي زرار جوه القايمة كانت بتوصل document وتقفل
+  // القايمة قبل ما زرار الفعل نفسه ياخد فرصة يشتغل
+  menu.addEventListener("touchstart", (event) => event.stopPropagation());
+  menu.addEventListener("click", (event) => event.stopPropagation());
 
   const selectBtn = document.createElement("button");
   selectBtn.type = "button";
