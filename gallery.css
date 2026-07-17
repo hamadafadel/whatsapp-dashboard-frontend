@@ -237,6 +237,14 @@ button {
   gap: 12px;
 }
 
+.gallery-item-card,
+.gallery-folder-card {
+  touch-action: pan-y;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .gallery-item-card {
   position: relative;
   aspect-ratio: 1 / 1;
