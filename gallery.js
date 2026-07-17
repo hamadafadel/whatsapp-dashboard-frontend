@@ -20,7 +20,16 @@ const browseStatusEl = document.getElementById("galleryBrowseStatus");
 const selectModeBtnEl = document.getElementById("gallerySelectModeBtn");
 const downloadFolderBtnEl = document.getElementById("galleryDownloadFolderBtn");
 const downloadSelectedBtnEl = document.getElementById("galleryDownloadSelectedBtn");
+const moveSelectedBtnEl = document.getElementById("galleryMoveSelectedBtn");
 const cancelSelectBtnEl = document.getElementById("galleryCancelSelectBtn");
+
+const pickerOverlayEl = document.getElementById("galleryFolderPickerOverlay");
+const pickerBackBtnEl = document.getElementById("galleryPickerBackBtn");
+const pickerTitleEl = document.getElementById("galleryPickerTitle");
+const pickerCloseBtnEl = document.getElementById("galleryPickerCloseBtn");
+const pickerGridEl = document.getElementById("galleryPickerGrid");
+const pickerStatusEl = document.getElementById("galleryPickerStatus");
+const pickerConfirmBtnEl = document.getElementById("galleryPickerConfirmBtn");
 
 const uploadFabEl = document.getElementById("galleryUploadFab");
 const uploadInputEl = document.getElementById("galleryUploadInput");
@@ -287,6 +296,37 @@ async function loadCurrent() {
 
 const DRAG_MIME = "application/x-gallery-node-id";
 
+// بيحط الملف اللي بـ fileId قبل الملف targetItem مباشرة، بترتيب كسري
+// (رقم بينه وبين اللي قبله) عشان ما نحتاجش نعيد ترقيم كل الملفات
+async function reorderItemBefore(fileId, targetItem) {
+  if (!fileId || fileId === targetItem.id) return;
+
+  const idx = currentItems.findIndex((i) => i.id === targetItem.id);
+  const prevItem = idx > 0 ? currentItems[idx - 1] : null;
+
+  const targetOrder = targetItem.order ?? (idx + 1) * 1000;
+  const prevOrder = prevItem ? (prevItem.order ?? idx * 1000) : 0;
+  const newOrder = (prevOrder + targetOrder) / 2;
+
+  try {
+    const res = await fetch(`${API_BASE}/gallery/items/${encodeURIComponent(fileId)}/reorder`, {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ order: newOrder })
+    });
+
+    if (handleInvalidToken(res)) return;
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "فشل الترتيب");
+
+    loadCurrent();
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "فشل ترتيب الملف");
+  }
+}
+
 async function moveNodeToFolder(nodeId, targetFolderId) {
   if (!nodeId || nodeId === targetFolderId) return;
 
@@ -331,15 +371,17 @@ function updateMobileDrag(x, y) {
   mobileDragState.ghost.style.top = `${y}px`;
 
   document
-    .querySelectorAll(".gallery-folder-card.drop-target")
+    .querySelectorAll(".drop-target")
     .forEach((el) => el.classList.remove("drop-target"));
 
   mobileDragState.ghost.style.display = "none";
   const el = document.elementFromPoint(x, y);
   mobileDragState.ghost.style.display = "";
 
-  const folderCard = el?.closest(".gallery-folder-card");
-  if (folderCard) folderCard.classList.add("drop-target");
+  const target = el?.closest(".gallery-folder-card, .gallery-item-card");
+  if (target && target.dataset.itemId !== mobileDragState.nodeId) {
+    target.classList.add("drop-target");
+  }
 }
 
 function endMobileDrag(x, y) {
@@ -349,20 +391,23 @@ function endMobileDrag(x, y) {
 
   ghost.style.display = "none";
   const el = document.elementFromPoint(x, y);
-  const folderCard = el?.closest(".gallery-folder-card");
+  const target = el?.closest(".gallery-folder-card, .gallery-item-card");
 
   document
     .querySelectorAll(".dragging")
     .forEach((c) => c.classList.remove("dragging"));
   document
-    .querySelectorAll(".gallery-folder-card.drop-target")
+    .querySelectorAll(".drop-target")
     .forEach((c) => c.classList.remove("drop-target"));
 
   ghost.remove();
   mobileDragState = null;
 
-  if (folderCard?.dataset.folderId) {
-    moveNodeToFolder(nodeId, folderCard.dataset.folderId);
+  if (target?.dataset.folderId) {
+    moveNodeToFolder(nodeId, target.dataset.folderId);
+  } else if (target?.dataset.itemId && target.dataset.itemId !== nodeId) {
+    const targetItem = currentItems.find((i) => i.id === target.dataset.itemId);
+    if (targetItem) reorderItemBefore(nodeId, targetItem);
   }
 }
 
@@ -479,6 +524,132 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
   });
 }
 
+// ===== نافذة اختيار فولدر — نقل لأي مكان حتى لو مش ظاهر في الشاشة الحالية =====
+let pickerStack = [];
+let pickerMoveIds = [];
+
+function pickerCurrentFolderId() {
+  return pickerStack.length ? pickerStack[pickerStack.length - 1].id : "";
+}
+
+function openFolderPicker(nodeIds) {
+  pickerMoveIds = nodeIds;
+  pickerStack = [];
+  pickerOverlayEl.classList.remove("hidden");
+  loadPickerCurrent();
+}
+
+function closeFolderPicker() {
+  pickerOverlayEl.classList.add("hidden");
+  pickerMoveIds = [];
+  pickerStack = [];
+}
+
+async function loadPickerCurrent() {
+  const folderId = pickerCurrentFolderId();
+  pickerTitleEl.textContent = pickerStack.length
+    ? pickerStack[pickerStack.length - 1].name
+    : "المعرض";
+  pickerBackBtnEl.classList.toggle("hidden", pickerStack.length === 0);
+
+  pickerGridEl.innerHTML = "";
+  pickerStatusEl.textContent = "جاري التحميل...";
+
+  try {
+    const url = folderId
+      ? `${API_BASE}/gallery/browse/${encodeURIComponent(folderId)}`
+      : `${API_BASE}/gallery/browse`;
+
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    if (handleInvalidToken(res)) return;
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "فشل تحميل الفولدرات");
+
+    const folders = Array.isArray(data.folders) ? data.folders : [];
+    pickerStatusEl.textContent = folders.length ? "" : "مفيش فولدرات هنا";
+
+    folders.forEach((folder) => {
+      // ما تسبش المستخدم ينقل فولدر جوه نفسه
+      if (pickerMoveIds.includes(folder.id)) return;
+
+      const card = document.createElement("div");
+      card.className = "gallery-folder-card";
+
+      const icon = document.createElement("div");
+      icon.className = "gallery-folder-icon";
+      icon.textContent = "📁";
+
+      const name = document.createElement("div");
+      name.className = "gallery-folder-name";
+      name.textContent = folder.name || "فولدر";
+
+      card.appendChild(icon);
+      card.appendChild(name);
+
+      card.addEventListener("click", () => {
+        pickerStack.push({ id: folder.id, name: folder.name || "فولدر" });
+        loadPickerCurrent();
+      });
+
+      pickerGridEl.appendChild(card);
+    });
+  } catch (error) {
+    console.error(error);
+    pickerStatusEl.textContent = error.message || "تعذر تحميل الفولدرات";
+  }
+}
+
+pickerBackBtnEl.addEventListener("click", () => {
+  pickerStack.pop();
+  loadPickerCurrent();
+});
+
+pickerCloseBtnEl.addEventListener("click", closeFolderPicker);
+
+pickerOverlayEl.addEventListener("click", (event) => {
+  if (event.target === pickerOverlayEl) closeFolderPicker();
+});
+
+pickerConfirmBtnEl.addEventListener("click", async () => {
+  const targetFolderId = pickerCurrentFolderId();
+  const ids = [...pickerMoveIds];
+
+  pickerConfirmBtnEl.disabled = true;
+  pickerConfirmBtnEl.textContent = "جاري النقل...";
+
+  try {
+    for (const id of ids) {
+      const res = await fetch(`${API_BASE}/gallery/items/${encodeURIComponent(id)}/move`, {
+        method: "POST",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ targetFolderId })
+      });
+
+      if (handleInvalidToken(res)) return;
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "فشل النقل");
+    }
+
+    closeFolderPicker();
+    if (selectMode) exitSelectMode();
+    loadCurrent();
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "فشل نقل العناصر");
+  } finally {
+    pickerConfirmBtnEl.disabled = false;
+    pickerConfirmBtnEl.textContent = "📁 انقل هنا";
+  }
+});
+
+moveSelectedBtnEl.addEventListener("click", () => {
+  const ids = [...selectedItemIds];
+  if (!ids.length) return;
+  openFolderPicker(ids);
+});
+
 function renderFolders(folders) {
   foldersGridEl.innerHTML = "";
 
@@ -549,6 +720,7 @@ function renderItems() {
     card.classList.toggle("selectable", selectMode);
     card.classList.toggle("selected", selectedItemIds.has(item.id));
     card.draggable = canWriteHere() && !selectMode;
+    card.dataset.itemId = item.id;
 
     card.addEventListener("dragstart", (event) => {
       event.stopPropagation();
@@ -559,6 +731,27 @@ function renderItems() {
 
     card.addEventListener("dragend", () => {
       card.classList.remove("dragging");
+    });
+
+    // إفلات ملف تاني فوق الملف ده = رتّبه قبله (سحب وإفلات، ديسكتوب)
+    card.addEventListener("dragover", (event) => {
+      if (!canWriteHere() || !event.dataTransfer.types.includes(DRAG_MIME)) return;
+      event.preventDefault();
+      card.classList.add("drop-target");
+    });
+
+    card.addEventListener("dragleave", () => {
+      card.classList.remove("drop-target");
+    });
+
+    card.addEventListener("drop", (event) => {
+      if (!canWriteHere() || !event.dataTransfer.types.includes(DRAG_MIME)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      card.classList.remove("drop-target");
+
+      const draggedId = event.dataTransfer.getData(DRAG_MIME);
+      reorderItemBefore(draggedId, item);
     });
 
     card.addEventListener("contextmenu", (event) => {
@@ -696,6 +889,19 @@ function showItemActionMenu(item, x, y) {
   menu.appendChild(selectBtn);
   menu.appendChild(openBtn);
   menu.appendChild(downloadBtn);
+
+  if (canWriteHere()) {
+    const moveBtn = document.createElement("button");
+    moveBtn.type = "button";
+    moveBtn.textContent = "📁 نقل إلى...";
+    moveBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      menu.remove();
+      openFolderPicker([item.id]);
+    });
+    menu.appendChild(moveBtn);
+  }
+
   document.body.appendChild(menu);
 
   const menuWidth = 180;
@@ -730,6 +936,7 @@ function enterSelectMode() {
   downloadFolderBtnEl.classList.add("hidden");
   downloadSelectedBtnEl.classList.remove("hidden");
   downloadSelectedBtnEl.textContent = "⬇ تحميل المحدد (0)";
+  moveSelectedBtnEl.classList.toggle("hidden", !canWriteHere());
   cancelSelectBtnEl.classList.remove("hidden");
 
   renderItems();
@@ -742,6 +949,7 @@ function exitSelectMode() {
   selectModeBtnEl.classList.remove("active");
   downloadFolderBtnEl.classList.remove("hidden");
   downloadSelectedBtnEl.classList.add("hidden");
+  moveSelectedBtnEl.classList.add("hidden");
   cancelSelectBtnEl.classList.add("hidden");
 
   renderItems();

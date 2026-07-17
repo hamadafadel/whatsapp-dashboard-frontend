@@ -316,6 +316,11 @@ button {
   opacity: 0.4;
 }
 
+.gallery-item-card.drop-target {
+  outline: 3px solid var(--mehrab-purple);
+  outline-offset: -3px;
+}
+
 .gallery-item-delete {
   position: absolute;
   top: 6px;
@@ -500,6 +505,77 @@ button {
 
 .gallery-item-action-menu button:active {
   background: rgba(255,255,255,0.08);
+}
+
+/* ===== نافذة اختيار فولدر للنقل ===== */
+.gallery-folder-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9997;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.gallery-folder-picker-panel {
+  width: 100%;
+  max-width: 520px;
+  max-height: 80vh;
+  background: var(--gallery-bg);
+  border-radius: 18px 18px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gallery-folder-picker-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--mehrab-purple);
+  color: #fff;
+}
+
+.gallery-folder-picker-title {
+  flex: 1;
+  font-weight: 800;
+  font-size: 15px;
+  text-align: center;
+}
+
+.gallery-folder-picker-panel .gallery-folders-grid {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.gallery-folder-picker-panel .gallery-status {
+  padding: 0 16px;
+}
+
+.gallery-picker-confirm-btn {
+  margin: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  border: 0;
+  border-radius: 12px;
+  background: var(--mehrab-gold);
+  color: var(--mehrab-purple-dark);
+  font-weight: 800;
+  padding: 13px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+@media (min-width: 640px) {
+  .gallery-folder-picker-overlay {
+    align-items: center;
+  }
+
+  .gallery-folder-picker-panel {
+    border-radius: 18px;
+    max-height: 70vh;
+  }
 }
 
 /* ===== شاشات أوسع (تابلت/كمبيوتر) ===== */

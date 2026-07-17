@@ -42,6 +42,7 @@
         <button id="gallerySelectModeBtn" type="button" class="gallery-toolbar-btn">تحديد</button>
         <button id="galleryDownloadFolderBtn" type="button" class="gallery-toolbar-btn">⬇ تحميل كل الملفات هنا</button>
         <button id="galleryDownloadSelectedBtn" type="button" class="gallery-toolbar-btn hidden">⬇ تحميل المحدد</button>
+        <button id="galleryMoveSelectedBtn" type="button" class="gallery-toolbar-btn hidden">📁 نقل المحدد</button>
         <button id="galleryCancelSelectBtn" type="button" class="gallery-toolbar-btn hidden">إلغاء</button>
       </div>
       <div id="galleryItemsGrid" class="gallery-items-grid"></div>
@@ -58,6 +59,19 @@
     <button id="galleryPreviewCloseBtn" class="gallery-preview-close" type="button">×</button>
     <div id="galleryPreviewBody" class="gallery-preview-body"></div>
     <button id="galleryPreviewDownloadBtn" class="gallery-preview-download" type="button">⬇ تحميل</button>
+  </div>
+
+  <div id="galleryFolderPickerOverlay" class="gallery-folder-picker-overlay hidden">
+    <div class="gallery-folder-picker-panel">
+      <div class="gallery-folder-picker-header">
+        <button id="galleryPickerBackBtn" class="gallery-back-btn hidden" type="button">‹ رجوع</button>
+        <div class="gallery-folder-picker-title" id="galleryPickerTitle">اختر فولدر</div>
+        <button id="galleryPickerCloseBtn" class="gallery-logout-btn" type="button">×</button>
+      </div>
+      <div id="galleryPickerGrid" class="gallery-folders-grid"></div>
+      <div id="galleryPickerStatus" class="gallery-status"></div>
+      <button id="galleryPickerConfirmBtn" class="gallery-picker-confirm-btn" type="button">📁 انقل هنا</button>
+    </div>
   </div>
 
   <script src="gallery.js?v=1"></script>
