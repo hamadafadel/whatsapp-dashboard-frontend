@@ -14,7 +14,8 @@
 html, body {
   margin: 0;
   padding: 0;
-  height: 100%;
+  width: 100%;
+  min-height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, Arial, sans-serif;
   background: var(--gallery-bg);
   color: var(--mehrab-ink);
@@ -89,9 +90,8 @@ button {
 
 /* ===== الهيكل العام ===== */
 .gallery-app {
+  width: 100%;
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
   position: relative;
 }
 
@@ -99,6 +99,7 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 14px max(14px, env(safe-area-inset-right)) 14px max(14px, env(safe-area-inset-left));
   background: var(--mehrab-purple);
   color: #fff;
@@ -123,11 +124,22 @@ button {
   padding: 8px 12px;
   font-size: 14px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .gallery-view {
-  flex: 1;
-  padding: 16px max(16px, env(safe-area-inset-right)) 90px max(16px, env(safe-area-inset-left));
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 20px max(20px, env(safe-area-inset-right)) 100px max(20px, env(safe-area-inset-left));
+  transition: background 0.15s ease;
+}
+
+.gallery-view.drag-active {
+  background: rgba(197, 166, 109, 0.12);
+  outline: 2px dashed var(--mehrab-gold);
+  outline-offset: -8px;
 }
 
 .gallery-status {
@@ -142,6 +154,7 @@ button {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 14px;
+  margin-bottom: 18px;
 }
 
 .gallery-folder-card {
@@ -155,10 +168,21 @@ button {
   gap: 8px;
   cursor: pointer;
   text-align: center;
+  transition: background 0.12s ease, transform 0.12s ease, border-color 0.12s ease;
+}
+
+.gallery-folder-card:hover {
+  background: #f8f2ea;
 }
 
 .gallery-folder-card:active {
-  background: #f8f2ea;
+  transform: scale(0.98);
+}
+
+.gallery-folder-card.drop-target {
+  border-color: var(--mehrab-purple);
+  background: rgba(84, 16, 91, 0.08);
+  transform: scale(1.03);
 }
 
 .gallery-folder-icon {
@@ -176,6 +200,7 @@ button {
 .gallery-items-toolbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-bottom: 14px;
 }
@@ -189,6 +214,11 @@ button {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.gallery-toolbar-btn:hover {
+  background: #f8f2ea;
 }
 
 .gallery-toolbar-btn.active {
@@ -196,10 +226,15 @@ button {
   color: #fff;
 }
 
+.gallery-toolbar-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .gallery-items-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
 }
 
 .gallery-item-card {
@@ -273,6 +308,10 @@ button {
 
 .gallery-item-card.selected {
   outline: 3px solid var(--mehrab-gold);
+}
+
+.gallery-item-card.dragging {
+  opacity: 0.4;
 }
 
 .gallery-item-delete {
@@ -369,11 +408,107 @@ button {
   padding: 12px 22px;
   font-size: 15px;
   cursor: pointer;
+  min-width: 160px;
 }
 
-@media (min-width: 900px) {
+.gallery-preview-download:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* ===== توست تقدّم التحميل ===== */
+.gallery-progress-toast {
+  position: fixed;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--mehrab-purple-dark);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  z-index: 9999;
+  min-width: 220px;
+  text-align: center;
+}
+
+.gallery-progress-toast .gallery-progress-bar-track {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.25);
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.gallery-progress-toast .gallery-progress-bar-fill {
+  height: 100%;
+  background: var(--mehrab-gold);
+  width: 0%;
+  transition: width 0.15s ease;
+}
+
+/* ===== شاشات أوسع (تابلت/كمبيوتر) ===== */
+@media (min-width: 640px) {
+  .gallery-header {
+    padding-inline: max(24px, env(safe-area-inset-right));
+  }
+
+  .gallery-header-title {
+    font-size: 19px;
+  }
+
   .gallery-view {
-    max-width: 1000px;
-    margin: 0 auto;
+    padding-top: 28px;
+  }
+
+  .gallery-folders-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 18px;
+  }
+
+  .gallery-items-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+  }
+
+  .gallery-items-toolbar {
+    gap: 10px;
+  }
+
+  .gallery-toolbar-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 1000px) {
+  .gallery-view {
+    max-width: 1400px;
+  }
+
+  .gallery-folders-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+
+  .gallery-items-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
+  .gallery-folder-card,
+  .gallery-item-card {
+    cursor: pointer;
+  }
+
+  .gallery-upload-fab,
+  .gallery-new-folder-fab {
+    width: 60px;
+    height: 60px;
+  }
+
+  .gallery-new-folder-fab {
+    left: 94px;
   }
 }

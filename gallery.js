@@ -11,6 +11,7 @@ const backBtnEl = document.getElementById("galleryBackBtn");
 const headerTitleEl = document.getElementById("galleryHeaderTitle");
 const logoutBtnEl = document.getElementById("galleryLogoutBtn");
 
+const browseViewEl = document.getElementById("galleryBrowseView");
 const foldersGridEl = document.getElementById("galleryFoldersGrid");
 const itemsToolbarEl = document.getElementById("galleryItemsToolbar");
 const itemsGridEl = document.getElementById("galleryItemsGrid");
@@ -104,6 +105,84 @@ function handleInvalidToken(res) {
     return true;
   }
   return false;
+}
+
+// ===== توست تقدّم التحميل/الرفع =====
+let progressToastEl = null;
+
+function showProgressToast(label) {
+  hideProgressToast();
+
+  progressToastEl = document.createElement("div");
+  progressToastEl.className = "gallery-progress-toast";
+
+  const labelEl = document.createElement("div");
+  labelEl.className = "gallery-progress-label";
+  labelEl.textContent = label;
+
+  const track = document.createElement("div");
+  track.className = "gallery-progress-bar-track";
+
+  const fill = document.createElement("div");
+  fill.className = "gallery-progress-bar-fill";
+  track.appendChild(fill);
+
+  progressToastEl.appendChild(labelEl);
+  progressToastEl.appendChild(track);
+  document.body.appendChild(progressToastEl);
+}
+
+function updateProgressToast(label, percent) {
+  if (!progressToastEl) return;
+
+  const labelEl = progressToastEl.querySelector(".gallery-progress-label");
+  const fillEl = progressToastEl.querySelector(".gallery-progress-bar-fill");
+
+  if (labelEl) labelEl.textContent = label;
+  if (fillEl) fillEl.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+}
+
+function hideProgressToast() {
+  if (progressToastEl) {
+    progressToastEl.remove();
+    progressToastEl = null;
+  }
+}
+
+// بيجيب الملف ويتابع نسبة التقدم لو المتصفح والسيرفر بيدعموا Content-Length،
+// وإلا بيرجع الملف كامل من غير نسبة تقدم دقيقة
+async function fetchBlobWithProgress(url, options, onProgress) {
+  const res = await fetch(url, options);
+
+  if (handleInvalidToken(res)) return null;
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "فشل التحميل");
+  }
+
+  const total = Number(res.headers.get("content-length")) || 0;
+
+  if (!res.body || !total) {
+    onProgress(100);
+    return await res.blob();
+  }
+
+  const reader = res.body.getReader();
+  const chunks = [];
+  let received = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    chunks.push(value);
+    received += value.length;
+    onProgress(Math.min(99, Math.round((received / total) * 100)));
+  }
+
+  onProgress(100);
+  return new Blob(chunks);
 }
 
 async function login() {
@@ -206,12 +285,37 @@ async function loadCurrent() {
   }
 }
 
+const DRAG_MIME = "application/x-gallery-node-id";
+
+async function moveNodeToFolder(nodeId, targetFolderId) {
+  if (!nodeId || nodeId === targetFolderId) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/gallery/items/${encodeURIComponent(nodeId)}/move`, {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ targetFolderId })
+    });
+
+    if (handleInvalidToken(res)) return;
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "فشل النقل");
+
+    loadCurrent();
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "فشل نقل العنصر");
+  }
+}
+
 function renderFolders(folders) {
   foldersGridEl.innerHTML = "";
 
   folders.forEach((folder) => {
     const card = document.createElement("div");
     card.className = "gallery-folder-card";
+    card.draggable = canWriteHere();
 
     const icon = document.createElement("div");
     icon.className = "gallery-folder-icon";
@@ -229,6 +333,33 @@ function renderFolders(folders) {
       loadCurrent();
     });
 
+    // نقل فولدر/ملف تاني جوه الفولدر ده بالسحب والإفلات
+    card.addEventListener("dragstart", (event) => {
+      event.stopPropagation();
+      event.dataTransfer.setData(DRAG_MIME, folder.id);
+      event.dataTransfer.effectAllowed = "move";
+    });
+
+    card.addEventListener("dragover", (event) => {
+      if (!canWriteHere() || !event.dataTransfer.types.includes(DRAG_MIME)) return;
+      event.preventDefault();
+      card.classList.add("drop-target");
+    });
+
+    card.addEventListener("dragleave", () => {
+      card.classList.remove("drop-target");
+    });
+
+    card.addEventListener("drop", (event) => {
+      if (!canWriteHere() || !event.dataTransfer.types.includes(DRAG_MIME)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      card.classList.remove("drop-target");
+
+      const draggedId = event.dataTransfer.getData(DRAG_MIME);
+      moveNodeToFolder(draggedId, folder.id);
+    });
+
     foldersGridEl.appendChild(card);
   });
 }
@@ -241,6 +372,18 @@ function renderItems() {
     card.className = "gallery-item-card";
     card.classList.toggle("selectable", selectMode);
     card.classList.toggle("selected", selectedItemIds.has(item.id));
+    card.draggable = canWriteHere() && !selectMode;
+
+    card.addEventListener("dragstart", (event) => {
+      event.stopPropagation();
+      event.dataTransfer.setData(DRAG_MIME, item.id);
+      event.dataTransfer.effectAllowed = "move";
+      card.classList.add("dragging");
+    });
+
+    card.addEventListener("dragend", () => {
+      card.classList.remove("dragging");
+    });
 
     const isVideo =
       item.isVideo || String(item.mimeType || "").startsWith("video/");
@@ -378,30 +521,34 @@ backBtnEl.addEventListener("click", () => {
 
 // ===== التحميل =====
 async function downloadBlobFromZipEndpoint(payload, downloadName) {
-  const res = await fetch(`${API_BASE}/gallery/download-zip`, {
-    method: "POST",
-    headers: getAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify(payload)
-  });
+  showProgressToast("جاري التحضير...");
 
-  if (handleInvalidToken(res)) return;
+  try {
+    const blob = await fetchBlobWithProgress(
+      `${API_BASE}/gallery/download-zip`,
+      {
+        method: "POST",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload)
+      },
+      (percent) => updateProgressToast("جاري التحضير...", percent)
+    );
 
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "فشل التحميل");
+    if (!blob) return;
+
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = downloadName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } finally {
+    hideProgressToast();
   }
-
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = downloadName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 downloadFolderBtnEl.addEventListener("click", async () => {
@@ -430,6 +577,8 @@ downloadSelectedBtnEl.addEventListener("click", async () => {
   if (!ids.length) return;
 
   downloadSelectedBtnEl.disabled = true;
+  const originalText = downloadSelectedBtnEl.textContent;
+  downloadSelectedBtnEl.textContent = "جاري التحضير...";
 
   try {
     await downloadBlobFromZipEndpoint(
@@ -441,6 +590,7 @@ downloadSelectedBtnEl.addEventListener("click", async () => {
     alert(error.message || "فشل تحميل الملفات المحددة");
   } finally {
     downloadSelectedBtnEl.disabled = false;
+    downloadSelectedBtnEl.textContent = originalText;
   }
 });
 
@@ -486,18 +636,22 @@ previewDownloadBtnEl.addEventListener("click", async () => {
 
   const originalText = previewDownloadBtnEl.textContent;
   previewDownloadBtnEl.disabled = true;
-  previewDownloadBtnEl.textContent = "جاري التحميل...";
+  previewDownloadBtnEl.textContent = "جاري التحضير...";
+  showProgressToast("جاري التحضير...");
 
   try {
-    const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(previewItem.id)}/download?token=${encodeURIComponent(authToken)}`;
-    const res = await fetch(fileUrl);
-
-    if (!res.ok) throw new Error("فشل التحميل");
-
     // لازم نجيب الملف كـ blob ونحمّله بلينك محلي (blob:) بدل ما نحط لينك
     // API الأصلي مباشرة على <a download> — سمة download بيتجاهلها المتصفح
     // لو اللينك من دومين مختلف (وده حالتنا هنا)
-    const blob = await res.blob();
+    const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(previewItem.id)}/download?token=${encodeURIComponent(authToken)}`;
+    const blob = await fetchBlobWithProgress(
+      fileUrl,
+      {},
+      (percent) => updateProgressToast("جاري التحضير...", percent)
+    );
+
+    if (!blob) return;
+
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement("a");
@@ -512,30 +666,27 @@ previewDownloadBtnEl.addEventListener("click", async () => {
     console.error(error);
     alert(error.message || "فشل تحميل الملف");
   } finally {
+    hideProgressToast();
     previewDownloadBtnEl.disabled = false;
     previewDownloadBtnEl.textContent = originalText;
   }
 });
 
 // ===== رفع ملفات جديدة =====
-uploadFabEl.addEventListener("click", () => {
-  uploadInputEl.click();
-});
-
-uploadInputEl.addEventListener("change", async () => {
-  const files = Array.from(uploadInputEl.files || []);
-  uploadInputEl.value = "";
-
+async function uploadFiles(files) {
   if (!files.length) return;
 
   uploadFabEl.disabled = true;
   const originalText = uploadFabEl.textContent;
-  uploadFabEl.textContent = "…";
 
   let uploaded = 0;
   const failReasons = [];
 
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    uploadFabEl.textContent = "…";
+    showProgressToast(`جاري رفع ${i + 1} من ${files.length}...`);
+
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -559,6 +710,7 @@ uploadInputEl.addEventListener("change", async () => {
     }
   }
 
+  hideProgressToast();
   uploadFabEl.disabled = false;
   uploadFabEl.textContent = originalText;
 
@@ -569,6 +721,51 @@ uploadInputEl.addEventListener("change", async () => {
   }
 
   loadCurrent();
+}
+
+uploadFabEl.addEventListener("click", () => {
+  uploadInputEl.click();
+});
+
+uploadInputEl.addEventListener("change", () => {
+  const files = Array.from(uploadInputEl.files || []);
+  uploadInputEl.value = "";
+  uploadFiles(files);
+});
+
+// ===== سحب وإفلات ملفات للرفع =====
+let dragDepth = 0;
+
+function isFileDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes("Files");
+}
+
+browseViewEl.addEventListener("dragenter", (event) => {
+  if (!isFileDrag(event) || !canWriteHere()) return;
+  event.preventDefault();
+  dragDepth++;
+  browseViewEl.classList.add("drag-active");
+});
+
+browseViewEl.addEventListener("dragover", (event) => {
+  if (!isFileDrag(event) || !canWriteHere()) return;
+  event.preventDefault();
+});
+
+browseViewEl.addEventListener("dragleave", () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) browseViewEl.classList.remove("drag-active");
+});
+
+browseViewEl.addEventListener("drop", (event) => {
+  if (!isFileDrag(event) || !canWriteHere()) return;
+  event.preventDefault();
+
+  dragDepth = 0;
+  browseViewEl.classList.remove("drag-active");
+
+  const files = Array.from(event.dataTransfer?.files || []);
+  uploadFiles(files);
 });
 
 // ===== إنشاء فولدر جديد =====
