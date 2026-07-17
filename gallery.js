@@ -232,10 +232,23 @@ function renderItems() {
       item.isVideo || String(item.mimeType || "").startsWith("video/");
 
     if (isVideo) {
-      const placeholder = document.createElement("div");
-      placeholder.className = "gallery-item-video-placeholder";
-      placeholder.textContent = "🎬";
-      card.appendChild(placeholder);
+      if (item.thumbnailUrl) {
+        const img = document.createElement("img");
+        img.src = item.thumbnailUrl;
+        img.loading = "lazy";
+        img.alt = item.name || "";
+        card.appendChild(img);
+
+        const badge = document.createElement("div");
+        badge.className = "gallery-item-video-badge";
+        badge.textContent = "▶";
+        card.appendChild(badge);
+      } else {
+        const placeholder = document.createElement("div");
+        placeholder.className = "gallery-item-video-placeholder";
+        placeholder.textContent = "🎬";
+        card.appendChild(placeholder);
+      }
     } else {
       const fullUrl = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/download?token=${encodeURIComponent(authToken)}`;
 
