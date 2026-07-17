@@ -237,10 +237,19 @@ function renderItems() {
       placeholder.textContent = "🎬";
       card.appendChild(placeholder);
     } else {
+      const fullUrl = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/download?token=${encodeURIComponent(authToken)}`;
+
       const img = document.createElement("img");
-      img.src = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/download?token=${encodeURIComponent(authToken)}`;
+      img.src = item.thumbnailUrl || fullUrl;
       img.loading = "lazy";
       img.alt = item.name || "";
+
+      // لو لينك الصورة المصغّرة من درايف فشل (منتهي أو مش موجود)، نرجع
+      // للتحميل الكامل بدل ما الصورة تفضل مكسورة
+      img.addEventListener("error", () => {
+        if (img.src !== fullUrl) img.src = fullUrl;
+      }, { once: true });
+
       card.appendChild(img);
     }
 
