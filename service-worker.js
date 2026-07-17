@@ -1,4 +1,4 @@
-const CACHE_NAME = "mehrab-dashboard-static-v5";
+const CACHE_NAME = "mehrab-dashboard-static-v6";
 
 const STATIC_FILES = [
   "/manifest.json",
@@ -116,7 +116,10 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith("/index.html") ||
     url.pathname.endsWith("/app.js") ||
     url.pathname.endsWith("/app.css") ||
-    url.pathname.endsWith("/service-worker.js");
+    url.pathname.endsWith("/service-worker.js") ||
+    url.pathname.endsWith("/gallery.html") ||
+    url.pathname.endsWith("/gallery.js") ||
+    url.pathname.endsWith("/gallery.css");
 
   // ملفات التطبيق البرمجية: دائمًا أحدث نسخة من السيرفر
   if (isAppShell) {
