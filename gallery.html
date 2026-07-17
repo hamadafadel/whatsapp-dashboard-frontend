@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" translate="no" class="notranslate">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover"
+  />
+  <meta name="google" content="notranslate" />
+  <meta http-equiv="Content-Language" content="ar" />
+
+  <title>معرض المحرب</title>
+
+  <link rel="apple-touch-icon" href="mehrab-splash-192-v5.png" />
+  <meta name="theme-color" content="#54105b" />
+
+  <link rel="stylesheet" href="gallery.css?v=1" />
+</head>
+<body translate="no" class="notranslate">
+
+  <div id="galleryLoginScreen" class="login-screen">
+    <div class="login-card">
+      <h2>تسجيل الدخول</h2>
+      <input id="galleryLoginUsername" type="text" placeholder="Username" autocomplete="username" />
+      <input id="galleryLoginPassword" type="password" placeholder="Password" autocomplete="current-password" />
+      <button id="galleryLoginBtn" type="button">دخول</button>
+      <div id="galleryLoginError" class="login-error"></div>
+    </div>
+  </div>
+
+  <div id="galleryApp" class="gallery-app hidden">
+    <header class="gallery-header">
+      <button id="galleryBackBtn" class="gallery-back-btn hidden" type="button">‹ رجوع</button>
+      <div class="gallery-header-title" id="galleryHeaderTitle">المعرض</div>
+      <button id="galleryLogoutBtn" class="gallery-logout-btn" type="button">خروج</button>
+    </header>
+
+    <div id="galleryFoldersView" class="gallery-view">
+      <div id="galleryFoldersGrid" class="gallery-folders-grid"></div>
+      <div id="galleryFoldersStatus" class="gallery-status"></div>
+    </div>
+
+    <div id="galleryItemsView" class="gallery-view hidden">
+      <div class="gallery-items-toolbar">
+        <button id="gallerySelectModeBtn" type="button" class="gallery-toolbar-btn">تحديد</button>
+        <button id="galleryDownloadFolderBtn" type="button" class="gallery-toolbar-btn">⬇ تحميل الفولدر كامل</button>
+        <button id="galleryDownloadSelectedBtn" type="button" class="gallery-toolbar-btn hidden">⬇ تحميل المحدد</button>
+        <button id="galleryCancelSelectBtn" type="button" class="gallery-toolbar-btn hidden">إلغاء</button>
+      </div>
+      <div id="galleryItemsGrid" class="gallery-items-grid"></div>
+      <div id="galleryItemsStatus" class="gallery-status"></div>
+    </div>
+
+    <input id="galleryUploadInput" type="file" accept="image/*,video/*" multiple hidden />
+    <button id="galleryUploadFab" class="gallery-upload-fab" type="button" title="رفع صور/فيديوهات جديدة">＋</button>
+  </div>
+
+  <div id="galleryPreviewOverlay" class="gallery-preview-overlay hidden">
+    <button id="galleryPreviewCloseBtn" class="gallery-preview-close" type="button">×</button>
+    <div id="galleryPreviewBody" class="gallery-preview-body"></div>
+    <button id="galleryPreviewDownloadBtn" class="gallery-preview-download" type="button">⬇ تحميل</button>
+  </div>
+
+  <script src="gallery.js?v=1"></script>
+</body>
+</html>

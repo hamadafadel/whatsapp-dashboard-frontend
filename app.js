@@ -4985,6 +4985,11 @@ async function login() {
 
     localStorage.setItem("dashboard_token", authToken);
 
+    if (data.user?.role === "gallery") {
+      window.location.href = "/gallery.html";
+      return;
+    }
+
     hideLogin();
 
     connectEvents();
@@ -5001,15 +5006,21 @@ async function login() {
 
 loginBtnEl?.addEventListener("click", login);
 
-if (authToken) {
+const isGalleryRoleToken = Boolean(authToken) && getCurrentUserRole() === "gallery";
+
+if (isGalleryRoleToken) {
+  window.location.href = "/gallery.html";
+}
+
+if (authToken && !isGalleryRoleToken) {
   hideLogin();
   connectEvents();
   ensurePushSubscription();
-} else {
+} else if (!authToken) {
   showLogin();
 }
 
-if (authToken) {
+if (authToken && !isGalleryRoleToken) {
   loadConversations();
   refreshAllLabels();
   applyRolePermissionsToUI();
