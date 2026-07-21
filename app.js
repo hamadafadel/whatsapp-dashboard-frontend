@@ -51,6 +51,29 @@ const quickActionsBtnEl = document.getElementById("quickActionsBtn");
 const quickActionsPanelEl = document.getElementById("quickActionsPanel");
 const quickActionsStatusEl = document.getElementById("quickActionsStatus");
 const openTemplatesBtnEl = document.getElementById("openTemplatesBtn");
+const openMetaOrderBtnEl =
+  document.getElementById("openMetaOrderBtn");
+
+const metaOrderOverlayEl =
+  document.getElementById("metaOrderOverlay");
+
+const closeMetaOrderBtnEl =
+  document.getElementById("closeMetaOrderBtn");
+
+const cancelMetaOrderBtnEl =
+  document.getElementById("cancelMetaOrderBtn");
+
+const submitMetaOrderBtnEl =
+  document.getElementById("submitMetaOrderBtn");
+
+const metaOrderAmountEl =
+  document.getElementById("metaOrderAmount");
+
+const metaOrderDescriptionEl =
+  document.getElementById("metaOrderDescription");
+
+const metaOrderStatusEl =
+  document.getElementById("metaOrderStatus");
 const templatesPanelEl = document.getElementById("templatesPanel");
 const backToActionsBtnEl = document.getElementById("backToActionsBtn");
 const templatesListEl = document.getElementById("templatesList");
@@ -199,6 +222,63 @@ function closeQuickActions() {
   templatesPanelEl?.classList.add("hidden");
   quickActionsBtnEl?.setAttribute("aria-expanded", "false");
 }
+
+function openMetaOrderModal() {
+  if (!activeSessionId) {
+    alert("اختر محادثة أولًا");
+    return;
+  }
+
+  closeQuickActions();
+  closeEmojiPicker();
+
+  if (metaOrderAmountEl) {
+    metaOrderAmountEl.value = "";
+  }
+
+  if (metaOrderDescriptionEl) {
+    metaOrderDescriptionEl.value = "";
+  }
+
+  if (metaOrderStatusEl) {
+    metaOrderStatusEl.textContent = "";
+  }
+
+  metaOrderOverlayEl?.classList.remove("hidden");
+
+  setTimeout(() => {
+    metaOrderAmountEl?.focus();
+  }, 100);
+}
+
+function closeMetaOrderModal() {
+  metaOrderOverlayEl?.classList.add("hidden");
+
+  if (metaOrderStatusEl) {
+    metaOrderStatusEl.textContent = "";
+  }
+}
+
+openMetaOrderBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  openMetaOrderModal();
+});
+
+closeMetaOrderBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  closeMetaOrderModal();
+});
+
+cancelMetaOrderBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  closeMetaOrderModal();
+});
+
+metaOrderOverlayEl?.addEventListener("click", (event) => {
+  if (event.target === metaOrderOverlayEl) {
+    closeMetaOrderModal();
+  }
+});
 
 quickActionsBtnEl?.addEventListener("click", (event) => {
   event.stopPropagation();
