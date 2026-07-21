@@ -280,6 +280,92 @@ metaOrderOverlayEl?.addEventListener("click", (event) => {
   }
 });
 
+submitMetaOrderBtnEl?.addEventListener("click", async (event) => {
+  event.stopPropagation();
+
+  if (!activeSessionId) {
+    if (metaOrderStatusEl) {
+      metaOrderStatusEl.classList.remove("success");
+      metaOrderStatusEl.textContent = "لا توجد محادثة محددة";
+    }
+    return;
+  }
+
+  const amount = Number(metaOrderAmountEl?.value || 0);
+  const description = metaOrderDescriptionEl?.value.trim() || "";
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    if (metaOrderStatusEl) {
+      metaOrderStatusEl.classList.remove("success");
+      metaOrderStatusEl.textContent = "اكتب قيمة طلب صحيحة";
+    }
+
+    metaOrderAmountEl?.focus();
+    return;
+  }
+
+  submitMetaOrderBtnEl.disabled = true;
+  cancelMetaOrderBtnEl.disabled = true;
+  closeMetaOrderBtnEl.disabled = true;
+
+  if (metaOrderStatusEl) {
+    metaOrderStatusEl.classList.remove("success");
+    metaOrderStatusEl.textContent = "جاري إنشاء الطلب...";
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/meta-purchase`, {
+      method: "POST",
+      headers: getAuthHeaders({
+        "Content-Type": "application/json"
+      }),
+      body: JSON.stringify({
+        sessionId: activeSessionId,
+        amount,
+        currency: "EGP",
+        description
+      })
+    });
+
+    if (handleInvalidToken(response)) return;
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        result.error ||
+        result.message ||
+        "فشل إنشاء الطلب"
+      );
+    }
+
+    if (metaOrderStatusEl) {
+      metaOrderStatusEl.classList.add("success");
+      metaOrderStatusEl.textContent =
+        result.orderCode
+          ? `تم إنشاء الطلب بنجاح — ${result.orderCode}`
+          : "تم إنشاء الطلب بنجاح";
+    }
+
+    setTimeout(() => {
+      closeMetaOrderModal();
+    }, 1200);
+
+  } catch (error) {
+    console.error("Meta purchase error:", error);
+
+    if (metaOrderStatusEl) {
+      metaOrderStatusEl.classList.remove("success");
+      metaOrderStatusEl.textContent =
+        error.message || "فشل إنشاء الطلب";
+    }
+  } finally {
+    submitMetaOrderBtnEl.disabled = false;
+    cancelMetaOrderBtnEl.disabled = false;
+    closeMetaOrderBtnEl.disabled = false;
+  }
+});
+
 quickActionsBtnEl?.addEventListener("click", (event) => {
   event.stopPropagation();
 
