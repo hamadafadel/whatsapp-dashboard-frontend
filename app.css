@@ -3821,3 +3821,201 @@ body.labels-open {
   font-size: 12px;
   font-weight: 800;
 }
+
+/* ===== نافذة إنشاء طلب Meta ===== */
+
+.meta-order-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.meta-order-overlay.hidden {
+  display: none !important;
+}
+
+.meta-order-sheet {
+  width: 100%;
+  max-width: 430px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: #202c33;
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.5);
+}
+
+.meta-order-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 18px;
+  border-bottom: 1px solid #2a3942;
+}
+
+.meta-order-title {
+  color: #e9edef;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.meta-order-close {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #8696a0;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.meta-order-close:hover,
+.meta-order-close:active {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.meta-order-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+}
+
+.meta-order-label {
+  color: #d1d7db;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.meta-order-optional {
+  margin-right: 4px;
+  color: #8696a0;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.meta-order-amount-wrap {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #3b4a54;
+  border-radius: 12px;
+  background: #2a3942;
+}
+
+.meta-order-amount-wrap:focus-within {
+  border-color: #00a884;
+}
+
+.meta-order-amount-wrap input {
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+  padding: 0 14px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e9edef;
+  font-size: 17px;
+  direction: ltr;
+  text-align: left;
+}
+
+.meta-order-currency {
+  flex: 0 0 auto;
+  padding: 0 14px;
+  color: #00d5a0;
+  font-size: 13px;
+  font-weight: 800;
+  direction: ltr;
+}
+
+.meta-order-form textarea {
+  width: 100%;
+  min-height: 82px;
+  padding: 12px 14px;
+  border: 1px solid #3b4a54;
+  outline: 0;
+  border-radius: 12px;
+  resize: vertical;
+  background: #2a3942;
+  color: #e9edef;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.meta-order-form textarea:focus {
+  border-color: #00a884;
+}
+
+.meta-order-form input::placeholder,
+.meta-order-form textarea::placeholder {
+  color: #8696a0;
+}
+
+.meta-order-status {
+  min-height: 20px;
+  color: #ffb4b4;
+  font-size: 13px;
+  text-align: center;
+}
+
+.meta-order-status.success {
+  color: #5ee6b5;
+}
+
+.meta-order-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.meta-order-actions button {
+  flex: 1;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+#cancelMetaOrderBtn {
+  background: #2a3942;
+  color: #d1d7db;
+}
+
+#submitMetaOrderBtn {
+  background: #00a884;
+  color: #ffffff;
+}
+
+#submitMetaOrderBtn:disabled,
+#cancelMetaOrderBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (max-width: 600px) {
+  .meta-order-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .meta-order-sheet {
+    max-width: none;
+    border-radius: 18px 18px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
