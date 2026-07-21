@@ -344,6 +344,69 @@
       </div>
     </div>
 
+<div id="metaOrderOverlay" class="meta-order-overlay hidden">
+  <div class="meta-order-sheet">
+
+    <header class="meta-order-header">
+      <div class="meta-order-title">إنشاء طلب</div>
+
+      <button
+        id="closeMetaOrderBtn"
+        class="meta-order-close"
+        type="button"
+        aria-label="إغلاق"
+      >
+        ×
+      </button>
+    </header>
+
+    <div class="meta-order-form">
+
+      <label class="meta-order-label" for="metaOrderAmount">
+        قيمة الطلب
+      </label>
+
+      <div class="meta-order-amount-wrap">
+        <input
+          id="metaOrderAmount"
+          type="number"
+          min="1"
+          step="0.01"
+          inputmode="decimal"
+          placeholder="مثال: 1450"
+          autocomplete="off"
+        />
+
+        <span class="meta-order-currency">EGP</span>
+      </div>
+
+      <label class="meta-order-label" for="metaOrderDescription">
+        الوصف
+        <span class="meta-order-optional">اختياري</span>
+      </label>
+
+      <textarea
+        id="metaOrderDescription"
+        rows="3"
+        placeholder="مثال: سجادة ميموري فوم"
+      ></textarea>
+
+      <div id="metaOrderStatus" class="meta-order-status"></div>
+
+      <div class="meta-order-actions">
+        <button id="cancelMetaOrderBtn" type="button">
+          إلغاء
+        </button>
+
+        <button id="submitMetaOrderBtn" type="button">
+          إنشاء الطلب
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+    
   </div>
 
   <script src="app.js?v=47"></script>
