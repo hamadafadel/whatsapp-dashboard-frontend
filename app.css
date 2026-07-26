@@ -2927,6 +2927,11 @@ body.saved-media-open {
   /* من غيرها المتصفح بياخد أي حركة إصبع كسكرول من الفريم الأول، قبل ما
      الكود بتاعنا ياخد فرصته يبدأ السحب */
   touch-action: pan-y;
+  /* من غيرهم، الضغطة الطويلة على الصورة بتفتح قايمة الموبايل الجاهزة
+     (حفظ/مشاركة الصورة) بدل ما تدخّل الكود بتاعنا خالص */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .saved-media-folder-card {
