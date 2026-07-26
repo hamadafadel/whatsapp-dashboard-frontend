@@ -3056,6 +3056,33 @@ body.saved-media-open {
   border-color: #00a884;
 }
 
+.saved-media-item-card.dragging {
+  opacity: 0.4;
+}
+
+.saved-media-item-card.drop-target {
+  outline: 3px solid #54105b;
+  outline-offset: -3px;
+}
+
+.saved-media-drag-ghost {
+  position: fixed;
+  z-index: 21000;
+  width: 60px;
+  height: 60px;
+  margin-left: -30px;
+  margin-top: -30px;
+  border-radius: 12px;
+  background: rgba(84, 16, 91, 0.85);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
 .saved-media-item-delete {
   position: absolute;
   top: 4px;

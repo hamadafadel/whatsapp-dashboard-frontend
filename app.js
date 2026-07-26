@@ -1226,6 +1226,272 @@ function renderSavedMediaFolders() {
   });
 }
 
+const SAVED_MEDIA_DRAG_MIME = "application/x-saved-media-item-id";
+
+// بيحط العنصر id قبل targetItem مباشرة، بترتيب كسري (رقم بينه وبين اللي
+// قبله) عشان ما نحتاجش نعيد ترقيم كل العناصر جوه الفولدر
+async function reorderSavedMediaItemBefore(id, targetItem) {
+  if (!id || id === targetItem.id) return;
+
+  const idx = savedMediaItems.findIndex((i) => i.id === targetItem.id);
+  const prevItem = idx > 0 ? savedMediaItems[idx - 1] : null;
+
+  const targetOrder = targetItem.sort_order ?? (idx + 1) * 1000;
+  const prevOrder = prevItem ? (prevItem.sort_order ?? idx * 1000) : 0;
+  const newOrder = (prevOrder + targetOrder) / 2;
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/saved-media-items/${id}/reorder`,
+      {
+        method: "POST",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ order: newOrder })
+      }
+    );
+
+    if (handleInvalidToken(response)) return;
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "فشل الترتيب");
+
+    await loadSavedMediaItems();
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "فشل ترتيب الملف");
+  }
+}
+
+// ===== سحب على الموبايل (اللمس مش بيدعم HTML5 drag/drop الأصلي) =====
+let savedMediaMobileDragState = null;
+
+function startSavedMediaMobileDrag(id, sourceCard, x, y) {
+  const ghost = document.createElement("div");
+  ghost.className = "saved-media-drag-ghost";
+  ghost.textContent = "📎";
+  ghost.style.left = `${x}px`;
+  ghost.style.top = `${y}px`;
+  document.body.appendChild(ghost);
+
+  sourceCard.classList.add("dragging");
+  savedMediaMobileDragState = { id, ghost };
+}
+
+function updateSavedMediaMobileDrag(x, y) {
+  if (!savedMediaMobileDragState) return;
+
+  savedMediaMobileDragState.ghost.style.left = `${x}px`;
+  savedMediaMobileDragState.ghost.style.top = `${y}px`;
+
+  document
+    .querySelectorAll(".saved-media-item-card.drop-target")
+    .forEach((el) => el.classList.remove("drop-target"));
+
+  savedMediaMobileDragState.ghost.style.display = "none";
+  const el = document.elementFromPoint(x, y);
+  savedMediaMobileDragState.ghost.style.display = "";
+
+  const target = el?.closest(".saved-media-item-card");
+  if (target && Number(target.dataset.id) !== savedMediaMobileDragState.id) {
+    target.classList.add("drop-target");
+  }
+}
+
+function endSavedMediaMobileDrag(x, y) {
+  if (!savedMediaMobileDragState) return;
+
+  const { id, ghost } = savedMediaMobileDragState;
+
+  ghost.style.display = "none";
+  const el = document.elementFromPoint(x, y);
+  const target = el?.closest(".saved-media-item-card");
+
+  document
+    .querySelectorAll(".saved-media-item-card.dragging")
+    .forEach((c) => c.classList.remove("dragging"));
+  document
+    .querySelectorAll(".saved-media-item-card.drop-target")
+    .forEach((c) => c.classList.remove("drop-target"));
+
+  ghost.remove();
+  savedMediaMobileDragState = null;
+
+  const targetId = target ? Number(target.dataset.id) : null;
+  if (targetId && targetId !== id) {
+    const targetItem = savedMediaItems.find((i) => i.id === targetId);
+    if (targetItem) reorderSavedMediaItemBefore(id, targetItem);
+  }
+}
+
+function cancelSavedMediaMobileDrag() {
+  if (!savedMediaMobileDragState) return;
+
+  savedMediaMobileDragState.ghost.remove();
+  document
+    .querySelectorAll(".saved-media-item-card.dragging")
+    .forEach((c) => c.classList.remove("dragging"));
+  document
+    .querySelectorAll(".saved-media-item-card.drop-target")
+    .forEach((c) => c.classList.remove("drop-target"));
+  savedMediaMobileDragState = null;
+}
+
+// بيربط كارت بضغطة عادية (فتح/تحديد) وضغطة طويلة (دخول وضع التحديد) وسحب
+// (ترتيب) — بنفس منطق الجيستشرز المستخدم في المعرض (gallery.js)
+function enableSavedMediaCardGestures(card, item, { onTap, onLongPress }) {
+  let startX = 0;
+  let startY = 0;
+  let longPressTimer = null;
+  let longPressFired = false;
+  let dragging = false;
+  let moved = false;
+  let touchHandled = false;
+  let skipGesture = false;
+
+  const TAP_MOVE_THRESHOLD = 24;
+
+  const clearLongPressTimer = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+
+  card.addEventListener("touchstart", (event) => {
+    // زرار الحذف بيعالج نفسه لوحده — من غير الشرط ده، اللمسة عليه هتفتح
+    // المعاينة أو تعمل تحديد في نفس اللحظة قبل ما stopPropagation بتاعه يشتغل
+    skipGesture = Boolean(event.target.closest(".saved-media-item-delete"));
+    if (skipGesture) return;
+
+    if (event.touches.length !== 1) return;
+
+    const t = event.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+    longPressFired = false;
+    dragging = false;
+    moved = false;
+    touchHandled = true;
+
+    longPressTimer = setTimeout(() => {
+      longPressFired = true;
+      if (navigator.vibrate) navigator.vibrate(15);
+    }, 500);
+  }, { passive: true });
+
+  card.addEventListener("touchmove", (event) => {
+    if (skipGesture) return;
+
+    const t = event.touches[0];
+    const dist = Math.hypot(t.clientX - startX, t.clientY - startY);
+
+    if (!longPressFired) {
+      if (dist > TAP_MOVE_THRESHOLD) {
+        moved = true;
+        clearLongPressTimer();
+      }
+      return;
+    }
+
+    if (!dragging && dist > 6 && savedMediaCanManage && !savedMediaSelectMode) {
+      dragging = true;
+      startSavedMediaMobileDrag(item.id, card, t.clientX, t.clientY);
+    }
+
+    if (dragging) {
+      updateSavedMediaMobileDrag(t.clientX, t.clientY);
+    }
+
+    event.preventDefault();
+  }, { passive: false });
+
+  card.addEventListener("touchend", (event) => {
+    if (skipGesture) {
+      skipGesture = false;
+      return;
+    }
+
+    clearLongPressTimer();
+
+    if (dragging) {
+      const t = event.changedTouches[0];
+      endSavedMediaMobileDrag(t.clientX, t.clientY);
+      dragging = false;
+      return;
+    }
+
+    if (moved) return;
+
+    if (longPressFired) {
+      onLongPress?.();
+      return;
+    }
+
+    onTap?.();
+  });
+
+  card.addEventListener("touchcancel", () => {
+    if (skipGesture) {
+      skipGesture = false;
+      return;
+    }
+
+    clearLongPressTimer();
+    if (dragging) {
+      cancelSavedMediaMobileDrag();
+      dragging = false;
+    }
+  });
+
+  card.addEventListener("click", (event) => {
+    if (event.target.closest(".saved-media-item-delete")) return;
+
+    if (touchHandled) {
+      touchHandled = false;
+      return;
+    }
+    onTap?.();
+  });
+
+  card.draggable = savedMediaCanManage && !savedMediaSelectMode;
+
+  card.addEventListener("dragstart", (event) => {
+    if (event.target.closest(".saved-media-item-delete")) {
+      event.preventDefault();
+      return;
+    }
+
+    event.stopPropagation();
+    event.dataTransfer.setData(SAVED_MEDIA_DRAG_MIME, String(item.id));
+    event.dataTransfer.effectAllowed = "move";
+    card.classList.add("dragging");
+  });
+
+  card.addEventListener("dragend", () => {
+    card.classList.remove("dragging");
+  });
+
+  card.addEventListener("dragover", (event) => {
+    if (!savedMediaCanManage || !event.dataTransfer.types.includes(SAVED_MEDIA_DRAG_MIME)) return;
+    event.preventDefault();
+    card.classList.add("drop-target");
+  });
+
+  card.addEventListener("dragleave", () => {
+    card.classList.remove("drop-target");
+  });
+
+  card.addEventListener("drop", (event) => {
+    if (!savedMediaCanManage || !event.dataTransfer.types.includes(SAVED_MEDIA_DRAG_MIME)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    card.classList.remove("drop-target");
+
+    const draggedId = Number(event.dataTransfer.getData(SAVED_MEDIA_DRAG_MIME));
+    if (draggedId) reorderSavedMediaItemBefore(draggedId, item);
+  });
+}
+
 function renderSavedMediaItems() {
   if (!savedMediaGridEl) return;
 
@@ -1259,15 +1525,24 @@ function renderSavedMediaItems() {
     img.alt = "";
     preview.appendChild(img);
 
-    preview.addEventListener("click", () => {
-      if (savedMediaSelectMode) {
-        toggleSavedMediaSelection(item.id);
-      } else {
-        openSavedMediaPreview(item);
+    card.appendChild(preview);
+
+    enableSavedMediaCardGestures(card, item, {
+      onTap: () => {
+        if (savedMediaSelectMode) {
+          toggleSavedMediaSelection(item.id);
+        } else {
+          openSavedMediaPreview(item);
+        }
+      },
+      onLongPress: () => {
+        if (savedMediaSelectMode) {
+          toggleSavedMediaSelection(item.id);
+        } else {
+          enterSavedMediaSelectMode(item.id);
+        }
       }
     });
-
-    card.appendChild(preview);
 
     if (item.media_kind === "video") {
       const badge = document.createElement("div");
@@ -1287,6 +1562,7 @@ function renderSavedMediaItems() {
       deleteBtn.className = "saved-media-item-delete";
       deleteBtn.textContent = "🗑";
       deleteBtn.setAttribute("aria-label", "حذف");
+      deleteBtn.draggable = false;
       deleteBtn.addEventListener("click", async (event) => {
         event.stopPropagation();
         if (!confirm("حذف هذا الملف من الفولدر؟")) return;
@@ -1330,9 +1606,9 @@ function updateSelectionBar() {
   }
 }
 
-function enterSavedMediaSelectMode() {
+function enterSavedMediaSelectMode(initialId = null) {
   savedMediaSelectMode = true;
-  savedMediaSelectedIds = new Set();
+  savedMediaSelectedIds = new Set(initialId ? [initialId] : []);
   toggleSelectModeBtnEl?.classList.add("active");
   if (toggleSelectModeBtnEl) toggleSelectModeBtnEl.textContent = "إلغاء التحديد";
   sendFolderBarEl?.classList.add("hidden");
