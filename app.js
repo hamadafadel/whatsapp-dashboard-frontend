@@ -4555,7 +4555,7 @@ searchInputEl.addEventListener("input", () => {
 sendBtnEl.addEventListener("click", sendMessageFromDashboard);
 
 messageInputEl.addEventListener("keydown", (e) => {
-  const isMobile = window.innerWidth < 900;
+  const isMobile = window.innerWidth < 1024;
 
   if (isMobile && e.key === "Enter") {
     return;
@@ -5197,7 +5197,7 @@ if (authToken && !isGalleryRoleToken) {
   refreshAllLabels();
   applyRolePermissionsToUI();
 }
-if (appEl && window.innerWidth > 900) {
+if (appEl && window.innerWidth > 1024) {
   appEl.classList.remove("chat-open");
 }
 

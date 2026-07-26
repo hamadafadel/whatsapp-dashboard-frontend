@@ -484,7 +484,7 @@ input {
 /* 💻 DESKTOP LAYER */
 /* ========================= */
 
-@media (min-width: 900px) {
+@media (min-width: 1024px) {
 
   .mobile-app {
     display: flex;
@@ -897,7 +897,7 @@ input {
   background: #f0f2f5;
 }
 
-@media (max-width: 899px) {
+@media (max-width: 1023px) {
   .message-react-trigger {
     opacity: 1;
     transform: scale(1);
@@ -957,7 +957,7 @@ input {
   margin-top: 4px;
 }
 
-@media (max-width: 899px) {
+@media (max-width: 1023px) {
   .message-actions-menu {
     bottom: 70px;
   }
@@ -1038,7 +1038,7 @@ input {
 }
 
 /* موبايل */
-@media (max-width: 899px) {
+@media (max-width: 1023px) {
   .message-options-trigger {
     display: flex;
     opacity: 0.8;
@@ -1046,7 +1046,7 @@ input {
 }
 
 /* كمبيوتر */
-@media (min-width: 900px) {
+@media (min-width: 1024px) {
   .message-options-trigger {
     opacity: 0;
     pointer-events: none;
@@ -1134,7 +1134,7 @@ input {
   }
 }
 
-@media (max-width: 899px) {
+@media (max-width: 1023px) {
   .voice-recording-hint {
     font-size: 12px;
   }
@@ -1621,7 +1621,7 @@ body,
   border: 1px solid rgba(197, 166, 109, 0.38) !important;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 1024px) {
   .mobile-app {
     border: 1px solid rgba(84, 16, 91, 0.25);
     box-shadow: 0 0 22px rgba(84, 16, 91, 0.10);
