@@ -1414,14 +1414,9 @@ savedMediaFileInputEl?.addEventListener("change", async () => {
 
   let uploaded = 0;
   const failReasons = [];
-  const maxVideoSize = 15 * 1024 * 1024;
 
   for (const file of files) {
     try {
-      if (file.type.startsWith("video/") && file.size > maxVideoSize) {
-        throw new Error("الفيديو أكبر من 15 ميجا");
-      }
-
       // نفس الضغط المستخدم مع الصور المبعوتة عن طريق دبوس الإرفاق
       // (تحويل لـ JPEG بجودة 92%) عشان الصور المحفوظة توصل للعميل بنفس الطريقة
       const uploadFile = file.type.startsWith("image/")
