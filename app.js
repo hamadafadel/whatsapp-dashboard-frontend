@@ -4553,6 +4553,10 @@ searchInputEl.addEventListener("input", () => {
   applyConversationFilters();
 });
 
+sendBtnEl.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+});
+
 sendBtnEl.addEventListener("click", sendMessageFromDashboard);
 
 messageInputEl.addEventListener("keydown", (e) => {
