@@ -1971,7 +1971,7 @@ function enterSessionsSelectMode() {
   selectedSessionIds = new Set();
   sessionsSelectionBarEl?.classList.remove("hidden");
   updateSessionsSelectionBar();
-  renderConversations(conversationsData);
+  applyConversationFilters();
 }
 
 function exitSessionsSelectMode() {
@@ -1979,7 +1979,7 @@ function exitSessionsSelectMode() {
   selectedSessionIds = new Set();
   sessionsSelectionBarEl?.classList.add("hidden");
   bulkLabelPickerEl?.classList.add("hidden");
-  renderConversations(conversationsData);
+  applyConversationFilters();
 }
 
 toggleSessionSelectBtnEl?.addEventListener("click", () => {
@@ -2764,6 +2764,7 @@ document.addEventListener("keydown", (event) => {
 });
 let typingIndicatorTimeout = null;
 let selectedReplyMessage = null;
+let isSendingMessage = false;
 let longPressTimer = null;
 let mediaRecorder = null;
 let audioChunks = [];
@@ -2839,7 +2840,7 @@ if (!res.ok) throw new Error("Failed conversations");
 
     const conversations = await res.json();
     conversationsData = Array.isArray(conversations) ? conversations : [];
-    renderConversations(conversationsData);
+    applyConversationFilters();
   } catch (error) {
     conversationsEl.innerHTML = `<div class="error-state">فشل تحميل المحادثات</div>`;
     console.error(error);
@@ -2929,7 +2930,7 @@ function renderConversations(conversations) {
 
         selectedSessionIds.add(conv.session_id);
         updateSessionsSelectionBar();
-        renderConversations(conversationsData);
+        applyConversationFilters();
       }, 500);
     });
 
@@ -2969,7 +2970,7 @@ function renderConversations(conversations) {
       conversationLabelsCache = Array.isArray(conv.labels) ? conv.labels : [];
       renderChatLabelsRow();
 
-      renderConversations(conversationsData);
+      applyConversationFilters();
       openChat();
 
       if (hasCachedConversation) {
@@ -4019,6 +4020,7 @@ async function sendMessageFromDashboard() {
 
   if (!activeSessionId) return alert("اختر محادثة أولًا");
   if (!message) return;
+  if (isSendingMessage) return;
 
   if (windowExpiredBannerEl && !windowExpiredBannerEl.classList.contains("hidden")) {
     alert("مرّ أكثر من 24 ساعة على آخر رسالة من العميل، لا يمكن إرسال رسالة نصية عادية. استخدم زرار إرسال تيمبليت.");
@@ -4027,8 +4029,8 @@ async function sendMessageFromDashboard() {
 
   const replyTo = selectedReplyMessage;
 
+  isSendingMessage = true;
   sendBtnEl.disabled = true;
-  messageInputEl.disabled = true;
   messageInputEl.value = "";
   resizeMessageInput();
   clearSelectedReply();
@@ -4057,9 +4059,8 @@ async function sendMessageFromDashboard() {
     alert("خطأ في الإرسال");
     markOptimisticMessageFailed(message);
   } finally {
+    isSendingMessage = false;
     sendBtnEl.disabled = false;
-    messageInputEl.disabled = false;
-    messageInputEl.focus();
   }
 }
 
@@ -4256,7 +4257,7 @@ function connectEvents() {
     if (data.type === "unread_changed") {
       if (data.all) {
         conversationsData.forEach((c) => { c.unread_count = 0; });
-        renderConversations(conversationsData);
+        applyConversationFilters();
         return;
       }
 
@@ -4266,7 +4267,7 @@ function connectEvents() {
 
       if (conv) {
         conv.unread_count = Number(data.unreadCount || 0);
-        renderConversations(conversationsData);
+        applyConversationFilters();
       }
 
       return;
