@@ -826,6 +826,70 @@ function mediaFolderIconSvg() {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2Z"/></svg>';
 }
 
+// توست تقدّم عام بيتستخدم لرفع الملفات على الوسائط المحفوظة ولإرسالها
+// للعميل (مع أو من غير زرار إيقاف)
+function createMediaProgressToast({ label = "جاري الرفع...", showStop = false, onStop = null } = {}) {
+  const toast = document.createElement("div");
+  toast.className = "media-progress-toast";
+
+  const labelRow = document.createElement("div");
+  labelRow.className = "media-progress-toast-label";
+
+  const labelText = document.createElement("span");
+  labelText.textContent = label;
+
+  const percentText = document.createElement("span");
+  percentText.className = "media-progress-toast-percent";
+  percentText.textContent = "0%";
+
+  labelRow.appendChild(labelText);
+  labelRow.appendChild(percentText);
+
+  const track = document.createElement("div");
+  track.className = "media-progress-toast-bar-track";
+
+  const fill = document.createElement("div");
+  fill.className = "media-progress-toast-bar-fill";
+  track.appendChild(fill);
+
+  toast.appendChild(labelRow);
+  toast.appendChild(track);
+
+  let stopBtn = null;
+
+  if (showStop) {
+    stopBtn = document.createElement("button");
+    stopBtn.type = "button";
+    stopBtn.className = "media-progress-toast-stop-btn";
+    stopBtn.textContent = "إيقاف الإرسال";
+
+    stopBtn.addEventListener("click", () => {
+      stopBtn.disabled = true;
+      stopBtn.textContent = "جاري الإيقاف...";
+      onStop?.();
+    });
+
+    toast.appendChild(stopBtn);
+  }
+
+  document.body.appendChild(toast);
+
+  return {
+    setLabel(text) {
+      labelText.textContent = text;
+    },
+    update(percent) {
+      const clamped = Math.max(0, Math.min(100, Math.round(percent || 0)));
+      fill.style.width = `${clamped}%`;
+      percentText.textContent = `${clamped}%`;
+    },
+    remove() {
+      toast.remove();
+    },
+    stopBtn
+  };
+}
+
 async function fetchSavedMediaFolders() {
   const response = await fetch(`${API_BASE}/saved-media-folders`, {
     headers: getAuthHeaders()
@@ -907,25 +971,46 @@ async function deleteSavedMediaFolder(id) {
   }
 }
 
-async function uploadSavedMediaItem(folderId, file) {
+function uploadSavedMediaItem(folderId, file, onProgress) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(
-    `${API_BASE}/saved-media-folders/${folderId}/items`,
-    {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: formData
-    }
-  );
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
 
-  if (handleInvalidToken(response)) return;
+    xhr.open("POST", `${API_BASE}/saved-media-folders/${folderId}/items`);
+    xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || "فشل رفع الملف");
-  }
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      onProgress?.(Math.round((event.loaded / event.total) * 100));
+    };
+
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText || "{}");
+      } catch (e) {
+        data = {};
+      }
+
+      if (xhr.status === 401 || xhr.status === 403) {
+        logout();
+        reject(new Error(data.error || "انتهت الجلسة"));
+        return;
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data);
+      } else {
+        reject(new Error(data.error || "فشل رفع الملف"));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("خطأ في الاتصال"));
+
+    xhr.send(formData);
+  });
 }
 
 async function deleteSavedMediaItem(id) {
@@ -949,12 +1034,14 @@ async function sendSavedMediaItemToCustomer(id) {
     body: JSON.stringify({ sessionId: activeSessionId })
   });
 
-  if (handleInvalidToken(response)) return;
+  if (handleInvalidToken(response)) return null;
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(data.error || "فشل إرسال الملف");
   }
+
+  return data;
 }
 
 async function sendSavedMediaFolderToCustomer(id) {
@@ -964,7 +1051,7 @@ async function sendSavedMediaFolderToCustomer(id) {
     body: JSON.stringify({ sessionId: activeSessionId })
   });
 
-  if (handleInvalidToken(response)) return { sent: 0, failed: 0, total: 0 };
+  if (handleInvalidToken(response)) return null;
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -981,7 +1068,7 @@ async function sendSelectedSavedMediaItemsToCustomer(itemIds) {
     body: JSON.stringify({ sessionId: activeSessionId, itemIds })
   });
 
-  if (handleInvalidToken(response)) return { sent: 0, failed: 0, total: 0 };
+  if (handleInvalidToken(response)) return null;
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -989,6 +1076,67 @@ async function sendSelectedSavedMediaItemsToCustomer(itemIds) {
   }
 
   return data;
+}
+
+// إرسال الوسائط المحفوظة بقى "جوب" شغال على السيرفر (بيكمل حتى لو
+// الداشبورد اتقفل)؛ الدالة دي بتتابعه بـ polling وتظهر توست فيه نسبة
+// التقدم وزرار إيقاف اختياري
+async function fetchSendMediaJobStatus(jobId) {
+  const response = await fetch(
+    `${API_BASE}/saved-media-send-jobs/${jobId}`,
+    { headers: getAuthHeaders() }
+  );
+
+  if (handleInvalidToken(response)) return null;
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "تعذر متابعة حالة الإرسال");
+  }
+
+  return data;
+}
+
+async function cancelSendMediaJob(jobId) {
+  const response = await fetch(
+    `${API_BASE}/saved-media-send-jobs/${jobId}/cancel`,
+    { method: "POST", headers: getAuthHeaders() }
+  );
+
+  return response.json().catch(() => ({}));
+}
+
+async function trackSendMediaJob(jobId, total) {
+  const toast = createMediaProgressToast({
+    label: `جاري الإرسال 0 من ${total}`,
+    showStop: true,
+    onStop: () => {
+      cancelSendMediaJob(jobId).catch((err) => console.error(err));
+    }
+  });
+
+  try {
+    while (true) {
+      const status = await fetchSendMediaJobStatus(jobId);
+      if (!status) return null;
+
+      const completed = status.sent + status.failed;
+
+      toast.setLabel(
+        status.cancelled
+          ? `تم إيقاف الإرسال (${completed} من ${status.total})`
+          : `جاري الإرسال ${completed} من ${status.total}`
+      );
+
+      toast.update(status.total ? (completed / status.total) * 100 : 100);
+
+      if (status.done) return status;
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  } finally {
+    toast.remove();
+  }
 }
 
 function renderSavedMediaFolders() {
@@ -1412,10 +1560,20 @@ savedMediaFileInputEl?.addEventListener("change", async () => {
 
   addSavedMediaBtnEl.disabled = true;
 
+  const total = files.length;
+  const toast = createMediaProgressToast({
+    label: `جاري رفع الملف 1 من ${total}`
+  });
+
   let uploaded = 0;
   const failReasons = [];
 
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+
+    toast.setLabel(`جاري رفع الملف ${i + 1} من ${total}`);
+    toast.update(0);
+
     try {
       // نفس الضغط المستخدم مع الصور المبعوتة عن طريق دبوس الإرفاق
       // (تحويل لـ JPEG بجودة 92%) عشان الصور المحفوظة توصل للعميل بنفس الطريقة
@@ -1423,7 +1581,12 @@ savedMediaFileInputEl?.addEventListener("change", async () => {
         ? await normalizeImageFile(file)
         : file;
 
-      await uploadSavedMediaItem(savedMediaCurrentFolder.id, uploadFile);
+      await uploadSavedMediaItem(
+        savedMediaCurrentFolder.id,
+        uploadFile,
+        (percent) => toast.update(percent)
+      );
+
       uploaded++;
     } catch (error) {
       console.error(error);
@@ -1431,6 +1594,7 @@ savedMediaFileInputEl?.addEventListener("change", async () => {
     }
   }
 
+  toast.remove();
   addSavedMediaBtnEl.disabled = false;
   await loadSavedMediaItems();
 
@@ -1458,27 +1622,34 @@ sendFolderBtnEl?.addEventListener("click", async (event) => {
   sendFolderBtnEl.disabled = true;
   sendFolderBtnEl.textContent = "جاري الإرسال...";
 
+  let start = null;
+
   try {
-    const result = await sendSavedMediaFolderToCustomer(
-      savedMediaCurrentFolder.id
-    );
-    closeSavedMedia();
-
-    if (result?.failed) {
-      const reasons = Array.isArray(result.failReasons) && result.failReasons.length
-        ? "\n" + result.failReasons.join("\n")
-        : "";
-
-      alert(
-        `تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}${reasons}`
-      );
-    }
+    start = await sendSavedMediaFolderToCustomer(savedMediaCurrentFolder.id);
   } catch (error) {
     console.error(error);
     alert(error.message || "حدث خطأ أثناء الإرسال");
   } finally {
     sendFolderBtnEl.disabled = false;
     sendFolderBtnEl.textContent = "إرسال كل محتوى الفولدر للعميل";
+  }
+
+  if (!start) return;
+
+  // بنقفل الوسائط المحفوظة على طول — الإرسال بقى شغال كـ"جوب" على
+  // السيرفر وهيكمل حتى لو الداشبورد اتقفل، والتوست ده بيتابعه لوحده
+  closeSavedMedia();
+
+  const result = await trackSendMediaJob(start.jobId, start.total);
+
+  if (result?.failed) {
+    const reasons = Array.isArray(result.failReasons) && result.failReasons.length
+      ? "\n" + result.failReasons.join("\n")
+      : "";
+
+    alert(
+      `تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}${reasons}`
+    );
   }
 });
 
@@ -1508,25 +1679,32 @@ sendSelectedBtnEl?.addEventListener("click", async (event) => {
   sendSelectedBtnEl.disabled = true;
   sendSelectedBtnEl.textContent = "جاري الإرسال...";
 
+  let start = null;
+
   try {
-    const result = await sendSelectedSavedMediaItemsToCustomer(ids);
-    closeSavedMedia();
-
-    if (result?.failed) {
-      const reasons = Array.isArray(result.failReasons) && result.failReasons.length
-        ? "\n" + result.failReasons.join("\n")
-        : "";
-
-      alert(
-        `تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}${reasons}`
-      );
-    }
+    start = await sendSelectedSavedMediaItemsToCustomer(ids);
   } catch (error) {
     console.error(error);
     alert(error.message || "حدث خطأ أثناء الإرسال");
   } finally {
     sendSelectedBtnEl.disabled = false;
     sendSelectedBtnEl.textContent = "إرسال المحدد";
+  }
+
+  if (!start) return;
+
+  closeSavedMedia();
+
+  const result = await trackSendMediaJob(start.jobId, start.total);
+
+  if (result?.failed) {
+    const reasons = Array.isArray(result.failReasons) && result.failReasons.length
+      ? "\n" + result.failReasons.join("\n")
+      : "";
+
+    alert(
+      `تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}${reasons}`
+    );
   }
 });
 
@@ -1551,15 +1729,29 @@ confirmSavedMediaSendBtnEl?.addEventListener("click", async (event) => {
 
   confirmSavedMediaSendBtnEl.disabled = true;
 
+  let start = null;
+
   try {
-    await sendSavedMediaItemToCustomer(savedMediaPreviewItem.id);
-    closeSavedMediaPreview();
-    closeSavedMedia();
+    start = await sendSavedMediaItemToCustomer(savedMediaPreviewItem.id);
   } catch (error) {
     console.error(error);
     alert(error.message || "حدث خطأ أثناء الإرسال");
   } finally {
     confirmSavedMediaSendBtnEl.disabled = false;
+  }
+
+  if (!start) return;
+
+  closeSavedMediaPreview();
+  closeSavedMedia();
+
+  const result = await trackSendMediaJob(start.jobId, start.total);
+
+  if (result?.failed) {
+    alert(
+      (Array.isArray(result.failReasons) && result.failReasons[0]) ||
+      "حدث خطأ أثناء الإرسال"
+    );
   }
 });
 
@@ -1850,6 +2042,21 @@ function renderLabelFilterRow() {
       applyConversationFilters();
     });
   });
+}
+
+// نص الاختصار في قايمة المحادثات فقط — مش بيتبعت لواتساب أبدًا، مجرد
+// عرض داخلي لما آخر رسالة (صورة/فيديو...) تكون من غير كابشن مكتوب
+function getConversationPreviewText(conv) {
+  if (conv.content) return conv.content;
+
+  switch (conv.message_kind) {
+    case "image": return "📷 صورة";
+    case "video": return "🎥 فيديو";
+    case "audio": return "🎙️ رسالة صوتية";
+    case "sticker": return "🖼️ ملصق";
+    case "document": return "📄 ملف";
+    default: return "";
+  }
 }
 
 function applyConversationFilters() {
@@ -2895,7 +3102,7 @@ function renderConversations(conversations) {
             : ""
         }
       </div>
-      <div class="session-preview">${escapeHtml(conv.content || "")}</div>
+      <div class="session-preview">${escapeHtml(getConversationPreviewText(conv))}</div>
       ${labelsHtml}
     `;
 
