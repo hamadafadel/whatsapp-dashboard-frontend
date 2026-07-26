@@ -1411,6 +1411,11 @@ function enableSavedMediaCardGestures(card, item, { onTap, onLongPress }) {
       return;
     }
 
+    // بنمنع المتصفح إنه يولّد حدث click اصطناعي بعد اللمسة — من غيره، لو
+    // onTap فتح أوفرلاي فيه زرار "تأكيد الإرسال" في نفس مكان اللمسة بالظبط،
+    // الـ click الاصطناعي بيوصل للزرار ده على طول ويبعت للعميل من غير قصد
+    event.preventDefault();
+
     clearLongPressTimer();
 
     if (dragging) {
@@ -1450,8 +1455,42 @@ function enableSavedMediaCardGestures(card, item, { onTap, onLongPress }) {
       touchHandled = false;
       return;
     }
+
+    if (mouseLongPressFired) {
+      mouseLongPressFired = false;
+      return;
+    }
+
     onTap?.();
   });
+
+  // نفس فكرة الضغطة الطويلة بس بالماوس (ديسكتوب) — بنلغيها فورًا لو سحب
+  // حقيقي بدأ (dragstart) عشان ما تتعارضش مع سحب-وإفلات الترتيب
+  let mouseLongPressTimer = null;
+  let mouseLongPressFired = false;
+
+  const clearMouseLongPressTimer = () => {
+    if (mouseLongPressTimer) {
+      clearTimeout(mouseLongPressTimer);
+      mouseLongPressTimer = null;
+    }
+  };
+
+  card.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest(".saved-media-item-delete")) return;
+
+    mouseLongPressFired = false;
+
+    mouseLongPressTimer = setTimeout(() => {
+      mouseLongPressTimer = null;
+      mouseLongPressFired = true;
+      onLongPress?.();
+    }, 500);
+  });
+
+  card.addEventListener("mouseup", clearMouseLongPressTimer);
+  card.addEventListener("mouseleave", clearMouseLongPressTimer);
 
   card.draggable = savedMediaCanManage && !savedMediaSelectMode;
 
@@ -1461,6 +1500,7 @@ function enableSavedMediaCardGestures(card, item, { onTap, onLongPress }) {
       return;
     }
 
+    clearMouseLongPressTimer();
     event.stopPropagation();
     event.dataTransfer.setData(SAVED_MEDIA_DRAG_MIME, String(item.id));
     event.dataTransfer.effectAllowed = "move";
