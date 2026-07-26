@@ -2924,6 +2924,9 @@ body.saved-media-open {
   border: 1px solid rgba(197, 166, 109, 0.35);
   border-radius: 12px;
   background: #fffaf4;
+  /* من غيرها المتصفح بياخد أي حركة إصبع كسكرول من الفريم الأول، قبل ما
+     الكود بتاعنا ياخد فرصته يبدأ السحب */
+  touch-action: pan-y;
 }
 
 .saved-media-folder-card {
@@ -3060,9 +3063,27 @@ body.saved-media-open {
   opacity: 0.4;
 }
 
-.saved-media-item-card.drop-target {
-  outline: 3px solid #54105b;
-  outline-offset: -3px;
+/* بار واضح يبين هيتحط قبل ولا بعد الكارت المستهدف بالظبط، بدل تعليم الكارت
+   كله (اللي كان بيسيب المستخدم مش عارف هيتحط فين). inset-inline-start/end
+   بيتبدلوا لوحدهم مع اتجاه الصفحة (rtl) */
+.saved-media-item-card.drop-before::before,
+.saved-media-item-card.drop-after::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #54105b;
+  border-radius: 2px;
+  z-index: 5;
+}
+
+.saved-media-item-card.drop-before::before {
+  inset-inline-start: -2px;
+}
+
+.saved-media-item-card.drop-after::after {
+  inset-inline-end: -2px;
 }
 
 .saved-media-drag-ghost {

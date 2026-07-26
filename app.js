@@ -1228,17 +1228,38 @@ function renderSavedMediaFolders() {
 
 const SAVED_MEDIA_DRAG_MIME = "application/x-saved-media-item-id";
 
-// بيحط العنصر id قبل targetItem مباشرة، بترتيب كسري (رقم بينه وبين اللي
-// قبله) عشان ما نحتاجش نعيد ترقيم كل العناصر جوه الفولدر
-async function reorderSavedMediaItemBefore(id, targetItem) {
-  if (!id || id === targetItem.id) return;
+// بيحدد هل نقطة اللمس/الماوس على النص الأول ولا التاني من كارت الهدف —
+// "الأول" هنا يعني الجانب اللي بيتقرا أول (يمين في RTL)، عشان نعرف نحط
+// العنصر المسحوب قبل الهدف ولا بعده بالظبط
+function isPointerAtCardStart(clientX, rect) {
+  const isRTL = document.documentElement.dir === "rtl";
+  const midX = rect.left + rect.width / 2;
+  return isRTL ? clientX > midX : clientX < midX;
+}
 
-  const idx = savedMediaItems.findIndex((i) => i.id === targetItem.id);
-  const prevItem = idx > 0 ? savedMediaItems[idx - 1] : null;
+// بيحط العنصر draggedId قبل أو بعد targetItem بالظبط، بترتيب كسري (رقم
+// بينه وبين جاره) عشان ما نحتاجش نعيد ترقيم كل العناصر جوه الفولدر
+async function reorderSavedMediaItem(draggedId, targetItem, insertAfter) {
+  if (!draggedId || draggedId === targetItem.id) return;
 
-  const targetOrder = targetItem.sort_order ?? (idx + 1) * 1000;
-  const prevOrder = prevItem ? (prevItem.sort_order ?? idx * 1000) : 0;
-  const newOrder = (prevOrder + targetOrder) / 2;
+  const targetIdx = savedMediaItems.findIndex((i) => i.id === targetItem.id);
+  if (targetIdx === -1) return;
+
+  const neighborIdx = insertAfter ? targetIdx + 1 : targetIdx - 1;
+  const neighbor =
+    neighborIdx >= 0 && neighborIdx < savedMediaItems.length
+      ? savedMediaItems[neighborIdx]
+      : null;
+
+  const targetOrder = targetItem.sort_order ?? (targetIdx + 1) * 1000;
+  const neighborOrder = neighbor
+    ? (neighbor.sort_order ?? (neighborIdx + 1) * 1000)
+    : insertAfter
+      ? targetOrder + 1000
+      : 0;
+
+  const newOrder = (targetOrder + neighborOrder) / 2;
+  const id = draggedId;
 
   try {
     const response = await fetch(
@@ -1284,8 +1305,8 @@ function updateSavedMediaMobileDrag(x, y) {
   savedMediaMobileDragState.ghost.style.top = `${y}px`;
 
   document
-    .querySelectorAll(".saved-media-item-card.drop-target")
-    .forEach((el) => el.classList.remove("drop-target"));
+    .querySelectorAll(".saved-media-item-card.drop-before, .saved-media-item-card.drop-after")
+    .forEach((el) => el.classList.remove("drop-before", "drop-after"));
 
   savedMediaMobileDragState.ghost.style.display = "none";
   const el = document.elementFromPoint(x, y);
@@ -1293,7 +1314,8 @@ function updateSavedMediaMobileDrag(x, y) {
 
   const target = el?.closest(".saved-media-item-card");
   if (target && Number(target.dataset.id) !== savedMediaMobileDragState.id) {
-    target.classList.add("drop-target");
+    const atStart = isPointerAtCardStart(x, target.getBoundingClientRect());
+    target.classList.add(atStart ? "drop-before" : "drop-after");
   }
 }
 
@@ -1305,13 +1327,14 @@ function endSavedMediaMobileDrag(x, y) {
   ghost.style.display = "none";
   const el = document.elementFromPoint(x, y);
   const target = el?.closest(".saved-media-item-card");
+  const targetRect = target?.getBoundingClientRect();
 
   document
     .querySelectorAll(".saved-media-item-card.dragging")
     .forEach((c) => c.classList.remove("dragging"));
   document
-    .querySelectorAll(".saved-media-item-card.drop-target")
-    .forEach((c) => c.classList.remove("drop-target"));
+    .querySelectorAll(".saved-media-item-card.drop-before, .saved-media-item-card.drop-after")
+    .forEach((c) => c.classList.remove("drop-before", "drop-after"));
 
   ghost.remove();
   savedMediaMobileDragState = null;
@@ -1319,7 +1342,10 @@ function endSavedMediaMobileDrag(x, y) {
   const targetId = target ? Number(target.dataset.id) : null;
   if (targetId && targetId !== id) {
     const targetItem = savedMediaItems.find((i) => i.id === targetId);
-    if (targetItem) reorderSavedMediaItemBefore(id, targetItem);
+    if (targetItem) {
+      const insertAfter = !isPointerAtCardStart(x, targetRect);
+      reorderSavedMediaItem(id, targetItem, insertAfter);
+    }
   }
 }
 
@@ -1514,21 +1540,26 @@ function enableSavedMediaCardGestures(card, item, { onTap, onLongPress }) {
   card.addEventListener("dragover", (event) => {
     if (!savedMediaCanManage || !event.dataTransfer.types.includes(SAVED_MEDIA_DRAG_MIME)) return;
     event.preventDefault();
-    card.classList.add("drop-target");
+
+    const atStart = isPointerAtCardStart(event.clientX, card.getBoundingClientRect());
+    card.classList.toggle("drop-before", atStart);
+    card.classList.toggle("drop-after", !atStart);
   });
 
   card.addEventListener("dragleave", () => {
-    card.classList.remove("drop-target");
+    card.classList.remove("drop-before", "drop-after");
   });
 
   card.addEventListener("drop", (event) => {
     if (!savedMediaCanManage || !event.dataTransfer.types.includes(SAVED_MEDIA_DRAG_MIME)) return;
     event.preventDefault();
     event.stopPropagation();
-    card.classList.remove("drop-target");
+
+    const atStart = isPointerAtCardStart(event.clientX, card.getBoundingClientRect());
+    card.classList.remove("drop-before", "drop-after");
 
     const draggedId = Number(event.dataTransfer.getData(SAVED_MEDIA_DRAG_MIME));
-    if (draggedId) reorderSavedMediaItemBefore(draggedId, item);
+    if (draggedId) reorderSavedMediaItem(draggedId, item, !atStart);
   });
 }
 
@@ -3365,6 +3396,152 @@ if (!res.ok) throw new Error("Failed conversations");
   }
 }
 
+// بيبني الكارت مرة واحدة بس ويربط كل الأحداث عليه — التحديثات بعد كده
+// بتتم عن طريق updateConversationItem، فمفيش إعادة ربط أحداث كل مرة
+function createConversationItem(conv) {
+  const item = document.createElement("div");
+  item.className = "session-item";
+  item._conv = conv;
+
+  item.innerHTML = `
+    <div class="session-item-check">✓</div>
+    <div class="session-row">
+      <div class="session-id">
+        <span class="session-customer-name"></span>
+        <div style="font-size:12px;color:#8696a0" class="session-id-text"></div>
+      </div>
+      <div class="unread-badge hidden"></div>
+    </div>
+    <div class="session-preview"></div>
+    <div class="session-labels"></div>
+  `;
+
+  let longPressTimer = null;
+  let longPressFired = false;
+
+  const clearLongPressTimer = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+
+  item.addEventListener("pointerdown", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+
+    longPressFired = false;
+    clearLongPressTimer();
+
+    longPressTimer = setTimeout(() => {
+      longPressFired = true;
+
+      if (!sessionsSelectMode) {
+        sessionsSelectMode = true;
+        sessionsSelectionBarEl?.classList.remove("hidden");
+      }
+
+      selectedSessionIds.add(item._conv.session_id);
+      updateSessionsSelectionBar();
+      applyConversationFilters();
+    }, 500);
+  });
+
+  item.addEventListener("pointerup", clearLongPressTimer);
+  item.addEventListener("pointerleave", clearLongPressTimer);
+  item.addEventListener("pointercancel", clearLongPressTimer);
+
+  item.addEventListener("click", () => {
+    if (longPressFired) {
+      longPressFired = false;
+      return;
+    }
+
+    const currentConv = item._conv;
+
+    if (sessionsSelectMode) {
+      if (selectedSessionIds.has(currentConv.session_id)) {
+        selectedSessionIds.delete(currentConv.session_id);
+      } else {
+        selectedSessionIds.add(currentConv.session_id);
+      }
+
+      item.classList.toggle("selected");
+      updateSessionsSelectionBar();
+      return;
+    }
+
+    const hasCachedConversation =
+      messagesEl.dataset.loadedSessionId === currentConv.session_id &&
+      messagesEl.childElementCount > 0;
+
+    activeSessionId = currentConv.session_id;
+
+    if (currentConv.unread_count) {
+      currentConv.unread_count = 0;
+      markConversationRead(currentConv.session_id);
+    }
+
+    conversationLabelsCache = Array.isArray(currentConv.labels) ? currentConv.labels : [];
+    renderChatLabelsRow();
+
+    applyConversationFilters();
+    openChat();
+
+    if (hasCachedConversation) {
+      chatTitleEl.textContent = currentConv.customer_name || "عميل";
+      renderChatMeta(currentConv.session_id, currentLoadedMessageCount);
+      reapplyMessagingWindowCheckFromCache();
+    } else {
+      loadMessages(currentConv.session_id);
+    }
+
+    loadAiStatus(currentConv.session_id);
+    setTimeout(() => messageInputEl.focus(), 250);
+  });
+
+  updateConversationItem(item, conv);
+  return item;
+}
+
+// بيحدّث بس الأجزاء اللي ممكن تتغير في كارت موجود بالفعل، من غير ما
+// يعيد بناء الـ DOM أو يشيل الأحداث المربوطة عليه
+function updateConversationItem(item, conv) {
+  item._conv = conv;
+  item.dataset.sessionId = conv.session_id || "";
+  item.classList.toggle("active", conv.session_id === activeSessionId);
+  item.classList.toggle("selected", selectedSessionIds.has(conv.session_id));
+
+  const nameEl = item.querySelector(".session-customer-name");
+  if (nameEl) nameEl.textContent = conv.customer_name || "عميل";
+
+  const idTextEl = item.querySelector(".session-id-text");
+  if (idTextEl) idTextEl.textContent = conv.session_id || "";
+
+  const unreadCount = Number(conv.unread_count || 0);
+  const badgeEl = item.querySelector(".unread-badge");
+  if (badgeEl) {
+    badgeEl.classList.toggle("hidden", unreadCount <= 0);
+    badgeEl.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+  }
+
+  const previewEl = item.querySelector(".session-preview");
+  if (previewEl) previewEl.textContent = getConversationPreviewText(conv);
+
+  const labels = Array.isArray(conv.labels) ? conv.labels : [];
+  const labelsEl = item.querySelector(".session-labels");
+  if (labelsEl) {
+    labelsEl.classList.toggle("hidden", labels.length === 0);
+    labelsEl.innerHTML = labels
+      .map(
+        (label) =>
+          `<span class="session-label-dot" style="background:${escapeHtml(
+            label.color || "#54105b"
+          )}" title="${escapeHtml(label.name || "")}"></span>`
+      )
+      .join("");
+  }
+}
+
 function renderConversations(conversations) {
   if (!conversations.length) {
     conversationsEl.innerHTML = `<div class="empty-state">لا توجد محادثات</div>`;
@@ -3372,140 +3549,38 @@ function renderConversations(conversations) {
   }
 
   conversationsEl.classList.toggle("select-mode", sessionsSelectMode);
-  conversationsEl.innerHTML = "";
+
+  // بنعيد استخدام العناصر الموجودة بدل ما نمسح ونعيد بناء القايمة كاملة
+  // كل مرة — ده كان بيسبب تهنيج واضح في اللحظة اللي رسالة جديدة توصل فيها
+  const existingBySessionId = new Map();
+  conversationsEl.querySelectorAll(".session-item[data-session-id]").forEach((el) => {
+    existingBySessionId.set(el.dataset.sessionId, el);
+  });
+
+  conversationsEl.querySelector(".empty-state")?.remove();
+
+  let previousNode = null;
 
   conversations.forEach((conv) => {
-    const item = document.createElement("div");
-    item.className = "session-item";
-    item.dataset.sessionId = conv.session_id || "";
+    const sessionId = conv.session_id || "";
+    let item = existingBySessionId.get(sessionId);
 
-    if (conv.session_id === activeSessionId) {
-      item.classList.add("active");
+    if (item) {
+      existingBySessionId.delete(sessionId);
+      updateConversationItem(item, conv);
+    } else {
+      item = createConversationItem(conv);
     }
 
-    if (selectedSessionIds.has(conv.session_id)) {
-      item.classList.add("selected");
+    const expectedNext = previousNode ? previousNode.nextSibling : conversationsEl.firstChild;
+    if (expectedNext !== item) {
+      conversationsEl.insertBefore(item, expectedNext);
     }
 
-    const unreadCount = Number(conv.unread_count || 0);
-    const labels = Array.isArray(conv.labels) ? conv.labels : [];
-
-    const labelsHtml = labels.length
-      ? `<div class="session-labels">${labels
-          .map(
-            (label) =>
-              `<span class="session-label-dot" style="background:${escapeHtml(
-                label.color || "#54105b"
-              )}" title="${escapeHtml(label.name || "")}"></span>`
-          )
-          .join("")}</div>`
-      : "";
-
-    item.innerHTML = `
-      <div class="session-item-check">✓</div>
-      <div class="session-row">
-        <div class="session-id">
-  ${escapeHtml(conv.customer_name || "عميل")}
-  <div style="font-size:12px;color:#8696a0">
-    ${escapeHtml(conv.session_id || "")}
-  </div>
-</div>
-        ${
-          unreadCount > 0
-            ? `<div class="unread-badge">${
-                unreadCount > 99 ? "99+" : unreadCount
-              }</div>`
-            : ""
-        }
-      </div>
-      <div class="session-preview">${escapeHtml(getConversationPreviewText(conv))}</div>
-      ${labelsHtml}
-    `;
-
-    let longPressTimer = null;
-    let longPressFired = false;
-
-    const clearLongPressTimer = () => {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
-    };
-
-    item.addEventListener("pointerdown", (event) => {
-      if (event.button !== undefined && event.button !== 0) return;
-
-      longPressFired = false;
-      clearLongPressTimer();
-
-      longPressTimer = setTimeout(() => {
-        longPressFired = true;
-
-        if (!sessionsSelectMode) {
-          sessionsSelectMode = true;
-          sessionsSelectionBarEl?.classList.remove("hidden");
-        }
-
-        selectedSessionIds.add(conv.session_id);
-        updateSessionsSelectionBar();
-        applyConversationFilters();
-      }, 500);
-    });
-
-    item.addEventListener("pointerup", clearLongPressTimer);
-    item.addEventListener("pointerleave", clearLongPressTimer);
-    item.addEventListener("pointercancel", clearLongPressTimer);
-
-    item.addEventListener("click", () => {
-      if (longPressFired) {
-        longPressFired = false;
-        return;
-      }
-
-      if (sessionsSelectMode) {
-        if (selectedSessionIds.has(conv.session_id)) {
-          selectedSessionIds.delete(conv.session_id);
-        } else {
-          selectedSessionIds.add(conv.session_id);
-        }
-
-        item.classList.toggle("selected");
-        updateSessionsSelectionBar();
-        return;
-      }
-
-      const hasCachedConversation =
-        messagesEl.dataset.loadedSessionId === conv.session_id &&
-        messagesEl.childElementCount > 0;
-
-      activeSessionId = conv.session_id;
-
-      if (conv.unread_count) {
-        conv.unread_count = 0;
-        markConversationRead(conv.session_id);
-      }
-
-      conversationLabelsCache = Array.isArray(conv.labels) ? conv.labels : [];
-      renderChatLabelsRow();
-
-      applyConversationFilters();
-      openChat();
-
-      if (hasCachedConversation) {
-        chatTitleEl.textContent = conv.customer_name || "عميل";
-        renderChatMeta(conv.session_id, currentLoadedMessageCount);
-        reapplyMessagingWindowCheckFromCache();
-      } else {
-        loadMessages(conv.session_id);
-      }
-
-      loadAiStatus(conv.session_id);
-      setTimeout(() => messageInputEl.focus(), 250);
-      // chatNameEl.textContent = conv.customer_name || "عميل";
-    });
-
-    conversationsEl.appendChild(item);
+    previousNode = item;
   });
+
+  existingBySessionId.forEach((el) => el.remove());
 
   updateGlobalUnreadIndicator();
 }
