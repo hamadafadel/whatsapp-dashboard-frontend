@@ -1518,6 +1518,12 @@ function enableSavedMediaCardGestures(card, item, { onTap, onLongPress }) {
   card.addEventListener("mouseup", clearMouseLongPressTimer);
   card.addEventListener("mouseleave", clearMouseLongPressTimer);
 
+  // -webkit-touch-callout بيمنع قايمة "حفظ الصورة" على آيفون بس — أندرويد
+  // بيحتاج منع حدث contextmenu نفسه عشان نفس القايمة ما تظهرش
+  card.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+
   card.draggable = savedMediaCanManage && !savedMediaSelectMode;
 
   card.addEventListener("dragstart", (event) => {
@@ -1805,6 +1811,80 @@ function closeSavedMedia() {
   closeFolderForm();
 }
 
+// تكبير بإصباعين (Pinch) وتحريك الصورة وهي مكبّرة — الصفحة كلها مضبوطة
+// user-scalable=no عشان الواجهة ما تتكبرش بالغلط، فالتكبير هنا بنعمله
+// يدويًا بـ transform على الصورة نفسها بس
+function enablePinchZoom(imgEl) {
+  const pointers = new Map();
+  let scale = 1;
+  let baseScale = 1;
+  let initialDistance = 0;
+  let panX = 0;
+  let panY = 0;
+  let panStartX = 0;
+  let panStartY = 0;
+  let isPanning = false;
+
+  const applyTransform = () => {
+    imgEl.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  };
+
+  const getPoints = () => [...pointers.values()];
+
+  imgEl.addEventListener("pointerdown", (event) => {
+    imgEl.setPointerCapture(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointers.size === 1) {
+      isPanning = scale > 1;
+      panStartX = event.clientX - panX;
+      panStartY = event.clientY - panY;
+    } else if (pointers.size === 2) {
+      isPanning = false;
+      const [p1, p2] = getPoints();
+      initialDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+      baseScale = scale;
+    }
+  });
+
+  imgEl.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointers.size === 2) {
+      const [p1, p2] = getPoints();
+      const distance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      scale = Math.min(4, Math.max(1, baseScale * (distance / initialDistance)));
+      applyTransform();
+    } else if (pointers.size === 1 && isPanning) {
+      panX = event.clientX - panStartX;
+      panY = event.clientY - panStartY;
+      applyTransform();
+    }
+  });
+
+  const endPointer = (event) => {
+    pointers.delete(event.pointerId);
+
+    if (pointers.size === 0 && scale <= 1) {
+      scale = 1;
+      panX = 0;
+      panY = 0;
+      applyTransform();
+    }
+  };
+
+  imgEl.addEventListener("pointerup", endPointer);
+  imgEl.addEventListener("pointercancel", endPointer);
+
+  imgEl.addEventListener("dblclick", () => {
+    scale = scale > 1 ? 1 : 2;
+    panX = 0;
+    panY = 0;
+    applyTransform();
+  });
+}
+
 function openSavedMediaPreview(item) {
   savedMediaPreviewItem = item;
 
@@ -1822,6 +1902,7 @@ function openSavedMediaPreview(item) {
       img.src = item.media_url;
       img.alt = "";
       savedMediaPreviewBodyEl.appendChild(img);
+      enablePinchZoom(img);
     }
   }
 

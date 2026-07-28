@@ -3285,6 +3285,7 @@ body.saved-media-open {
   align-items: center;
   justify-content: center;
   background: #000;
+  overflow: hidden;
 }
 
 .saved-media-preview-body img,
@@ -3293,6 +3294,12 @@ body.saved-media-open {
   max-width: 100%;
   max-height: 70vh;
   object-fit: contain;
+}
+
+.saved-media-preview-body img {
+  touch-action: none;
+  transform-origin: center center;
+  will-change: transform;
 }
 
 .saved-media-preview-actions {
