@@ -3457,7 +3457,15 @@ function handleInvalidToken(res) {
 }
 
 async function loadConversations() {
-  conversationsEl.innerHTML = `<div class="loading-state">جاري تحميل المحادثات...</div>`;
+  // لو دي أول تحميل (القايمة لسه فاضية) بس اللي بيظهر فيها "جاري التحميل"،
+  // مش أي تحديث لاحق — عشان التحديثات (بعد إرسال رسالة، أو أي حدث SSE) ما
+  // تمسحش القايمة كلها وتبنيها من الأول، وده كان بيلغي فايدة إعادة استخدام
+  // العناصر الموجودة في renderConversations خالص
+  const isFirstLoad = !conversationsEl.querySelector(".session-item");
+
+  if (isFirstLoad) {
+    conversationsEl.innerHTML = `<div class="loading-state">جاري تحميل المحادثات...</div>`;
+  }
 
  try {
   const res = await fetch(`${API_BASE}/conversations`, {
@@ -3472,7 +3480,9 @@ if (!res.ok) throw new Error("Failed conversations");
     conversationsData = Array.isArray(conversations) ? conversations : [];
     applyConversationFilters();
   } catch (error) {
-    conversationsEl.innerHTML = `<div class="error-state">فشل تحميل المحادثات</div>`;
+    if (isFirstLoad) {
+      conversationsEl.innerHTML = `<div class="error-state">فشل تحميل المحادثات</div>`;
+    }
     console.error(error);
   }
 }
