@@ -5983,25 +5983,36 @@ function appendPendingMedia(file, caption = "") {
 
   bubble.appendChild(label);
 
+  const mediaWrap = document.createElement("div");
+  mediaWrap.style.position = "relative";
+  mediaWrap.style.display = "inline-block";
+  mediaWrap.style.maxWidth = "240px";
+  mediaWrap.style.width = "100%";
+
   if (messageKind === "image") {
     const img = document.createElement("img");
     img.src = url;
     img.dataset.fullSrc = url;
     img.style.display = "block";
-    img.style.maxWidth = "240px";
     img.style.width = "100%";
     img.style.borderRadius = "8px";
-    bubble.appendChild(img);
+    mediaWrap.appendChild(img);
   } else {
     const video = document.createElement("video");
     video.src = url;
     video.controls = true;
     video.style.display = "block";
-    video.style.maxWidth = "240px";
     video.style.width = "100%";
     video.style.borderRadius = "8px";
-    bubble.appendChild(video);
+    mediaWrap.appendChild(video);
   }
+
+  const overlay = document.createElement("div");
+  overlay.className = "upload-overlay";
+  overlay.textContent = "جاري الإرسال...";
+  mediaWrap.appendChild(overlay);
+
+  bubble.appendChild(mediaWrap);
 
   if (caption) {
     const textEl = document.createElement("div");
@@ -6009,11 +6020,6 @@ function appendPendingMedia(file, caption = "") {
     textEl.textContent = caption;
     bubble.appendChild(textEl);
   }
-
-  const overlay = document.createElement("div");
-  overlay.className = "upload-overlay";
-  overlay.textContent = "جاري الإرسال...";
-  bubble.appendChild(overlay);
 
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
@@ -6133,7 +6139,8 @@ if (mediaInputEl) {
       pending: appendPendingMedia(file, caption)
     }));
 
-    sendBtnEl.disabled = true;
+    // sendBtnEl مش بيتقفل هنا عشان يقدر يبعت رسالة نصية عادية وهو لسه
+    // مستني الصور تخلص رفع في الخلفية
     attachBtnEl.disabled = true;
     mediaInputEl.value = "";
     messageInputEl.value = "";
@@ -6339,6 +6346,17 @@ async function startAudioRecording() {
     });
 
     mediaRecorder.addEventListener("stop", async () => {
+  // بنوقف واجهة التسجيل (التايمر وشريط التسجيل) فورًا أول ما نضغط إرسال،
+  // قبل ما نبدأ نرفع الصوت — عشان ما يفضلش شكله وكأنه لسه بيسجل وهو
+  // فعليًا بقى بيترفع في الخلفية
+  isRecordingAudio = false;
+  stopRecordingStream();
+  resetRecordingUi();
+
+  messageInputEl.disabled = false;
+  sendBtnEl.disabled = false;
+  attachBtnEl.disabled = false;
+
   try {
     // لو المستخدم سحب للإلغاء، ما نبعتش أي حاجة
     if (recordingCancelled) {
@@ -6370,7 +6388,8 @@ async function startAudioRecording() {
       }
     );
 
-    await sendRecordedAudio(audioFile);
+    const pending = appendPendingAudioBubble();
+    await sendRecordedAudio(audioFile, pending);
   } catch (error) {
     console.error("Recorded audio error:", error);
 
@@ -6380,14 +6399,6 @@ async function startAudioRecording() {
   } finally {
     audioChunks = [];
     mediaRecorder = null;
-    isRecordingAudio = false;
-
-    stopRecordingStream();
-    resetRecordingUi();
-
-    messageInputEl.disabled = false;
-    sendBtnEl.disabled = false;
-    attachBtnEl.disabled = false;
   }
 });
 
@@ -6451,56 +6462,126 @@ function stopRecordingStream() {
   recordingStream = null;
 }
 
-async function sendRecordedAudio(audioFile) {
+// فقاعة مؤقتة بتظهر فورًا لما نضغط إرسال على رسالة صوتية، وبتفضل لحد ما
+// الرفع يخلص — بديل عن شريط التسجيل اللي كان بيفضل شغال غلط أثناء الرفع
+function appendPendingAudioBubble() {
+  const wrap = document.createElement("div");
+  wrap.className = "message-wrap agent";
+  wrap.dataset.pendingUpload = "true";
+
+  const bubble = document.createElement("div");
+  bubble.className = "message agent";
+
+  const label = document.createElement("div");
+  label.className = "message-label agent";
+  label.textContent = getCurrentSenderName();
+  bubble.appendChild(label);
+
+  const audioWrap = document.createElement("div");
+  audioWrap.style.position = "relative";
+  audioWrap.style.width = "220px";
+  audioWrap.style.height = "42px";
+  audioWrap.style.borderRadius = "21px";
+  audioWrap.style.background = "rgba(255,255,255,0.08)";
+  audioWrap.style.display = "flex";
+  audioWrap.style.alignItems = "center";
+  audioWrap.style.justifyContent = "center";
+  audioWrap.style.fontSize = "18px";
+  audioWrap.textContent = "🎙️";
+
+  const overlay = document.createElement("div");
+  overlay.className = "upload-overlay";
+  overlay.style.borderRadius = "21px";
+  overlay.textContent = "جاري الإرسال...";
+  audioWrap.appendChild(overlay);
+
+  bubble.appendChild(audioWrap);
+  wrap.appendChild(bubble);
+  messagesEl.appendChild(wrap);
+  scrollMessagesToBottom();
+
+  return {
+    progress(percent) {
+      overlay.textContent = `جاري الإرسال... ${percent}%`;
+    },
+    done() {
+      wrap.remove();
+    },
+    fail(message = "فشل الإرسال") {
+      overlay.textContent = message;
+      overlay.classList.add("failed");
+    }
+  };
+}
+
+function sendRecordedAudio(audioFile, pending) {
   if (!activeSessionId) {
-    throw new Error("No active session");
+    pending?.fail();
+    return Promise.resolve();
   }
 
   recordAudioBtnEl.disabled = true;
   recordAudioBtnEl.textContent = "⏳";
 
-  try {
-    const formData = new FormData();
+  const formData = new FormData();
 
-    formData.append("file", audioFile);
-    formData.append("sessionId", activeSessionId);
-    formData.append("caption", "");
-    formData.append("messageKind", "audio");
+  formData.append("file", audioFile);
+  formData.append("sessionId", activeSessionId);
+  formData.append("caption", "");
+  formData.append("messageKind", "audio");
 
-    const response = await fetch(
-      `${API_BASE}/send-media`,
-      {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: formData
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.open("POST", `${API_BASE}/send-media`);
+    xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      pending?.progress(Math.round((event.loaded / event.total) * 100));
+    };
+
+    xhr.onload = () => {
+      recordAudioBtnEl.disabled = false;
+      recordAudioBtnEl.textContent = "🎤";
+      messageInputEl.focus();
+
+      let result = {};
+      try {
+        result = JSON.parse(xhr.responseText || "{}");
+      } catch (e) {
+        result = {};
       }
-    );
 
-    if (handleInvalidToken(response)) return;
+      if (xhr.status === 401 || xhr.status === 403) {
+        logout();
+        pending?.fail();
+        resolve();
+        return;
+      }
 
-    const result =
-      await response.json().catch(() => ({}));
+      if (xhr.status >= 200 && xhr.status < 300) {
+        pending?.done();
+        loadConversations();
+      } else {
+        console.error("Send recorded audio error:", result);
+        alert("فشل إرسال الرسالة الصوتية");
+        pending?.fail();
+      }
 
-    if (!response.ok) {
-      throw new Error(
-        result?.details?.message ||
-        result?.error ||
-        "Failed to send audio"
-      );
-    }
+      resolve();
+    };
 
-    loadConversations();
-  } catch (error) {
-    console.error("Send recorded audio error:", error);
-    alert("فشل إرسال الرسالة الصوتية");
-  } finally {
-    recordAudioBtnEl.disabled = false;
-    recordAudioBtnEl.textContent = "🎤";
-    messageInputEl.disabled = false;
-    sendBtnEl.disabled = false;
-    attachBtnEl.disabled = false;
-    messageInputEl.focus();
-  }
+    xhr.onerror = () => {
+      recordAudioBtnEl.disabled = false;
+      recordAudioBtnEl.textContent = "🎤";
+      alert("فشل إرسال الرسالة الصوتية");
+      pending?.fail("خطأ في الاتصال");
+      resolve();
+    };
+
+    xhr.send(formData);
+  });
 }
 
 
