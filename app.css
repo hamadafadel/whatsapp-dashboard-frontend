@@ -215,7 +215,7 @@ input {
 }
 
 .chat-title {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 800;
   color: #e9edef;
   direction: ltr;
@@ -226,9 +226,13 @@ input {
 }
 
 .chat-subtitle {
-  margin-top: 2px;
-  font-size: 11px;
+  margin-top: 3px;
+  font-size: 13px;
   color: #8696a0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 
 .messages {
@@ -1701,7 +1705,7 @@ body,
 
 .chat-title {
   width: 100%;
-  font-size: 16px !important;
+  font-size: 19px !important;
   font-weight: 800 !important;
   text-align: center !important;
   direction: auto;
@@ -1711,7 +1715,7 @@ body,
   width: 100%;
   margin-top: 4px !important;
   color: var(--mehrab-muted) !important;
-  font-size: 12px !important;
+  font-size: 13px !important;
   font-weight: 600;
   text-align: center !important;
   direction: ltr;
@@ -1796,9 +1800,10 @@ body,
 
 .chat-subtitle {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 3px;
   white-space: nowrap;
 }
 
@@ -2155,12 +2160,20 @@ body.media-gallery-open {
   order: 1;
 }
 
-.chat-mobile-header .chat-header-text {
+.chat-mobile-header .conversation-labels-btn {
   order: 2;
 }
 
-.chat-mobile-header .mobile-ai-btn {
+.chat-mobile-header .meta-order-header-btn {
   order: 3;
+}
+
+.chat-mobile-header .chat-header-text {
+  order: 4;
+}
+
+.chat-mobile-header .mobile-ai-btn {
+  order: 5;
   margin-left: auto !important;
 }
 
