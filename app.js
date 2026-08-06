@@ -5278,11 +5278,20 @@ backBtnEl.addEventListener("click", () => {
     closeChat();
   }
 });
-refreshBtnEl.addEventListener("click", () => {
-  if (viewingHiddenConversations) {
-    loadHiddenConversations();
-  } else {
-    loadConversations();
+refreshBtnEl.addEventListener("click", async () => {
+  // loadConversations بقى بيحدّث بس اللي اتغيّر (مش بيمسح القايمة كلها)
+  // عشان نمنع التهنيج، فلو محصلش أي تغيير فعلي المستخدم مش هيحس إن حاجة
+  // حصلت أصلًا — الدوران ده بيدّي تأكيد بصري إن الضغطة اشتغلت
+  refreshBtnEl.classList.add("spinning");
+
+  try {
+    if (viewingHiddenConversations) {
+      await loadHiddenConversations();
+    } else {
+      await loadConversations();
+    }
+  } finally {
+    refreshBtnEl.classList.remove("spinning");
   }
 });
 

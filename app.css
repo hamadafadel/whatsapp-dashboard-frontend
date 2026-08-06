@@ -110,6 +110,15 @@ input {
   background: rgba(255,255,255,0.08);
 }
 
+#refreshBtn.spinning {
+  animation: refresh-btn-spin 0.6s linear infinite;
+}
+
+@keyframes refresh-btn-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .mobile-search {
   flex: 0 0 auto;
   padding: 10px 12px;
@@ -451,13 +460,13 @@ input {
   display: none;
   align-items: center;
   justify-content: center;
-  height: 36px;
-  min-width: 82px;
-  padding: 0 12px;
+  height: 28px;
+  min-width: 60px;
+  padding: 0 8px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   color: #fff;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 800;
   cursor: pointer;
   white-space: nowrap;
@@ -1716,10 +1725,10 @@ body,
 }
 
 .chat-mobile-header .mobile-ai-btn {
-  min-width: 82px;
-  height: 38px;
+  min-width: 60px;
+  height: 30px;
   margin: 0 !important;
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 /* Full reaction picker with frequently used shortcuts */
@@ -3386,6 +3395,25 @@ body.saved-media-open {
   width: 19px;
   height: 19px;
   fill: currentColor;
+}
+
+.meta-order-header-btn {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 168, 132, 0.12);
+  color: #00a884;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  margin: 0 !important;
 }
 
 .chat-labels-row {
