@@ -3159,6 +3159,39 @@ function closeMediaGallery(useHistory = true) {
   document.body.classList.remove("media-gallery-open");
 }
 
+// بيانات العميل المعروضة فوق الوسائط — الأرّاي دي مصممة عشان نضيف حقول
+// تانية عن العميل بسهولة في المستقبل (إيميل، ملاحظات، عنوان...) بس بزيادة
+// عنصر جديد هنا، من غير ما نغيّر شكل الكود أو الـ HTML
+function getContactInfoFields() {
+  const conv = conversationsData.find((c) => c.session_id === activeSessionId);
+  const customerName = conv?.customer_name || chatTitleEl?.textContent || "عميل";
+
+  return [
+    { label: "الاسم", value: customerName },
+    { label: "رقم الهاتف", value: activeSessionId || "" }
+  ];
+}
+
+function renderContactInfoSection(fields) {
+  const rowsHtml = fields
+    .map(
+      (field) => `
+        <div class="contact-info-row">
+          <div class="contact-info-label">${escapeHtml(field.label)}</div>
+          <div class="contact-info-value">${escapeHtml(field.value || "—")}</div>
+        </div>
+      `
+    )
+    .join("");
+
+  return `
+    <div class="contact-info-section">
+      <div class="contact-info-avatar">👤</div>
+      <div class="contact-info-fields">${rowsHtml}</div>
+    </div>
+  `;
+}
+
 async function openChatMediaGallery() {
   if (!activeSessionId || mediaGalleryEl) return;
 
@@ -3169,10 +3202,12 @@ async function openChatMediaGallery() {
       <header class="media-gallery-header">
         <button class="media-gallery-close" type="button" aria-label="إغلاق">×</button>
         <div>
-          <div class="media-gallery-title">وسائط المحادثة</div>
+          <div class="media-gallery-title">بيانات العميل والوسائط</div>
           <div class="media-gallery-subtitle">جاري التحميل...</div>
         </div>
       </header>
+      ${renderContactInfoSection(getContactInfoFields())}
+      <div class="media-gallery-section-title">الوسائط المشتركة</div>
       <div class="media-gallery-grid">
         <div class="media-gallery-loading">جاري تحميل الميديا...</div>
       </div>

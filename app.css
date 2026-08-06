@@ -73,6 +73,14 @@ input {
   padding: 0 12px;
 }
 
+/* الاسم بقى ممكن يطلع سطرين، فالهيدر بقى بيكبر مع محتواه بدل ارتفاع ثابت */
+.chat-mobile-header {
+  height: auto;
+  min-height: 58px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+}
+
 .sessions-header {
   justify-content: space-between;
 }
@@ -212,6 +220,7 @@ input {
 .chat-header-text {
   flex: 1;
   min-width: 0;
+  text-align: center;
 }
 
 .chat-title {
@@ -219,19 +228,18 @@ input {
   font-weight: 800;
   color: #e9edef;
   direction: ltr;
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: center;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .chat-subtitle {
   margin-top: 3px;
-  font-size: 13px;
+  font-size: 14px;
   color: #8696a0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 2px;
 }
 
@@ -1432,6 +1440,13 @@ body,
   box-shadow: 0 2px 10px rgba(84, 16, 91, 0.08);
 }
 
+.chat-mobile-header {
+  height: auto;
+  flex-basis: auto;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
 .brand-block {
   display: flex;
   align-items: center;
@@ -1705,7 +1720,7 @@ body,
 
 .chat-title {
   width: 100%;
-  font-size: 19px !important;
+  font-size: 21px !important;
   font-weight: 800 !important;
   text-align: center !important;
   direction: auto;
@@ -1715,7 +1730,7 @@ body,
   width: 100%;
   margin-top: 4px !important;
   color: var(--mehrab-muted) !important;
-  font-size: 13px !important;
+  font-size: 15px !important;
   font-weight: 600;
   text-align: center !important;
   direction: ltr;
@@ -1997,6 +2012,68 @@ body.media-gallery-open {
   margin-top: 2px;
   color: var(--mehrab-muted);
   font-size: 12px;
+}
+
+.contact-info-section {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 14px;
+  border-bottom: 1px solid rgba(197, 166, 109, 0.42);
+  background: #fffaf4;
+}
+
+.contact-info-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  background: rgba(84, 16, 91, 0.08);
+  color: var(--mehrab-purple);
+}
+
+.contact-info-fields {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contact-info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(84, 16, 91, 0.05);
+  text-align: center;
+}
+
+.contact-info-label {
+  font-size: 11px;
+  color: var(--mehrab-muted);
+  font-weight: 700;
+}
+
+.contact-info-value {
+  font-size: 15px;
+  color: var(--mehrab-purple-dark);
+  font-weight: 800;
+  word-break: break-word;
+}
+
+.media-gallery-section-title {
+  flex: 0 0 auto;
+  padding: 10px 14px 4px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--mehrab-muted);
 }
 
 .media-gallery-grid {
