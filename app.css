@@ -73,12 +73,15 @@ input {
   padding: 0 12px;
 }
 
-/* الاسم بقى ممكن يطلع سطرين، فالهيدر بقى بيكبر مع محتواه بدل ارتفاع ثابت */
+/* صف الاسم فوق، وصف الأزرار ورقم الهاتف تحته — بدل ما يبقوا في صف واحد */
 .chat-mobile-header {
   height: auto;
   min-height: 58px;
   flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
   padding: 8px 12px;
+  gap: 6px;
 }
 
 .sessions-header {
@@ -217,10 +220,17 @@ input {
   line-height: 1;
 }
 
-.chat-header-text {
-  flex: 1;
+.chat-header-name-row {
+  width: 100%;
   min-width: 0;
   text-align: center;
+}
+
+.chat-header-controls-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .chat-title {
@@ -229,18 +239,28 @@ input {
   color: #e9edef;
   direction: ltr;
   text-align: center;
-  white-space: normal;
-  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.chat-subtitle {
-  margin-top: 3px;
-  font-size: 14px;
+.chat-message-count {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
   color: #8696a0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
+}
+
+.chat-phone-number {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 13px;
+  color: #8696a0;
+  direction: ltr;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .messages {
@@ -583,14 +603,6 @@ input {
     padding: 0 20px;
   }
 
-}
-
-.chat-mobile-header {
-  gap: 14px;
-}
-
-.chat-header-text {
-  margin-inline-start: 8px;
 }
 
 .mobile-ai-btn {
@@ -1477,7 +1489,8 @@ body,
 }
 
 .brand-subtitle,
-.chat-subtitle {
+.chat-phone-number,
+.chat-message-count {
   color: var(--mehrab-muted) !important;
 }
 
@@ -1701,21 +1714,21 @@ body,
   mask-size: contain;
 }
 
-/* Cleaner customer header: name, then phone number */
+/* Cleaner customer header: name on top, controls + phone number below */
 .chat-mobile-header {
   padding: 7px 12px !important;
-  gap: 10px !important;
+  gap: 8px !important;
 }
 
-.chat-header-text {
-  margin: 0 !important;
-  display: flex;
+.chat-header-name-row {
+  width: 100%;
   min-width: 0;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
   line-height: 1.25;
+}
+
+.chat-header-controls-row {
+  width: 100%;
+  justify-content: center;
 }
 
 .chat-title {
@@ -1724,11 +1737,12 @@ body,
   font-weight: 800 !important;
   text-align: center !important;
   direction: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.chat-subtitle {
-  width: 100%;
-  margin-top: 4px !important;
+.chat-phone-number {
   color: var(--mehrab-muted) !important;
   font-size: 15px !important;
   font-weight: 600;
@@ -1813,26 +1827,16 @@ body,
   mask-size: contain;
 }
 
-.chat-subtitle {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  white-space: nowrap;
-}
-
-.chat-phone-number {
-  color: var(--mehrab-muted);
-  direction: ltr;
-}
-
 .chat-message-count {
-  padding: 2px 8px;
+  display: inline-block;
+  width: auto !important;
+  margin-top: 4px !important;
+  padding: 2px 10px;
   border-radius: 10px;
   background: rgba(84, 16, 91, 0.09);
-  color: var(--mehrab-purple);
+  color: var(--mehrab-purple) !important;
   font-weight: 800;
+  font-size: 12px !important;
 }
 
 .older-messages-loader {
@@ -1942,12 +1946,12 @@ body.media-viewer-open {
   cursor: pointer;
 }
 
-.chat-header-text {
+.chat-header-name-row {
   cursor: pointer;
   border-radius: 10px;
 }
 
-.chat-header-text:active {
+.chat-header-name-row:active {
   background: rgba(84, 16, 91, 0.06);
 }
 
@@ -2229,7 +2233,7 @@ body.media-gallery-open {
   unicode-bidi: plaintext;
 }
 
-.chat-mobile-header {
+.chat-header-controls-row {
   direction: ltr;
 }
 
@@ -2245,7 +2249,7 @@ body.media-gallery-open {
   order: 3;
 }
 
-.chat-mobile-header .chat-header-text {
+.chat-mobile-header .chat-phone-number {
   order: 4;
 }
 

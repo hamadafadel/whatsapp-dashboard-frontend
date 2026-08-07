@@ -103,23 +103,27 @@
     <!-- Chat -->
     <section class="chat-screen" id="chatScreen">
       <header class="chat-mobile-header">
-        <button id="backBtn" class="back-btn" type="button">‹</button>
+        <div class="chat-header-name-row">
+          <div id="chatTitle" class="chat-title">201011880373</div>
+          <div id="chatMessageCount" class="chat-message-count"></div>
+          <div id="chatLabelsRow" class="chat-labels-row"></div>
+        </div>
 
-        <div class="chat-header-text">
-  <div id="chatTitle" class="chat-title">201011880373</div>
-  <div id="chatSubtitle" class="chat-subtitle">WhatsApp Dashboard</div>
-  <div id="chatLabelsRow" class="chat-labels-row"></div>
-</div>
+        <div class="chat-header-controls-row">
+          <button id="backBtn" class="back-btn" type="button">‹</button>
 
-        <button id="conversationLabelsBtn" class="conversation-labels-btn" type="button" aria-label="الليبلز">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16Z" />
-          </svg>
-        </button>
+          <button id="conversationLabelsBtn" class="conversation-labels-btn" type="button" aria-label="الليبلز">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M17.63 5.84C17.27 5.33 16.67 5 16 5L5 5.01C3.9 5.01 3 5.9 3 7v10c0 1.1.9 1.99 2 1.99L16 19c.67 0 1.27-.33 1.63-.84L22 12l-4.37-6.16Z" />
+            </svg>
+          </button>
 
-        <button id="openMetaOrderBtn" class="meta-order-header-btn" type="button" aria-label="إنشاء طلب">$</button>
+          <button id="openMetaOrderBtn" class="meta-order-header-btn" type="button" aria-label="إنشاء طلب">$</button>
 
-        <button id="toggleAiBtn" class="mobile-ai-btn" type="button">إيقاف AI</button>
+          <div id="chatPhoneNumber" class="chat-phone-number"></div>
+
+          <button id="toggleAiBtn" class="mobile-ai-btn" type="button">إيقاف AI</button>
+        </div>
       </header>
 
       <div id="messages" class="messages"></div>

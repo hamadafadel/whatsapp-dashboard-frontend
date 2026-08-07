@@ -10,8 +10,9 @@ const appEl = document.getElementById("mobileApp");
 const conversationsEl = document.getElementById("conversations");
 const messagesEl = document.getElementById("messages");
 const chatTitleEl = document.getElementById("chatTitle");
-const chatSubtitleEl = document.getElementById("chatSubtitle");
-const chatHeaderTextEl = document.querySelector(".chat-header-text");
+const chatMessageCountEl = document.getElementById("chatMessageCount");
+const chatPhoneNumberEl = document.getElementById("chatPhoneNumber");
+const chatHeaderTextEl = document.querySelector(".chat-header-name-row");
 const searchInputEl = document.getElementById("searchInput");
 const conversationsMenuBtnEl = document.getElementById("conversationsMenuBtn");
 const conversationsMenuPanelEl = document.getElementById("conversationsMenuPanel");
@@ -3726,15 +3727,11 @@ function closeChat() {
 }
 
 function renderChatMeta(sessionId, total) {
-  const phone = document.createElement("span");
-  phone.className = "chat-phone-number";
-  phone.textContent = sessionId || "";
+  if (chatPhoneNumberEl) chatPhoneNumberEl.textContent = sessionId || "";
 
-  const count = document.createElement("span");
-  count.className = "chat-message-count";
-  count.textContent = `عدد الرسائل: ${Number(total || 0)}`;
-
-  chatSubtitleEl.replaceChildren(phone, count);
+  if (chatMessageCountEl) {
+    chatMessageCountEl.textContent = `عدد الرسائل: ${Number(total || 0)}`;
+  }
 }
 
 // بيتحقق من وقت آخر رسالة من العميل نفسه — حتى لو احنا (أو الـ AI) رددنا
