@@ -3995,10 +3995,9 @@ function normalizeMessage(msg) {
   const mapsUrl =
     messageObj.maps_url ||
     msg?.maps_url ||
-    whatsappLocation.url ||
     (latitude != null && longitude != null
       ? `https://www.google.com/maps?q=${latitude},${longitude}`
-      : "");
+      : locationUrl);
 
   let mediaValue =
     messageObj.media ||
