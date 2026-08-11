@@ -1061,17 +1061,18 @@ function openPreview(item) {
   previewItem = item;
   previewBodyEl.innerHTML = "";
 
-  const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/download?token=${encodeURIComponent(authToken)}`;
   const isVideo =
     item.isVideo || String(item.mimeType || "").startsWith("video/");
 
   if (isVideo) {
+    const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/video-stream?token=${encodeURIComponent(authToken)}`;
     const video = document.createElement("video");
     video.src = fileUrl;
     video.controls = true;
-    video.autoplay = true;
+    video.preload = "metadata";
     previewBodyEl.appendChild(video);
   } else {
+    const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/download?token=${encodeURIComponent(authToken)}`;
     const img = document.createElement("img");
     img.src = fileUrl;
     img.alt = item.name || "";
@@ -1083,6 +1084,14 @@ function openPreview(item) {
 
 function closePreview() {
   previewOverlayEl.classList.add("hidden");
+
+  const video = previewBodyEl.querySelector("video");
+  if (video) {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  }
+
   previewBodyEl.innerHTML = "";
   previewItem = null;
 }

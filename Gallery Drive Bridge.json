@@ -1,0 +1,1016 @@
+{
+  "name": "Gallery Drive Bridge",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gallery-drive",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -560,
+        624
+      ],
+      "id": "0b42984f-097b-48e9-aa7b-6dda94b1bf8b",
+      "name": "Webhook1",
+      "webhookId": "538f6bd3-0287-4bc1-b792-549341ebd3f9"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "list_folders",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "gal-list-folders"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "list_folders"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "list_items",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "gal-list-items"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "list_items"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "download_file",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "gal-download-file"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "download_file"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "download_zip",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "gal-download-zip"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "download_zip"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "upload_file",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "gal-upload-file"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "upload_file"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "4cb1ed4c-fe35-46e9-a452-ef5b4f690536",
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "delete_file",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "delete_file"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "d4b4f253-ba6f-435a-bea8-e13faad29d2f",
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "create_folder",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "create_folder"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e35a9daa-0ce6-42b9-afde-a3c924ca6c6b",
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "move_file",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "move_file"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -304,
+        624
+      ],
+      "id": "61f6f77b-3569-48dc-a52c-d54bf524e8f7",
+      "name": "Switch: Action"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "={{ `'${$json.body.rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false` }}",
+        "returnAll": true,
+        "filter": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        0,
+        224
+      ],
+      "id": "1641bd3b-ca3d-4dab-bf2e-a945175ee7ff",
+      "name": "GDrive: List Folders",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bebzAJayPgYwrbJK",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const files = $input.all().map(item => item.json);\n\nreturn [\n  {\n    json: {\n      folders: files.map(f => ({ id: f.id, name: f.name }))\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        224
+      ],
+      "id": "9bb99f65-d0eb-4a86-ada3-ad0c754ec06c",
+      "name": "Code: Format Folders"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        480,
+        224
+      ],
+      "id": "941ff1b1-125e-433d-923e-d8b07f776fe4",
+      "name": "Respond: Folders"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "={{ `'${$json.body.folderId}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'` }}",
+        "returnAll": true,
+        "filter": {},
+        "options": {
+          "fields": [
+            "mimeType",
+            "thumbnailLink",
+            "id",
+            "name"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        0,
+        448
+      ],
+      "id": "38169279-d6a9-4fb7-9e9d-7de6169cbf72",
+      "name": "GDrive: List Items",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bebzAJayPgYwrbJK",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const files = $input.all().map(item => item.json);\n\nreturn [\n  {\n    json: {\n      items: files\n        .filter(f => f.mimeType !== 'application/vnd.google-apps.folder')\n        .map(f => ({\n          id: f.id,\n          name: f.name,\n          mimeType: f.mimeType,\n          isVideo: String(f.mimeType || '').startsWith('video/'),\n          thumbnailUrl: f.thumbnailLink || ''\n        }))\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        448
+      ],
+      "id": "81b860e4-7e6e-4137-b046-321244b1b487",
+      "name": "Code: Format Items"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        480,
+        448
+      ],
+      "id": "c8c7c238-a1d3-413e-914d-cf3134dbf802",
+      "name": "Respond: Items"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.body.fileId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        0,
+        864
+      ],
+      "id": "e6f44c8c-2b61-4386-8a7d-75c5c49951cf",
+      "name": "GDrive: Download File",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bebzAJayPgYwrbJK",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        240,
+        864
+      ],
+      "id": "784db8ba-c5fc-4278-8959-5efe6a8d8253",
+      "name": "Respond: File"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ ($json.body.fileIds || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "id": "gal-has-ids"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        1232
+      ],
+      "id": "faca0e0c-fb96-4358-a2d1-4cdf45640270",
+      "name": "IF: Has File IDs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ids = $json.body.fileIds || [];\nreturn ids.map((id) => ({ json: { fileId: id } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        1168
+      ],
+      "id": "e7ab5027-fca0-44a7-a689-65eba364389c",
+      "name": "Code: Explode File IDs"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "={{ `'${$json.body.folderId}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'` }}",
+        "returnAll": true,
+        "filter": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        272,
+        1328
+      ],
+      "id": "3581d4e3-2cb3-4e89-8609-fd7e39a14ed7",
+      "name": "GDrive: List Items For Zip",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bebzAJayPgYwrbJK",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map((item) => ({\n  json: { fileId: item.json.id }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        1328
+      ],
+      "id": "31905920-7325-4b14-9f87-e555ee2d1f95",
+      "name": "Code: Map Folder Items To IDs"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.fileId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        752,
+        1232
+      ],
+      "id": "3d88acb7-29a6-4fc5-9668-4d7543f4d2f8",
+      "name": "GDrive: Download For Zip",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bebzAJayPgYwrbJK",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "compress",
+        "binaryPropertyName": "={{ Object.keys($binary).join(',') }}",
+        "fileName": "gallery.zip"
+      },
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        1232
+      ],
+      "id": "0888b92d-e32e-48da-b0f0-58b8400b0404",
+      "name": "Compression: Zip It"
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1440,
+        1232
+      ],
+      "id": "0f26276d-adce-4949-be04-696a540cf8ed",
+      "name": "Respond: Zip"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      file: { id: $json.id, name: $json.name }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        1632
+      ],
+      "id": "5fff7dac-353f-4181-ba12-6ebda77bf816",
+      "name": "Code: Format Upload Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        480,
+        1632
+      ],
+      "id": "4ca92f85-8462-40ce-8add-74b2f2639392",
+      "name": "Respond: Upload"
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "file",
+        "name": "={{ $binary.file.fileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.body.targetFolderId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        0,
+        1632
+      ],
+      "id": "0057ec08-6898-4899-a7b4-28869b270f18",
+      "name": "GDrive: Upload",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bebzAJayPgYwrbJK",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\"success\": true} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        480,
+        1952
+      ],
+      "id": "cd45fe05-8bf2-4f35-8b4d-0e1fa3720e3b",
+      "name": "Respond: Upload1"
+    },
+    {
+      "parameters": {
+        "operation": "deleteFile",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.body.fileId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        0,
+        1952
+      ],
+      "id": "53b235bd-e3c7-4b21-8c42-a329e3d9130d",
+      "name": "GDrive: Delete",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bebzAJayPgYwrbJK",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"folder\": { \"id\": $json.id, \"name\": $json.name } } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        496,
+        2240
+      ],
+      "id": "9b1fac74-5498-4590-8875-73066c440818",
+      "name": "Respond: Upload2"
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $json.body.name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.body.parentFolderId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        16,
+        2240
+      ],
+      "id": "0e3f4d36-e54d-40e6-b61a-ef1ae476d018",
+      "name": "GDrive: Create Folder",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bebzAJayPgYwrbJK",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {}
+          ]
+        },
+        "options": {
+          "includeBinaries": true
+        }
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        960,
+        1232
+      ],
+      "id": "349f7259-54da-4145-8ec4-c43e87d29c19",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        480,
+        2528
+      ],
+      "id": "b7795024-b488-4251-9e89-ba34611d5bda",
+      "name": "Respond: Upload3"
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.body.nodeId }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.body.targetFolderId }}",
+          "mode": "id"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        0,
+        2528
+      ],
+      "id": "d98a9d5b-0d44-4aea-8ed6-a0b4163e8d64",
+      "name": "GDrive: Move",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bebzAJayPgYwrbJK",
+          "name": "Google Drive account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Switch: Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Action": {
+      "main": [
+        [
+          {
+            "node": "GDrive: List Folders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GDrive: List Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GDrive: Download File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF: Has File IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GDrive: Upload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GDrive: Delete",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GDrive: Create Folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GDrive: Move",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GDrive: List Folders": {
+      "main": [
+        [
+          {
+            "node": "Code: Format Folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Format Folders": {
+      "main": [
+        [
+          {
+            "node": "Respond: Folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GDrive: List Items": {
+      "main": [
+        [
+          {
+            "node": "Code: Format Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Format Items": {
+      "main": [
+        [
+          {
+            "node": "Respond: Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GDrive: Download File": {
+      "main": [
+        [
+          {
+            "node": "Respond: File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has File IDs": {
+      "main": [
+        [
+          {
+            "node": "Code: Explode File IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GDrive: List Items For Zip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GDrive: List Items For Zip": {
+      "main": [
+        [
+          {
+            "node": "Code: Map Folder Items To IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Explode File IDs": {
+      "main": [
+        [
+          {
+            "node": "GDrive: Download For Zip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Map Folder Items To IDs": {
+      "main": [
+        [
+          {
+            "node": "GDrive: Download For Zip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GDrive: Download For Zip": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compression: Zip It": {
+      "main": [
+        [
+          {
+            "node": "Respond: Zip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Format Upload Response": {
+      "main": [
+        [
+          {
+            "node": "Respond: Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GDrive: Upload": {
+      "main": [
+        [
+          {
+            "node": "Code: Format Upload Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GDrive: Delete": {
+      "main": [
+        [
+          {
+            "node": "Respond: Upload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GDrive: Create Folder": {
+      "main": [
+        [
+          {
+            "node": "Respond: Upload2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Compression: Zip It",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GDrive: Move": {
+      "main": [
+        [
+          {
+            "node": "Respond: Upload3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "dbe36252-e4d6-4bbd-b44f-5364f0417264",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "86b37ed1c27423b34aa22e319f522740830a07b71615354cefca5e6e80eb0f8c"
+  },
+  "id": "yzckT7qTCRFDxMwA",
+  "tags": []
+}
