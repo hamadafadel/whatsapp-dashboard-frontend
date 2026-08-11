@@ -3960,6 +3960,46 @@ function normalizeMessage(msg) {
     msg?.whatsapp_message ||
     null;
 
+  const whatsappLocation = whatsappMessage?.location || {};
+
+  const latitude =
+    messageObj.latitude ??
+    msg?.latitude ??
+    whatsappLocation.latitude ??
+    null;
+
+  const longitude =
+    messageObj.longitude ??
+    msg?.longitude ??
+    whatsappLocation.longitude ??
+    null;
+
+  const locationName =
+    messageObj.location_name ||
+    msg?.location_name ||
+    whatsappLocation.name ||
+    "";
+
+  const address =
+    messageObj.address ||
+    msg?.address ||
+    whatsappLocation.address ||
+    "";
+
+  const locationUrl =
+    messageObj.location_url ||
+    msg?.location_url ||
+    whatsappLocation.url ||
+    "";
+
+  const mapsUrl =
+    messageObj.maps_url ||
+    msg?.maps_url ||
+    whatsappLocation.url ||
+    (latitude != null && longitude != null
+      ? `https://www.google.com/maps?q=${latitude},${longitude}`
+      : "");
+
   let mediaValue =
     messageObj.media ||
     msg?.media ||
@@ -4015,6 +4055,18 @@ function normalizeMessage(msg) {
       "",
 
     message_kind: String(messageKind).toLowerCase(),
+
+    latitude,
+
+    longitude,
+
+    location_name: locationName,
+
+    address,
+
+    maps_url: mapsUrl,
+
+    location_url: locationUrl,
 
     media: mediaValue,
 
@@ -4487,7 +4539,60 @@ if (
     });
   }
 
-  if (content) {
+  if (messageKind === "location") {
+    const locationCard = document.createElement("div");
+    locationCard.className = "wa-location-card";
+    locationCard.style.display = "flex";
+    locationCard.style.gap = "10px";
+    locationCard.style.padding = "10px";
+    locationCard.style.borderRadius = "8px";
+    locationCard.style.background = "rgba(0, 0, 0, 0.08)";
+
+    const locationIcon = document.createElement("div");
+    locationIcon.className = "wa-location-icon";
+    locationIcon.textContent = "📍";
+    locationIcon.style.fontSize = "24px";
+
+    const locationDetails = document.createElement("div");
+    locationDetails.className = "wa-location-details";
+
+    const locationName = document.createElement("div");
+    locationName.className = "wa-location-name";
+    locationName.textContent =
+      messageObj.location_name || "الموقع المرسل";
+    locationName.style.fontWeight = "600";
+
+    locationDetails.appendChild(locationName);
+
+    if (messageObj.address) {
+      const locationAddress = document.createElement("div");
+      locationAddress.className = "wa-location-address";
+      locationAddress.textContent = messageObj.address;
+      locationAddress.style.marginTop = "4px";
+      locationDetails.appendChild(locationAddress);
+    }
+
+    const mapsUrl = messageObj.maps_url || messageObj.location_url;
+
+    if (mapsUrl) {
+      const locationLink = document.createElement("a");
+      locationLink.className = "wa-location-link";
+      locationLink.href = mapsUrl;
+      locationLink.target = "_blank";
+      locationLink.rel = "noopener noreferrer";
+      locationLink.textContent = "فتح الموقع على الخريطة";
+      locationLink.style.display = "inline-block";
+      locationLink.style.marginTop = "8px";
+      locationLink.style.color = "#53bdeb";
+      locationDetails.appendChild(locationLink);
+    }
+
+    locationCard.appendChild(locationIcon);
+    locationCard.appendChild(locationDetails);
+    bubble.appendChild(locationCard);
+  }
+
+  if (content && messageKind !== "location") {
     const textEl = document.createElement("div");
     textEl.className = "message-text";
     textEl.innerHTML = linkifyText(content);
