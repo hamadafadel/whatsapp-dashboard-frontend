@@ -1069,7 +1069,7 @@ function openPreview(item) {
     const video = document.createElement("video");
     video.src = fileUrl;
     video.controls = true;
-    video.preload = "metadata";
+    video.preload = "auto";
     previewBodyEl.appendChild(video);
   } else {
     const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/download?token=${encodeURIComponent(authToken)}`;
@@ -1103,6 +1103,25 @@ previewOverlayEl.addEventListener("click", (event) => {
 });
 
 async function downloadSingleItem(item, onDone) {
+  const isVideo =
+    item.isVideo || String(item.mimeType || "").startsWith("video/");
+
+  if (isVideo) {
+    const fileUrl =
+      `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/video-stream` +
+      `?token=${encodeURIComponent(authToken)}` +
+      `&download=1&filename=${encodeURIComponent(item.name || "video")}`;
+    const link = document.createElement("a");
+    link.href = fileUrl;
+    link.download = item.name || "video";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    if (onDone) onDone();
+    return;
+  }
+
   showProgressToast("جاري التحضير...");
 
   try {
