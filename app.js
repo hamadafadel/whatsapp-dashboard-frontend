@@ -6490,7 +6490,9 @@ async function startAudioRecording() {
       }
     });
 
-    mediaRecorder.addEventListener("stop", async () => {
+    mediaRecorder.addEventListener("stop", async (event) => {
+  const wasRecordingCancelled =
+    event.currentTarget?.recordingCancelled === true;
   // بنوقف واجهة التسجيل (التايمر وشريط التسجيل) فورًا أول ما نضغط إرسال،
   // قبل ما نبدأ نرفع الصوت — عشان ما يفضلش شكله وكأنه لسه بيسجل وهو
   // فعليًا بقى بيترفع في الخلفية
@@ -6504,7 +6506,7 @@ async function startAudioRecording() {
 
   try {
     // لو المستخدم سحب للإلغاء، ما نبعتش أي حاجة
-    if (recordingCancelled) {
+    if (wasRecordingCancelled) {
       audioChunks = [];
       return;
     }
@@ -6538,7 +6540,7 @@ async function startAudioRecording() {
   } catch (error) {
     console.error("Recorded audio error:", error);
 
-    if (!recordingCancelled) {
+    if (!wasRecordingCancelled) {
       alert("فشل تجهيز الرسالة الصوتية");
     }
   } finally {
@@ -6586,6 +6588,7 @@ function stopAudioRecording() {
     mediaRecorder &&
     mediaRecorder.state !== "inactive"
   ) {
+    mediaRecorder.recordingCancelled = recordingCancelled;
     mediaRecorder.stop();
   } else {
     stopRecordingStream();
