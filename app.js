@@ -5355,20 +5355,6 @@ function connectEvents() {
       data.messageKind || data.message_kind || ""
     ).toLowerCase();
 
-    if (
-      data.type === "new_message" &&
-      currentSession === eventSession &&
-      (
-        getSessionSendQueue(eventSession).pendingMediaCount > 0 ||
-        Date.now() <= getSessionSendQueue(eventSession).suppressMediaEventsUntil
-      ) &&
-      data.messageType === "agent" &&
-      ["image", "video"].includes(realtimeMessageKind)
-    ) {
-      updateConversationPreview();
-      return;
-    }
-
 if (data.type === "reaction") {
   const messageWrap = messagesEl.querySelector(
     `[data-wa-message-id="${CSS.escape(data.messageId)}"]`
@@ -5418,6 +5404,38 @@ if (data.type === "reaction") {
 
       if (currentSession === eventSession) {
         removeAiTypingIndicator();
+
+        const realtimeMessageId = String(
+          data.external_message_id ||
+          data.channel_message_id ||
+          data.messageId ||
+          data.message_id ||
+          ""
+        );
+
+        if (
+          realtimeMessageId &&
+          messagesEl.querySelector(
+            `[data-wa-message-id="${CSS.escape(realtimeMessageId)}"]`
+          )
+        ) {
+          updateConversationPreview();
+          return;
+        }
+
+        if (
+          data.messageType === "agent" &&
+          ["image", "video"].includes(realtimeMessageKind)
+        ) {
+          const optimisticMedia = [...messagesEl.querySelectorAll(
+            `[data-local-media-session="${CSS.escape(eventSession)}"][data-local-media-kind="${CSS.escape(realtimeMessageKind)}"]`
+          )].find((element) => element.dataset.reconciled !== "true");
+
+          if (optimisticMedia) {
+            optimisticMedia.dataset.reconciled = "true";
+            optimisticMedia.remove();
+          }
+        }
 
         const realtimeTimestamp =
           data.timestamp ||
@@ -6298,7 +6316,7 @@ function getCurrentSenderName() {
   }
 }
 
-function appendPendingMedia(file, caption = "") {
+function appendPendingMedia(file, caption = "", sessionId = "") {
   const url = URL.createObjectURL(file);
   localMediaPreviewUrls.add(url);
   const messageKind = file.type.startsWith("video/") ? "video" : "image";
@@ -6306,6 +6324,8 @@ function appendPendingMedia(file, caption = "") {
   const wrap = document.createElement("div");
   wrap.className = "message-wrap agent";
   wrap.dataset.pendingUpload = "true";
+  wrap.dataset.localMediaSession = String(sessionId || "");
+  wrap.dataset.localMediaKind = messageKind;
 
   const bubble = document.createElement("div");
   bubble.className = "message agent";
@@ -6476,7 +6496,7 @@ if (mediaInputEl) {
     const targetSessionId = activeSessionId;
     const uploads = files.map((file) => ({
       file,
-      pending: appendPendingMedia(file, caption)
+      pending: appendPendingMedia(file, caption, targetSessionId)
     }));
 
     mediaInputEl.value = "";
