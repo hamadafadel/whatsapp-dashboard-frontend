@@ -16,6 +16,7 @@ const chatHeaderTextEl = document.querySelector(".chat-header-name-row");
 const searchInputEl = document.getElementById("searchInput");
 const channelFilterBarEl = document.getElementById("channelFilterBar");
 const unreadFilterBarEl = document.getElementById("unreadFilterBar");
+const unreadFilterCountEl = document.getElementById("unreadFilterCount");
 const conversationsMenuBtnEl = document.getElementById("conversationsMenuBtn");
 const conversationsMenuPanelEl = document.getElementById("conversationsMenuPanel");
 const currentUserNameEl = document.getElementById("currentUserName");
@@ -2312,6 +2313,17 @@ function renderUnreadFilter() {
   });
 }
 
+function updateUnreadFilterCount() {
+  if (!unreadFilterCountEl) return;
+
+  const total = conversationsData.reduce(
+    (sum, conversation) => sum + Number(conversation.unread_count || 0),
+    0
+  );
+
+  unreadFilterCountEl.textContent = total > 99 ? "99+" : String(total);
+}
+
 unreadFilterBarEl?.addEventListener("click", (event) => {
   const button = event.target.closest(".unread-filter-btn");
   if (!button || !unreadFilterBarEl.contains(button)) return;
@@ -2620,6 +2632,8 @@ function getConversationPreviewText(conv) {
 }
 
 function applyConversationFilters() {
+  updateUnreadFilterCount();
+
   const value = searchInputEl.value.trim().toLowerCase();
   let filtered = conversationsData;
 

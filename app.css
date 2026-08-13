@@ -3819,6 +3819,9 @@ body.labels-open {
 }
 
 .unread-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid rgba(134, 150, 160, 0.35);
   border-radius: 999px;
   padding: 5px 12px;
@@ -3827,6 +3830,22 @@ body.labels-open {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+}
+
+.unread-filter-count {
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(134, 150, 160, 0.18);
+  color: inherit;
+  font-size: 11px;
+  line-height: 19px;
+  text-align: center;
+}
+
+.unread-filter-btn.active .unread-filter-count {
+  background: rgba(0, 168, 132, 0.2);
 }
 
 .unread-filter-btn.active {
