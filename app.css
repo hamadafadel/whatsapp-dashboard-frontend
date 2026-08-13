@@ -3781,6 +3781,36 @@ body.labels-open {
   background: var(--mehrab-cream);
 }
 
+.channel-filter-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px 3px;
+  background: var(--mehrab-cream, #fbf5ec);
+}
+
+.channel-filter-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(197, 166, 109, 0.48);
+  border-radius: 16px;
+  background: #fffaf4;
+  color: var(--mehrab-ink, #3b2637);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.channel-filter-btn.active {
+  border-color: var(--mehrab-purple, #54105b);
+  background: var(--mehrab-purple, #54105b);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(84, 16, 91, 0.18);
+}
+
 .label-filter-row:empty {
   display: none;
 }

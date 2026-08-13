@@ -14,6 +14,7 @@ const chatMessageCountEl = document.getElementById("chatMessageCount");
 const chatPhoneNumberEl = document.getElementById("chatPhoneNumber");
 const chatHeaderTextEl = document.querySelector(".chat-header-name-row");
 const searchInputEl = document.getElementById("searchInput");
+const channelFilterBarEl = document.getElementById("channelFilterBar");
 const conversationsMenuBtnEl = document.getElementById("conversationsMenuBtn");
 const conversationsMenuPanelEl = document.getElementById("conversationsMenuPanel");
 const currentUserNameEl = document.getElementById("currentUserName");
@@ -2198,6 +2199,35 @@ let conversationLabelsCache = [];
 let labelEditingId = null;
 let labelSelectedColor = LABEL_COLOR_PALETTE[0];
 let activeLabelFilterId = null;
+const CHANNEL_FILTER_STORAGE_KEY = "dashboard_channel_filter";
+const validChannelFilters = new Set(["all", "whatsapp", "messenger"]);
+const savedChannelFilter = localStorage.getItem(CHANNEL_FILTER_STORAGE_KEY);
+let activeChannelFilter = validChannelFilters.has(savedChannelFilter)
+  ? savedChannelFilter
+  : "all";
+
+function renderChannelFilter() {
+  channelFilterBarEl?.querySelectorAll(".channel-filter-btn").forEach((button) => {
+    const isActive = button.dataset.channel === activeChannelFilter;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+channelFilterBarEl?.addEventListener("click", (event) => {
+  const button = event.target.closest(".channel-filter-btn");
+  if (!button || !channelFilterBarEl.contains(button)) return;
+
+  const nextFilter = String(button.dataset.channel || "all");
+  if (!validChannelFilters.has(nextFilter)) return;
+
+  activeChannelFilter = nextFilter;
+  localStorage.setItem(CHANNEL_FILTER_STORAGE_KEY, activeChannelFilter);
+  renderChannelFilter();
+  applyConversationFilters();
+});
+
+renderChannelFilter();
 
 async function fetchAllLabels() {
   const response = await fetch(`${API_BASE}/labels`, {
@@ -2494,6 +2524,20 @@ function getConversationPreviewText(conv) {
 function applyConversationFilters() {
   const value = searchInputEl.value.trim().toLowerCase();
   let filtered = conversationsData;
+
+  if (activeChannelFilter !== "all") {
+    filtered = filtered.filter((conv) => {
+      const sessionId = String(conv.session_id || "");
+      const inferredChannel = sessionId.startsWith("fb:")
+        ? "messenger"
+        : "whatsapp";
+      const channel = String(conv.channel || inferredChannel).toLowerCase();
+
+      return activeChannelFilter === "messenger"
+        ? channel === "messenger" || sessionId.startsWith("fb:")
+        : channel === "whatsapp" || !sessionId.startsWith("fb:");
+    });
+  }
 
   if (activeLabelFilterId !== null) {
     filtered = filtered.filter(
