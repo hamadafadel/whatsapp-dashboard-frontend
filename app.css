@@ -3811,6 +3811,30 @@ body.labels-open {
   box-shadow: 0 2px 8px rgba(84, 16, 91, 0.18);
 }
 
+.unread-filter-bar {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 8px;
+  direction: rtl;
+}
+
+.unread-filter-btn {
+  border: 1px solid rgba(134, 150, 160, 0.35);
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: transparent;
+  color: #8696a0;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.unread-filter-btn.active {
+  border-color: #00a884;
+  background: rgba(0, 168, 132, 0.14);
+  color: #00a884;
+}
+
 .label-filter-row:empty {
   display: none;
 }

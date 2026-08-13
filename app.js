@@ -15,6 +15,7 @@ const chatPhoneNumberEl = document.getElementById("chatPhoneNumber");
 const chatHeaderTextEl = document.querySelector(".chat-header-name-row");
 const searchInputEl = document.getElementById("searchInput");
 const channelFilterBarEl = document.getElementById("channelFilterBar");
+const unreadFilterBarEl = document.getElementById("unreadFilterBar");
 const conversationsMenuBtnEl = document.getElementById("conversationsMenuBtn");
 const conversationsMenuPanelEl = document.getElementById("conversationsMenuPanel");
 const currentUserNameEl = document.getElementById("currentUserName");
@@ -2273,6 +2274,12 @@ const savedChannelFilter = localStorage.getItem(CHANNEL_FILTER_STORAGE_KEY);
 let activeChannelFilter = validChannelFilters.has(savedChannelFilter)
   ? savedChannelFilter
   : "all";
+const UNREAD_FILTER_STORAGE_KEY = "dashboard_unread_filter";
+const validUnreadFilters = new Set(["all", "unread"]);
+const savedUnreadFilter = localStorage.getItem(UNREAD_FILTER_STORAGE_KEY);
+let activeUnreadFilter = validUnreadFilters.has(savedUnreadFilter)
+  ? savedUnreadFilter
+  : "all";
 
 function renderChannelFilter() {
   channelFilterBarEl?.querySelectorAll(".channel-filter-btn").forEach((button) => {
@@ -2296,6 +2303,29 @@ channelFilterBarEl?.addEventListener("click", (event) => {
 });
 
 renderChannelFilter();
+
+function renderUnreadFilter() {
+  unreadFilterBarEl?.querySelectorAll(".unread-filter-btn").forEach((button) => {
+    const isActive = button.dataset.unread === activeUnreadFilter;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+unreadFilterBarEl?.addEventListener("click", (event) => {
+  const button = event.target.closest(".unread-filter-btn");
+  if (!button || !unreadFilterBarEl.contains(button)) return;
+
+  const nextFilter = String(button.dataset.unread || "all");
+  if (!validUnreadFilters.has(nextFilter)) return;
+
+  activeUnreadFilter = nextFilter;
+  localStorage.setItem(UNREAD_FILTER_STORAGE_KEY, activeUnreadFilter);
+  renderUnreadFilter();
+  applyConversationFilters();
+});
+
+renderUnreadFilter();
 
 async function fetchAllLabels() {
   const response = await fetch(`${API_BASE}/labels`, {
@@ -2605,6 +2635,10 @@ function applyConversationFilters() {
         ? channel === "messenger" || sessionId.startsWith("fb:")
         : channel === "whatsapp" || !sessionId.startsWith("fb:");
     });
+  }
+
+  if (activeUnreadFilter === "unread") {
+    filtered = filtered.filter((conv) => Number(conv.unread_count || 0) > 0);
   }
 
   if (activeLabelFilterId !== null) {
