@@ -515,6 +515,7 @@ async function renderTemplatesList() {
 
 openTemplatesBtnEl?.addEventListener("click", (event) => {
   event.stopPropagation();
+  if (getActiveChannel() === "messenger") return;
   quickActionsPanelEl?.classList.add("hidden");
   templatesPanelEl?.classList.remove("hidden");
   renderTemplatesList();
@@ -537,6 +538,8 @@ sendTemplateInsteadBtnEl?.addEventListener("click", (event) => {
     alert("اختر محادثة أولًا");
     return;
   }
+
+  if (getActiveChannel() === "messenger") return;
 
   closeEmojiPicker();
   quickActionsPanelEl?.classList.add("hidden");
@@ -2991,6 +2994,19 @@ let currentAiEnabled = true;
 
 let conversationsData = [];
 let activeSessionId = null;
+
+function getChannelFromSessionId(sessionId) {
+  return String(sessionId || "").startsWith("fb:")
+    ? "messenger"
+    : "whatsapp";
+}
+
+function getActiveChannel() {
+  const conversation = conversationsData.find(
+    (item) => item.session_id === activeSessionId
+  );
+  return conversation?.channel || getChannelFromSessionId(activeSessionId);
+}
 let messagesRequestToken = 0;
 let currentLoadedMessageCount = 0;
 let oldestLoadedMessageId = null;
@@ -3535,6 +3551,7 @@ function createConversationItem(conv) {
     <div class="session-row">
       <div class="session-id">
         <span class="session-customer-name"></span>
+        <span class="session-channel-badge"></span>
         <div style="font-size:12px;color:#8696a0" class="session-id-text"></div>
       </div>
       <div class="unread-badge hidden"></div>
@@ -3644,6 +3661,13 @@ function updateConversationItem(item, conv) {
   const idTextEl = item.querySelector(".session-id-text");
   if (idTextEl) idTextEl.textContent = conv.session_id || "";
 
+  const channel = conv.channel || getChannelFromSessionId(conv.session_id);
+  const channelBadgeEl = item.querySelector(".session-channel-badge");
+  if (channelBadgeEl) {
+    channelBadgeEl.textContent = channel === "messenger" ? "Messenger" : "WhatsApp";
+    channelBadgeEl.className = `session-channel-badge ${channel}`;
+  }
+
   const unreadCount = Number(conv.unread_count || 0);
   const badgeEl = item.querySelector(".unread-badge");
   if (badgeEl) {
@@ -3727,7 +3751,12 @@ function closeChat() {
 }
 
 function renderChatMeta(sessionId, total) {
-  if (chatPhoneNumberEl) chatPhoneNumberEl.textContent = sessionId || "";
+  const channel = getActiveChannel();
+  if (chatPhoneNumberEl) {
+    chatPhoneNumberEl.textContent = `${
+      channel === "messenger" ? "Messenger" : "WhatsApp"
+    } · ${sessionId || ""}`;
+  }
 
   if (chatMessageCountEl) {
     chatMessageCountEl.textContent = `عدد الرسائل: ${Number(total || 0)}`;
@@ -3762,6 +3791,15 @@ function applyMessagingWindowState(lastUserTime) {
   windowExpiredBannerEl.classList.toggle("hidden", !expired);
   chatComposeEl?.classList.toggle("window-expired", expired);
 
+  const isMessenger = getActiveChannel() === "messenger";
+  if (expired) {
+    windowExpiredBannerEl.textContent = isMessenger
+      ? "⚠️ انتهت نافذة Messenger القياسية (24 ساعة). لا يمكن إرسال رد عادي حتى يرسل العميل رسالة جديدة."
+      : "⚠️ مر أكثر من 24 ساعة على آخر رسالة من العميل — استخدم تيمبليت WhatsApp المعتمد.";
+  }
+
+  sendTemplateInsteadBtnEl?.classList.toggle("hidden", !expired || isMessenger);
+
   // لو المسارات أو الرد كانوا مفتوحين قبل ما الوقت ينتهي، اقفلهم فورًا
   if (expired) closeQuickActions();
 }
@@ -3782,6 +3820,7 @@ function reapplyMessagingWindowCheckFromCache() {
   if (!timeStr) {
     windowExpiredBannerEl.classList.add("hidden");
     chatComposeEl?.classList.remove("window-expired");
+    sendTemplateInsteadBtnEl?.classList.add("hidden");
     return;
   }
 
@@ -4035,6 +4074,11 @@ function normalizeMessage(msg) {
   return {
     ...messageObj,
 
+    channel:
+      messageObj.channel ||
+      msg?.channel ||
+      "whatsapp",
+
     // ده الـ id بتاع الصف في القاعدة، مش رقم واتساب الحقيقي — بيتفقد وقت
     // الـ normalize لو ما ضفناهوش هنا صراحة، وبنستخدمه كـ fallback للريبلاي
     // لما الرسالة (زي صور اختيار المسار) معندهاش wa_message_id حقيقي محفوظ
@@ -4085,6 +4129,10 @@ function normalizeMessage(msg) {
       "",
 
     wa_message_id:
+      messageObj.external_message_id ||
+      msg?.external_message_id ||
+      messageObj.channel_message_id ||
+      msg?.channel_message_id ||
       messageObj.wa_message_id ||
       msg?.wa_message_id ||
       whatsappMessage?.id ||
@@ -4283,6 +4331,8 @@ function appendMessageToUI(msg) {
   wrap.dataset.messageKind = messageKind;
 
   const realWaMessageId =
+    messageObj.external_message_id ||
+    messageObj.channel_message_id ||
     messageObj.wa_message_id ||
     messageObj.whatsapp_message?.id ||
     messageObj.message_id ||
@@ -5239,6 +5289,7 @@ if (data.type === "reaction") {
 
         appendRealtimeMessage({
           type: data.messageType || "ai",
+          channel: data.channel || getChannelFromSessionId(data.sessionId),
           content: data.content || "",
           message_kind: data.messageKind || data.message_kind || "text",
           media: data.mediaUrl || data.media_url || data.media || null,
@@ -5246,6 +5297,8 @@ if (data.type === "reaction") {
           whatsapp_payload: data.whatsapp_payload || null,
 
           wa_message_id:
+            data.external_message_id ||
+            data.channel_message_id ||
             data.wa_message_id ||
             data.message_id ||
             data.whatsapp_message_id ||
@@ -5278,6 +5331,7 @@ function appendRealtimeMessage(messageObj) {
 
   appendMessageToUI({
     type: messageObj.type,
+    channel: messageObj.channel || "whatsapp",
     content: messageObj.content || "",
     message_kind: messageObj.message_kind || messageObj.messageKind || "text",
     media: messageObj.media || messageObj.mediaUrl || messageObj.media_url || null,
@@ -5632,6 +5686,10 @@ function rememberReactionEmoji(emoji) {
 }
 
 function showMessageActions(messageObj, messageType) {
+  if (getActiveChannel() === "messenger") {
+    alert("Messenger يدعم استقبال التفاعلات، لكن Send API لا يدعم إرسالها من الداشبورد.");
+    return;
+  }
   if (
     messageType !== "user" &&
     messageType !== "agent" &&

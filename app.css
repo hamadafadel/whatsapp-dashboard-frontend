@@ -4278,3 +4278,24 @@ body.labels-open {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+.session-channel-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-inline-start: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.session-channel-badge.whatsapp {
+  color: #087a45;
+  background: #dcf8e8;
+}
+
+.session-channel-badge.messenger {
+  color: #0759bb;
+  background: #e4f0ff;
+}
