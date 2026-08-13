@@ -2316,10 +2316,9 @@ function renderUnreadFilter() {
 function updateUnreadFilterCount() {
   if (!unreadFilterCountEl) return;
 
-  const total = conversationsData.reduce(
-    (sum, conversation) => sum + Number(conversation.unread_count || 0),
-    0
-  );
+  const total = conversationsData.filter(
+    (conversation) => Number(conversation.unread_count || 0) > 0
+  ).length;
 
   unreadFilterCountEl.textContent = total > 99 ? "99+" : String(total);
 }
