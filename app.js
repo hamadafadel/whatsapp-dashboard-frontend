@@ -826,6 +826,72 @@ let savedMediaFolderEditingId = null;
 let savedMediaPreviewItem = null;
 let savedMediaSelectMode = false;
 let savedMediaSelectedIds = new Set();
+const sessionSendQueues = new Map();
+
+function getSessionSendQueue(sessionId) {
+  const key = String(sessionId || "");
+  if (!sessionSendQueues.has(key)) {
+    sessionSendQueues.set(key, {
+      jobs: [],
+      running: false,
+      pendingMediaCount: 0,
+      pendingTextCount: 0,
+      activeSends: 0,
+      suppressMediaEventsUntil: 0,
+      progressToast: null
+    });
+  }
+  return sessionSendQueues.get(key);
+}
+
+function syncSessionProgressVisibility() {
+  sessionSendQueues.forEach((state, sessionId) => {
+    state.progressToast?.setVisible(sessionId === activeSessionId);
+  });
+}
+
+async function processSessionSendQueue(sessionId) {
+  const state = getSessionSendQueue(sessionId);
+  if (state.running) return;
+
+  state.running = true;
+  try {
+    while (state.jobs.length) {
+      const job = state.jobs.shift();
+      state.activeSends = 1;
+
+      try {
+        const result = await job.run();
+        job.resolve(result);
+      } catch (error) {
+        console.error(`Session send queue job failed (${sessionId}):`, error);
+        job.reject(error);
+      } finally {
+        if (job.type === "media") {
+          state.pendingMediaCount = Math.max(0, state.pendingMediaCount - 1);
+        } else if (job.type === "text") {
+          state.pendingTextCount = Math.max(0, state.pendingTextCount - 1);
+        }
+        state.activeSends = 0;
+      }
+    }
+  } finally {
+    state.running = false;
+  }
+}
+
+function enqueueSessionSend(sessionId, type, run) {
+  const state = getSessionSendQueue(sessionId);
+  if (type === "media") state.pendingMediaCount++;
+  if (type === "text") state.pendingTextCount++;
+
+  const promise = new Promise((resolve, reject) => {
+    state.jobs.push({ type, run, resolve, reject });
+  });
+
+  processSessionSendQueue(sessionId);
+  return promise;
+}
 
 function mediaFolderIconSvg() {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2Z"/></svg>';
@@ -833,7 +899,12 @@ function mediaFolderIconSvg() {
 
 // توست تقدّم عام بيتستخدم لرفع الملفات على الوسائط المحفوظة ولإرسالها
 // للعميل (مع أو من غير زرار إيقاف)
-function createMediaProgressToast({ label = "جاري الرفع...", showStop = false, onStop = null } = {}) {
+function createMediaProgressToast({
+  label = "جاري الرفع...",
+  showStop = false,
+  onStop = null,
+  sessionId = null
+} = {}) {
   const toast = document.createElement("div");
   toast.className = "media-progress-toast";
 
@@ -879,7 +950,11 @@ function createMediaProgressToast({ label = "جاري الرفع...", showStop =
 
   document.body.appendChild(toast);
 
-  return {
+  const controller = {
+    setVisible(visible) {
+      toast.classList.toggle("hidden", !visible);
+    },
+
     setLabel(text) {
       labelText.textContent = text;
     },
@@ -890,9 +965,22 @@ function createMediaProgressToast({ label = "جاري الرفع...", showStop =
     },
     remove() {
       toast.remove();
+      if (sessionId) {
+        const state = getSessionSendQueue(sessionId);
+        if (state.progressToast === controller) state.progressToast = null;
+      }
     },
     stopBtn
   };
+
+  if (sessionId) {
+    const state = getSessionSendQueue(sessionId);
+    state.progressToast?.remove();
+    state.progressToast = controller;
+    controller.setVisible(sessionId === activeSessionId);
+  }
+
+  return controller;
 }
 
 async function fetchSavedMediaFolders() {
@@ -1032,11 +1120,11 @@ async function deleteSavedMediaItem(id) {
   }
 }
 
-async function sendSavedMediaItemToCustomer(id) {
+async function sendSavedMediaItemToCustomer(id, sessionId) {
   const response = await fetch(`${API_BASE}/saved-media-items/${id}/send`, {
     method: "POST",
     headers: getAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ sessionId: activeSessionId })
+    body: JSON.stringify({ sessionId })
   });
 
   if (handleInvalidToken(response)) return null;
@@ -1049,11 +1137,11 @@ async function sendSavedMediaItemToCustomer(id) {
   return data;
 }
 
-async function sendSavedMediaFolderToCustomer(id) {
+async function sendSavedMediaFolderToCustomer(id, sessionId) {
   const response = await fetch(`${API_BASE}/saved-media-folders/${id}/send`, {
     method: "POST",
     headers: getAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ sessionId: activeSessionId })
+    body: JSON.stringify({ sessionId })
   });
 
   if (handleInvalidToken(response)) return null;
@@ -1066,11 +1154,11 @@ async function sendSavedMediaFolderToCustomer(id) {
   return data;
 }
 
-async function sendSelectedSavedMediaItemsToCustomer(itemIds) {
+async function sendSelectedSavedMediaItemsToCustomer(itemIds, sessionId) {
   const response = await fetch(`${API_BASE}/saved-media-items/send-batch`, {
     method: "POST",
     headers: getAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ sessionId: activeSessionId, itemIds })
+    body: JSON.stringify({ sessionId, itemIds })
   });
 
   if (handleInvalidToken(response)) return null;
@@ -1111,13 +1199,14 @@ async function cancelSendMediaJob(jobId) {
   return response.json().catch(() => ({}));
 }
 
-async function trackSendMediaJob(jobId, total) {
+async function trackSendMediaJob(jobId, total, sessionId) {
   const toast = createMediaProgressToast({
     label: `جاري الإرسال 0 من ${total}`,
     showStop: true,
     onStop: () => {
       cancelSendMediaJob(jobId).catch((err) => console.error(err));
-    }
+    },
+    sessionId
   });
 
   try {
@@ -2043,6 +2132,8 @@ sendFolderBtnEl?.addEventListener("click", async (event) => {
   event.stopPropagation();
 
   if (!savedMediaCurrentFolder || !activeSessionId) return;
+  const targetSessionId = activeSessionId;
+  const folderId = savedMediaCurrentFolder.id;
 
   if (
     !confirm(
@@ -2055,35 +2146,24 @@ sendFolderBtnEl?.addEventListener("click", async (event) => {
   sendFolderBtnEl.disabled = true;
   sendFolderBtnEl.textContent = "جاري الإرسال...";
 
-  let start = null;
+  closeSavedMedia();
+  sendFolderBtnEl.disabled = false;
+  sendFolderBtnEl.textContent = "إرسال كل محتوى الفولدر للعميل";
 
-  try {
-    start = await sendSavedMediaFolderToCustomer(savedMediaCurrentFolder.id);
-  } catch (error) {
+  enqueueSessionSend(targetSessionId, "media", async () => {
+    const start = await sendSavedMediaFolderToCustomer(folderId, targetSessionId);
+    const result = await trackSendMediaJob(start.jobId, start.total, targetSessionId);
+    if (result?.failed) {
+      const reasons = Array.isArray(result.failReasons) && result.failReasons.length
+        ? "\n" + result.failReasons.join("\n")
+        : "";
+      alert(`تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}${reasons}`);
+    }
+    return result;
+  }).catch((error) => {
     console.error(error);
     alert(error.message || "حدث خطأ أثناء الإرسال");
-  } finally {
-    sendFolderBtnEl.disabled = false;
-    sendFolderBtnEl.textContent = "إرسال كل محتوى الفولدر للعميل";
-  }
-
-  if (!start) return;
-
-  // بنقفل الوسائط المحفوظة على طول — الإرسال بقى شغال كـ"جوب" على
-  // السيرفر وهيكمل حتى لو الداشبورد اتقفل، والتوست ده بيتابعه لوحده
-  closeSavedMedia();
-
-  const result = await trackSendMediaJob(start.jobId, start.total);
-
-  if (result?.failed) {
-    const reasons = Array.isArray(result.failReasons) && result.failReasons.length
-      ? "\n" + result.failReasons.join("\n")
-      : "";
-
-    alert(
-      `تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}${reasons}`
-    );
-  }
+  });
 });
 
 toggleSelectModeBtnEl?.addEventListener("click", (event) => {
@@ -2106,39 +2186,31 @@ sendSelectedBtnEl?.addEventListener("click", async (event) => {
 
   const ids = [...savedMediaSelectedIds];
   if (!ids.length || !activeSessionId) return;
+  const targetSessionId = activeSessionId;
 
   if (!confirm(`إرسال ${ids.length} عنصر محدد للعميل؟`)) return;
 
   sendSelectedBtnEl.disabled = true;
   sendSelectedBtnEl.textContent = "جاري الإرسال...";
 
-  let start = null;
+  closeSavedMedia();
+  sendSelectedBtnEl.disabled = false;
+  sendSelectedBtnEl.textContent = "إرسال المحدد";
 
-  try {
-    start = await sendSelectedSavedMediaItemsToCustomer(ids);
-  } catch (error) {
+  enqueueSessionSend(targetSessionId, "media", async () => {
+    const start = await sendSelectedSavedMediaItemsToCustomer(ids, targetSessionId);
+    const result = await trackSendMediaJob(start.jobId, start.total, targetSessionId);
+    if (result?.failed) {
+      const reasons = Array.isArray(result.failReasons) && result.failReasons.length
+        ? "\n" + result.failReasons.join("\n")
+        : "";
+      alert(`تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}${reasons}`);
+    }
+    return result;
+  }).catch((error) => {
     console.error(error);
     alert(error.message || "حدث خطأ أثناء الإرسال");
-  } finally {
-    sendSelectedBtnEl.disabled = false;
-    sendSelectedBtnEl.textContent = "إرسال المحدد";
-  }
-
-  if (!start) return;
-
-  closeSavedMedia();
-
-  const result = await trackSendMediaJob(start.jobId, start.total);
-
-  if (result?.failed) {
-    const reasons = Array.isArray(result.failReasons) && result.failReasons.length
-      ? "\n" + result.failReasons.join("\n")
-      : "";
-
-    alert(
-      `تم إرسال ${result.sent} من ${result.total}، وفشل إرسال ${result.failed}${reasons}`
-    );
-  }
+  });
 });
 
 closeSavedMediaPreviewBtnEl?.addEventListener("click", (event) => {
@@ -2159,33 +2231,29 @@ confirmSavedMediaSendBtnEl?.addEventListener("click", async (event) => {
   event.stopPropagation();
 
   if (!savedMediaPreviewItem || !activeSessionId) return;
+  const targetSessionId = activeSessionId;
+  const itemId = savedMediaPreviewItem.id;
 
   confirmSavedMediaSendBtnEl.disabled = true;
 
-  let start = null;
-
-  try {
-    start = await sendSavedMediaItemToCustomer(savedMediaPreviewItem.id);
-  } catch (error) {
-    console.error(error);
-    alert(error.message || "حدث خطأ أثناء الإرسال");
-  } finally {
-    confirmSavedMediaSendBtnEl.disabled = false;
-  }
-
-  if (!start) return;
-
   closeSavedMediaPreview();
   closeSavedMedia();
+  confirmSavedMediaSendBtnEl.disabled = false;
 
-  const result = await trackSendMediaJob(start.jobId, start.total);
-
-  if (result?.failed) {
-    alert(
-      (Array.isArray(result.failReasons) && result.failReasons[0]) ||
-      "حدث خطأ أثناء الإرسال"
-    );
-  }
+  enqueueSessionSend(targetSessionId, "media", async () => {
+    const start = await sendSavedMediaItemToCustomer(itemId, targetSessionId);
+    const result = await trackSendMediaJob(start.jobId, start.total, targetSessionId);
+    if (result?.failed) {
+      alert(
+        (Array.isArray(result.failReasons) && result.failReasons[0]) ||
+        "حدث خطأ أثناء الإرسال"
+      );
+    }
+    return result;
+  }).catch((error) => {
+    console.error(error);
+    alert(error.message || "حدث خطأ أثناء الإرسال");
+  });
 });
 
 const LABEL_COLOR_PALETTE = [
@@ -3056,8 +3124,6 @@ let currentLoadedMessageCount = 0;
 let oldestLoadedMessageId = null;
 let hasMoreMessages = false;
 let isLoadingOlderMessages = false;
-let activeMediaUploadCount = 0;
-let suppressLocalMediaEventsUntil = 0;
 const localMediaPreviewUrls = new Set();
 let mediaViewerEl = null;
 let mediaGalleryEl = null;
@@ -3490,7 +3556,6 @@ document.addEventListener("keydown", (event) => {
 });
 let typingIndicatorTimeout = null;
 let selectedReplyMessage = null;
-let isSendingMessage = false;
 let longPressTimer = null;
 let mediaRecorder = null;
 let audioChunks = [];
@@ -3663,6 +3728,7 @@ function createConversationItem(conv) {
       messagesEl.childElementCount > 0;
 
     activeSessionId = currentConv.session_id;
+    syncSessionProgressVisibility();
 
     if (currentConv.unread_count) {
       currentConv.unread_count = 0;
@@ -4906,10 +4972,11 @@ function appendOptimisticTextMessage(content, replyTo) {
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
   scrollMessagesToBottom();
+  return wrap;
 }
 
-function markOptimisticMessageFailed(content) {
-  const lastBubble = messagesEl.lastElementChild;
+function markOptimisticMessageFailed(content, optimisticWrap = null) {
+  const lastBubble = optimisticWrap || messagesEl.lastElementChild;
 
   if (
     lastBubble?.dataset?.pendingAgent === "true" &&
@@ -4934,7 +5001,6 @@ async function sendMessageFromDashboard() {
 
   if (!activeSessionId) return alert("اختر محادثة أولًا");
   if (!message) return;
-  if (isSendingMessage) return;
 
   if (windowExpiredBannerEl && !windowExpiredBannerEl.classList.contains("hidden")) {
     alert("مرّ أكثر من 24 ساعة على آخر رسالة من العميل، لا يمكن إرسال رسالة نصية عادية. استخدم زرار إرسال تيمبليت.");
@@ -4942,40 +5008,32 @@ async function sendMessageFromDashboard() {
   }
 
   const replyTo = selectedReplyMessage;
+  const targetSessionId = activeSessionId;
 
-  isSendingMessage = true;
-  sendBtnEl.disabled = true;
   messageInputEl.value = "";
   resizeMessageInput();
   clearSelectedReply();
 
-  appendOptimisticTextMessage(message, replyTo);
+  const optimisticWrap = appendOptimisticTextMessage(message, replyTo);
 
-  try {
+  enqueueSessionSend(targetSessionId, "text", async () => {
     const res = await fetch(`${API_BASE}/send-message`, {
       method: "POST",
-     headers: getAuthHeaders({
-  "Content-Type": "application/json"
-}),
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
-  sessionId: activeSessionId,
-  message,
-  replyTo
-})
+        sessionId: targetSessionId,
+        message,
+        replyTo
+      })
     });
 
     if (!res.ok) throw new Error("فشل الإرسال");
-
     loadConversations();
-
-  } catch (error) {
+  }).catch((error) => {
     console.error(error);
     alert("خطأ في الإرسال");
-    markOptimisticMessageFailed(message);
-  } finally {
-    isSendingMessage = false;
-    sendBtnEl.disabled = false;
-  }
+    markOptimisticMessageFailed(message, optimisticWrap);
+  });
 }
 
 async function sendReactionFromDashboard(messageId, emoji) {
@@ -5064,6 +5122,7 @@ navigator.serviceWorker?.addEventListener?.("message", (event) => {
       target.click();
     } else {
       activeSessionId = event.data.sessionId;
+      syncSessionProgressVisibility();
       openChat();
       loadMessages(event.data.sessionId);
     }
@@ -5266,8 +5325,8 @@ function connectEvents() {
       data.type === "new_message" &&
       currentSession === eventSession &&
       (
-        activeMediaUploadCount > 0 ||
-        Date.now() <= suppressLocalMediaEventsUntil
+        getSessionSendQueue(eventSession).pendingMediaCount > 0 ||
+        Date.now() <= getSessionSendQueue(eventSession).suppressMediaEventsUntil
       ) &&
       data.messageType === "agent" &&
       ["image", "video"].includes(realtimeMessageKind)
@@ -6386,16 +6445,13 @@ if (mediaInputEl) {
       pending: appendPendingMedia(file, caption)
     }));
 
-    // sendBtnEl مش بيتقفل هنا عشان يقدر يبعت رسالة نصية عادية وهو لسه
-    // مستني الصور تخلص رفع في الخلفية
-    attachBtnEl.disabled = true;
     mediaInputEl.value = "";
     messageInputEl.value = "";
     resizeMessageInput();
 
-    try {
-      activeMediaUploadCount = uploads.length;
-      suppressLocalMediaEventsUntil = Date.now() + 60000;
+    enqueueSessionSend(targetSessionId, "media", async () => {
+      const queueState = getSessionSendQueue(targetSessionId);
+      queueState.suppressMediaEventsUntil = Date.now() + 60000;
 
       const results = await Promise.allSettled(
         uploads.map(({ file, pending }) =>
@@ -6409,21 +6465,24 @@ if (mediaInputEl) {
       const successCount = results.length - failedCount;
 
       if (successCount) {
-        currentLoadedMessageCount += successCount;
-        renderChatMeta(targetSessionId, currentLoadedMessageCount);
+        if (activeSessionId === targetSessionId) {
+          currentLoadedMessageCount += successCount;
+          renderChatMeta(targetSessionId, currentLoadedMessageCount);
+        }
         loadConversations();
       }
 
       if (failedCount) {
         alert(`فشل إرسال ${failedCount} ملف`);
       }
-    } finally {
-      activeMediaUploadCount = 0;
-      suppressLocalMediaEventsUntil = Date.now() + 5000;
-      sendBtnEl.disabled = false;
-      attachBtnEl.disabled = false;
-      messageInputEl.focus();
-    }
+
+      queueState.suppressMediaEventsUntil = Date.now() + 5000;
+      if (activeSessionId === targetSessionId) messageInputEl.focus();
+      return results;
+    }).catch((error) => {
+      getSessionSendQueue(targetSessionId).suppressMediaEventsUntil = Date.now() + 5000;
+      console.error(error);
+    });
   });
 }
 
