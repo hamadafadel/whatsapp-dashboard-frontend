@@ -2714,11 +2714,16 @@ function applyConversationFilters() {
   }
 
   if (value) {
-    filtered = filtered.filter(
-      (conv) =>
-        String(conv.session_id || "").toLowerCase().includes(value) ||
-        String(conv.content || "").toLowerCase().includes(value)
-    );
+    filtered = conversationSearchSessionIds
+      ? filtered.filter((conv) =>
+          conversationSearchSessionIds.has(String(conv.session_id || ""))
+        )
+      : filtered.filter(
+          (conv) =>
+            String(conv.session_id || "").toLowerCase().includes(value) ||
+            String(conv.customer_name || "").toLowerCase().includes(value) ||
+            String(conv.content || "").toLowerCase().includes(value)
+        );
   }
 
   renderConversations(filtered);
@@ -3204,6 +3209,40 @@ let currentAiEnabled = true;
 
 let conversationsData = [];
 let activeSessionId = null;
+let conversationSearchSessionIds = null;
+let conversationSearchTimer = null;
+let conversationSearchController = null;
+
+async function searchConversationHistory(query) {
+  conversationSearchController?.abort();
+  conversationSearchController = new AbortController();
+  const controller = conversationSearchController;
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/conversations-search?q=${encodeURIComponent(query)}`,
+      {
+        cache: "no-store",
+        headers: getAuthHeaders(),
+        signal: controller.signal
+      }
+    );
+
+    if (handleInvalidToken(response)) return;
+    if (!response.ok) throw new Error("Failed conversation search");
+
+    const data = await response.json();
+    if (controller !== conversationSearchController) return;
+    if (searchInputEl.value.trim() !== query) return;
+
+    conversationSearchSessionIds = new Set(
+      Array.isArray(data.sessionIds) ? data.sessionIds.map(String) : []
+    );
+    applyConversationFilters();
+  } catch (error) {
+    if (error.name !== "AbortError") console.error(error);
+  }
+}
 
 function getChannelFromSessionId(sessionId) {
   return String(sessionId || "").startsWith("fb:")
@@ -5644,7 +5683,18 @@ function linkifyText(text) {
 }
 
 searchInputEl.addEventListener("input", () => {
+  const query = searchInputEl.value.trim();
+
+  clearTimeout(conversationSearchTimer);
+  conversationSearchController?.abort();
+  conversationSearchSessionIds = null;
   applyConversationFilters();
+
+  if (!query) return;
+
+  conversationSearchTimer = setTimeout(() => {
+    searchConversationHistory(query);
+  }, 250);
 });
 
 sendBtnEl.addEventListener("pointerdown", (e) => {
