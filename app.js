@@ -828,7 +828,20 @@ let savedMediaFolderEditingId = null;
 let savedMediaPreviewItem = null;
 let savedMediaSelectMode = false;
 let savedMediaSelectedIds = new Set();
+const SAVED_MEDIA_CACHE_TTL_MS = 60 * 1000;
+let savedMediaFoldersCache = null;
+const savedMediaItemsCache = new Map();
 const sessionSendQueues = new Map();
+
+function invalidateSavedMediaCache(folderId = null) {
+  savedMediaFoldersCache = null;
+
+  if (folderId === null || folderId === undefined) {
+    savedMediaItemsCache.clear();
+  } else {
+    savedMediaItemsCache.delete(String(folderId));
+  }
+}
 
 function getSessionSendQueue(sessionId) {
   const key = String(sessionId || "");
@@ -986,6 +999,13 @@ function createMediaProgressToast({
 }
 
 async function fetchSavedMediaFolders() {
+  if (
+    savedMediaFoldersCache &&
+    savedMediaFoldersCache.expiresAt > Date.now()
+  ) {
+    return savedMediaFoldersCache.data;
+  }
+
   const response = await fetch(`${API_BASE}/saved-media-folders`, {
     headers: getAuthHeaders()
   });
@@ -997,13 +1017,27 @@ async function fetchSavedMediaFolders() {
     throw new Error(data.error || "Failed to load folders");
   }
 
-  return {
+  const result = {
     folders: Array.isArray(data.folders) ? data.folders : [],
     canManage: !!data.canManage
   };
+
+  savedMediaFoldersCache = {
+    data: result,
+    expiresAt: Date.now() + SAVED_MEDIA_CACHE_TTL_MS
+  };
+
+  return result;
 }
 
 async function fetchSavedMediaItems(folderId) {
+  const cacheKey = String(folderId);
+  const cached = savedMediaItemsCache.get(cacheKey);
+
+  if (cached?.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
   const response = await fetch(
     `${API_BASE}/saved-media-folders/${folderId}/items`,
     { headers: getAuthHeaders() }
@@ -1016,10 +1050,17 @@ async function fetchSavedMediaItems(folderId) {
     throw new Error(data.error || "Failed to load items");
   }
 
-  return {
+  const result = {
     items: Array.isArray(data.items) ? data.items : [],
     canManage: !!data.canManage
   };
+
+  savedMediaItemsCache.set(cacheKey, {
+    data: result,
+    expiresAt: Date.now() + SAVED_MEDIA_CACHE_TTL_MS
+  });
+
+  return result;
 }
 
 async function createSavedMediaFolder(name) {
@@ -1035,6 +1076,7 @@ async function createSavedMediaFolder(name) {
   if (!response.ok) {
     throw new Error(data.error || "فشل إنشاء الفولدر");
   }
+  invalidateSavedMediaCache();
 }
 
 async function renameSavedMediaFolder(id, name) {
@@ -1050,6 +1092,7 @@ async function renameSavedMediaFolder(id, name) {
   if (!response.ok) {
     throw new Error(data.error || "فشل تعديل اسم الفولدر");
   }
+  invalidateSavedMediaCache();
 }
 
 async function deleteSavedMediaFolder(id) {
@@ -1064,6 +1107,7 @@ async function deleteSavedMediaFolder(id) {
   if (!response.ok) {
     throw new Error(data.error || "فشل حذف الفولدر");
   }
+  invalidateSavedMediaCache();
 }
 
 function uploadSavedMediaItem(folderId, file, onProgress) {
@@ -1096,6 +1140,7 @@ function uploadSavedMediaItem(folderId, file, onProgress) {
       }
 
       if (xhr.status >= 200 && xhr.status < 300) {
+        invalidateSavedMediaCache(folderId);
         resolve(data);
       } else {
         reject(new Error(data.error || "فشل رفع الملف"));
@@ -1120,6 +1165,7 @@ async function deleteSavedMediaItem(id) {
   if (!response.ok) {
     throw new Error(data.error || "فشل حذف العنصر");
   }
+  invalidateSavedMediaCache(savedMediaCurrentFolder?.id);
 }
 
 async function sendSavedMediaItemToCustomer(id, sessionId) {
@@ -1262,6 +1308,8 @@ function renderSavedMediaFolders() {
       const img = document.createElement("img");
       img.src = folder.cover_thumbnail;
       img.alt = folder.name;
+      img.loading = "lazy";
+      img.decoding = "async";
       cover.appendChild(img);
     } else {
       cover.innerHTML = mediaFolderIconSvg();
@@ -1372,6 +1420,7 @@ async function reorderSavedMediaItem(draggedId, targetItem, insertAfter) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "فشل الترتيب");
 
+    invalidateSavedMediaCache(savedMediaCurrentFolder?.id);
     await loadSavedMediaItems();
   } catch (error) {
     console.error(error);
@@ -1696,6 +1745,8 @@ function renderSavedMediaItems() {
     const img = document.createElement("img");
     img.src = item.thumbnail_url || item.media_url;
     img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
     preview.appendChild(img);
 
     card.appendChild(preview);
@@ -4010,7 +4061,7 @@ async function loadMessages(sessionId) {
 
   try {
     const res = await fetch(
-      `${API_BASE}/messages/${encodeURIComponent(sessionId)}?limit=100`,
+      `${API_BASE}/messages/${encodeURIComponent(sessionId)}?limit=50`,
       {
         cache: "no-store",
         headers: getAuthHeaders()
@@ -4635,6 +4686,7 @@ if (
 
     video.src = media.url;
     video.controls = true;
+    video.preload = "metadata";
     video.style.maxWidth = "100%";
     video.style.borderRadius = "8px";
     video.style.marginBottom = content ? "6px" : "0";
