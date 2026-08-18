@@ -7007,6 +7007,7 @@ function sendRecordedAudio(audioFile, pending) {
   formData.append("sessionId", activeSessionId);
   formData.append("caption", "");
   formData.append("messageKind", "audio");
+  formData.append("isVoiceRecording", "true");
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
