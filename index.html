@@ -363,6 +363,42 @@
       </div>
     </div>
 
+    <div id="orderConfirmationOverlay" class="order-confirmation-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="orderConfirmationTitle">
+      <div class="order-confirmation-sheet">
+        <header class="order-confirmation-header">
+          <div id="orderConfirmationTitle" class="order-confirmation-title">مراجعة تأكيد الطلب</div>
+          <button id="closeOrderConfirmationBtn" class="order-confirmation-close" type="button" aria-label="إغلاق">×</button>
+        </header>
+
+        <div class="order-confirmation-content">
+          <dl class="order-confirmation-details">
+            <div><dt>اسم العميل</dt><dd id="confirmationCustomerName"></dd></div>
+            <div><dt>رقم الطلب</dt><dd id="confirmationOrderNumber"></dd></div>
+            <div><dt>تفاصيل الطلب</dt><dd id="confirmationItems"></dd></div>
+            <div><dt>عنوان الشحن</dt><dd id="confirmationAddress"></dd></div>
+            <div><dt>رقم الهاتف</dt><dd id="confirmationContact"></dd></div>
+            <div><dt>إجمالي الطلب</dt><dd id="confirmationTotal"></dd></div>
+          </dl>
+
+          <section class="order-confirmation-preview-section">
+            <h3>معاينة الرسالة</h3>
+            <pre id="orderConfirmationPreview" class="order-confirmation-preview"></pre>
+            <div class="order-confirmation-template-buttons" aria-label="أزرار التيمبليت">
+              <span>تأكيد الطلب</span>
+              <span>إضافة أو تعديل بيانات</span>
+            </div>
+          </section>
+
+          <div id="orderConfirmationStatus" class="order-confirmation-status" role="status"></div>
+
+          <div class="order-confirmation-actions">
+            <button id="cancelOrderConfirmationBtn" type="button">إلغاء</button>
+            <button id="sendOrderConfirmationBtn" type="button">إرسال تأكيد الطلب</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
 <div id="metaOrderOverlay" class="meta-order-overlay hidden">
   <div class="meta-order-sheet">
 
@@ -428,7 +464,7 @@
     
   </div>
 
-  <script src="app.js?v=47"></script>
+  <script src="app.js?v=48"></script>
 
   <script>
   if ("serviceWorker" in navigator) {

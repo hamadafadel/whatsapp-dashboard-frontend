@@ -78,6 +78,30 @@ const metaOrderDescriptionEl =
 
 const metaOrderStatusEl =
   document.getElementById("metaOrderStatus");
+const orderConfirmationOverlayEl =
+  document.getElementById("orderConfirmationOverlay");
+const closeOrderConfirmationBtnEl =
+  document.getElementById("closeOrderConfirmationBtn");
+const cancelOrderConfirmationBtnEl =
+  document.getElementById("cancelOrderConfirmationBtn");
+const sendOrderConfirmationBtnEl =
+  document.getElementById("sendOrderConfirmationBtn");
+const orderConfirmationStatusEl =
+  document.getElementById("orderConfirmationStatus");
+const orderConfirmationPreviewEl =
+  document.getElementById("orderConfirmationPreview");
+const confirmationCustomerNameEl =
+  document.getElementById("confirmationCustomerName");
+const confirmationOrderNumberEl =
+  document.getElementById("confirmationOrderNumber");
+const confirmationItemsEl =
+  document.getElementById("confirmationItems");
+const confirmationAddressEl =
+  document.getElementById("confirmationAddress");
+const confirmationContactEl =
+  document.getElementById("confirmationContact");
+const confirmationTotalEl =
+  document.getElementById("confirmationTotal");
 const templatesPanelEl = document.getElementById("templatesPanel");
 const backToActionsBtnEl = document.getElementById("backToActionsBtn");
 const templatesListEl = document.getElementById("templatesList");
@@ -193,6 +217,173 @@ function resizeMessageInput() {
 }
 
 messageInputEl?.addEventListener("input", resizeMessageInput);
+
+const ORDER_CONFIRMATION_QUERY_KEYS = [
+  "confirmOrder",
+  "phone",
+  "name",
+  "order",
+  "items",
+  "address",
+  "contact",
+  "total"
+];
+
+function readOrderConfirmationFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("confirmOrder") !== "1") return null;
+
+  return {
+    phone: String(params.get("phone") || "").trim(),
+    name: String(params.get("name") || "").trim(),
+    order: String(params.get("order") || "").trim(),
+    items: String(params.get("items") || "").trim(),
+    address: String(params.get("address") || "").trim(),
+    contact: String(params.get("contact") || "").trim(),
+    total: String(params.get("total") || "").trim()
+  };
+}
+
+let pendingOrderConfirmation = readOrderConfirmationFromUrl();
+
+function buildOrderConfirmationPreview(orderData) {
+  return [
+    `أهلا أ.${orderData.name}، شكرا لشرائكم من المحراب 🌺`,
+    "https://almehrab.org/",
+    "",
+    `هذه رسالة تأكيد لطلب سيادتكم رقم ${orderData.order}`,
+    "",
+    "الطلب:",
+    orderData.items,
+    "",
+    "بيانات الشحن:",
+    orderData.name,
+    orderData.address,
+    `ت/ ${orderData.contact}`,
+    "",
+    `إجمالي الطلب: ${orderData.total} شامل الشحن`,
+    "",
+    "يرجى مراجعة بيانات الطلب والشحن أعلاه:",
+    "",
+    'إذا كانت جميع البيانات صحيحة، اضغط على زر "تأكيد الطلب".',
+    "",
+    'وإذا كنت ترغب في إضافة أو تعديل أي بيانات، اضغط على زر "إضافة أو تعديل بيانات".',
+    "",
+    "ولكم جزيل الشكر 🌺"
+  ].join("\n");
+}
+
+function clearOrderConfirmationUrl() {
+  const url = new URL(window.location.href);
+  ORDER_CONFIRMATION_QUERY_KEYS.forEach((key) => {
+    url.searchParams.delete(key);
+  });
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function closeOrderConfirmationModal({ clearUrl = false } = {}) {
+  orderConfirmationOverlayEl?.classList.add("hidden");
+
+  if (clearUrl) {
+    pendingOrderConfirmation = null;
+    clearOrderConfirmationUrl();
+  }
+}
+
+function showOrderConfirmationModal() {
+  if (!pendingOrderConfirmation || !authToken) return;
+
+  const data = pendingOrderConfirmation;
+  confirmationCustomerNameEl.textContent = data.name || "—";
+  confirmationOrderNumberEl.textContent = data.order || "—";
+  confirmationItemsEl.textContent = data.items || "—";
+  confirmationAddressEl.textContent = data.address || "—";
+  confirmationContactEl.textContent = data.contact || "—";
+  confirmationTotalEl.textContent = data.total || "—";
+  orderConfirmationPreviewEl.textContent =
+    buildOrderConfirmationPreview(data);
+  orderConfirmationStatusEl.textContent = "";
+  orderConfirmationStatusEl.classList.remove("success");
+
+  const canSend = ["admin", "confirmation"].includes(
+    getCurrentUserRole()
+  );
+  sendOrderConfirmationBtnEl.disabled = !canSend;
+
+  if (!canSend) {
+    orderConfirmationStatusEl.textContent =
+      "هذا الحساب غير مصرح له بإرسال تأكيدات الطلبات";
+  }
+
+  orderConfirmationOverlayEl?.classList.remove("hidden");
+}
+
+function getOrderConfirmationApiError(result) {
+  return String(
+    result?.error ||
+    result?.details?.error?.message ||
+    result?.details?.message ||
+    result?.details?.error ||
+    "فشل إرسال رسالة تأكيد الطلب"
+  );
+}
+
+async function sendOrderConfirmation() {
+  if (!pendingOrderConfirmation || sendOrderConfirmationBtnEl.disabled) {
+    return;
+  }
+
+  sendOrderConfirmationBtnEl.disabled = true;
+  cancelOrderConfirmationBtnEl.disabled = true;
+  closeOrderConfirmationBtnEl.disabled = true;
+  sendOrderConfirmationBtnEl.textContent = "جاري الإرسال...";
+  orderConfirmationStatusEl.textContent = "";
+  orderConfirmationStatusEl.classList.remove("success");
+
+  try {
+    const response = await fetch(`${API_BASE}/send-order-confirmation`, {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(pendingOrderConfirmation)
+    });
+
+    if (handleInvalidToken(response)) return;
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(getOrderConfirmationApiError(result));
+
+    orderConfirmationStatusEl.classList.add("success");
+    orderConfirmationStatusEl.textContent =
+      "تم إرسال رسالة تأكيد الطلب بنجاح ✅";
+    loadConversations();
+  } catch (error) {
+    console.error("Order confirmation send error:", error);
+    orderConfirmationStatusEl.classList.remove("success");
+    orderConfirmationStatusEl.textContent =
+      error.message || "فشل إرسال رسالة تأكيد الطلب";
+    sendOrderConfirmationBtnEl.disabled = false;
+  } finally {
+    sendOrderConfirmationBtnEl.textContent = "إرسال تأكيد الطلب";
+    cancelOrderConfirmationBtnEl.disabled = false;
+    closeOrderConfirmationBtnEl.disabled = false;
+  }
+}
+
+sendOrderConfirmationBtnEl?.addEventListener(
+  "click",
+  sendOrderConfirmation
+);
+cancelOrderConfirmationBtnEl?.addEventListener("click", () => {
+  closeOrderConfirmationModal({ clearUrl: true });
+});
+closeOrderConfirmationBtnEl?.addEventListener("click", () => {
+  closeOrderConfirmationModal({ clearUrl: true });
+});
+orderConfirmationOverlayEl?.addEventListener("click", (event) => {
+  if (event.target === orderConfirmationOverlayEl) {
+    closeOrderConfirmationModal({ clearUrl: true });
+  }
+});
 
 function closeEmojiPicker() {
   emojiPickerPanelEl?.classList.add("hidden");
@@ -2776,7 +2967,13 @@ function renderCurrentUserInfo() {
 
   if (currentUserRoleEl) {
     currentUserRoleEl.textContent =
-      role === "admin" ? "أدمن" : role ? "إيجنت" : "";
+      role === "admin"
+        ? "أدمن"
+        : role === "confirmation"
+          ? "تأكيد الطلبات"
+          : role
+            ? "إيجنت"
+            : "";
   }
 
   applyRolePermissionsToUI();
@@ -6331,6 +6528,7 @@ async function login() {
     refreshAllLabels();
     applyRolePermissionsToUI();
     ensurePushSubscription();
+    showOrderConfirmationModal();
 
   } catch (err) {
     console.error(err);
@@ -6358,6 +6556,7 @@ if (authToken && !isGalleryRoleToken) {
   loadConversations();
   refreshAllLabels();
   applyRolePermissionsToUI();
+  showOrderConfirmationModal();
 }
 if (appEl && window.innerWidth > 1024) {
   appEl.classList.remove("chat-open");
