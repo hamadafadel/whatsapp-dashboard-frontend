@@ -2512,11 +2512,33 @@ let labelEditingId = null;
 let labelSelectedColor = LABEL_COLOR_PALETTE[0];
 let activeLabelFilterId = null;
 const CHANNEL_FILTER_STORAGE_KEY = "dashboard_channel_filter";
-const validChannelFilters = new Set(["all", "whatsapp", "messenger"]);
+const validChannelFilters = new Set([
+  "all",
+  "whatsapp",
+  "messenger",
+  "confirmation"
+]);
+function getStoredDashboardRole() {
+  try {
+    const token = localStorage.getItem("dashboard_token") || "";
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return "";
+    const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(
+      Math.ceil(normalized.length / 4) * 4,
+      "="
+    );
+    return JSON.parse(atob(padded)).role || "";
+  } catch (error) {
+    return "";
+  }
+}
 const savedChannelFilter = localStorage.getItem(CHANNEL_FILTER_STORAGE_KEY);
-let activeChannelFilter = validChannelFilters.has(savedChannelFilter)
-  ? savedChannelFilter
-  : "all";
+let activeChannelFilter = getStoredDashboardRole() === "confirmation"
+  ? "confirmation"
+  : validChannelFilters.has(savedChannelFilter)
+    ? savedChannelFilter
+    : "all";
 const UNREAD_FILTER_STORAGE_KEY = "dashboard_unread_filter";
 const validUnreadFilters = new Set(["all", "unread"]);
 const savedUnreadFilter = localStorage.getItem(UNREAD_FILTER_STORAGE_KEY);
@@ -2525,7 +2547,18 @@ let activeUnreadFilter = validUnreadFilters.has(savedUnreadFilter)
   : "all";
 
 function renderChannelFilter() {
+  const confirmationOnly = getStoredDashboardRole() === "confirmation";
+
+  if (confirmationOnly) {
+    activeChannelFilter = "confirmation";
+    localStorage.setItem(CHANNEL_FILTER_STORAGE_KEY, activeChannelFilter);
+  }
+
   channelFilterBarEl?.querySelectorAll(".channel-filter-btn").forEach((button) => {
+    button.classList.toggle(
+      "hidden",
+      confirmationOnly && button.dataset.channel !== "confirmation"
+    );
     const isActive = button.dataset.channel === activeChannelFilter;
     button.classList.toggle("active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
@@ -2538,6 +2571,10 @@ channelFilterBarEl?.addEventListener("click", (event) => {
 
   const nextFilter = String(button.dataset.channel || "all");
   if (!validChannelFilters.has(nextFilter)) return;
+  if (
+    getStoredDashboardRole() === "confirmation" &&
+    nextFilter !== "confirmation"
+  ) return;
 
   activeChannelFilter = nextFilter;
   localStorage.setItem(CHANNEL_FILTER_STORAGE_KEY, activeChannelFilter);
@@ -2880,6 +2917,10 @@ function applyConversationFilters() {
 
   if (activeChannelFilter !== "all") {
     filtered = filtered.filter((conv) => {
+      if (activeChannelFilter === "confirmation") {
+        return conv.is_confirmation === true || conv.is_confirmation === "true";
+      }
+
       const sessionId = String(conv.session_id || "");
       const inferredChannel = sessionId.startsWith("fb:")
         ? "messenger"
@@ -2954,6 +2995,7 @@ function applyRolePermissionsToUI() {
   viewHiddenBtnEl?.classList.toggle("hidden", role !== "admin");
   sessionsSelectionHideBtnEl?.classList.toggle("hidden", role !== "admin");
   openGalleryBtnEl?.classList.toggle("hidden", role !== "admin");
+  renderChannelFilter();
 }
 
 openGalleryBtnEl?.addEventListener("click", () => {
