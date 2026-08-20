@@ -18,7 +18,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <link rel="stylesheet" href="app.css?v=54" />
+  <link rel="stylesheet" href="app.css?v=55" />
   <script
     type="module"
     src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.26.0/index.js"
@@ -137,7 +137,12 @@
 
           <div id="chatPhoneNumber" class="chat-phone-number"></div>
 
-          <button id="toggleAiBtn" class="mobile-ai-btn" type="button">إيقاف AI</button>
+          <div class="chat-conversation-menu-wrap">
+            <button id="chatConversationMenuBtn" class="chat-conversation-menu-btn" type="button" aria-label="قائمة المحادثة" aria-expanded="false">⋮</button>
+            <div id="chatConversationMenu" class="chat-conversation-menu hidden">
+              <button id="toggleAiBtn" class="mobile-ai-btn" type="button">إيقاف AI</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -465,7 +470,7 @@
     
   </div>
 
-  <script src="app.js?v=57"></script>
+  <script src="app.js?v=58"></script>
 
   <script>
   if ("serviceWorker" in navigator) {

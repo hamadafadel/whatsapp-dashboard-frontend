@@ -43,6 +43,8 @@ const sendBtnEl = document.getElementById("sendBtn");
 const backBtnEl = document.getElementById("backBtn");
 const refreshBtnEl = document.getElementById("refreshBtn");
 const toggleAiBtnEl = document.getElementById("toggleAiBtn");
+const chatConversationMenuBtnEl = document.getElementById("chatConversationMenuBtn");
+const chatConversationMenuEl = document.getElementById("chatConversationMenu");
 const loginScreenEl = document.getElementById("loginScreen");
 const loginUsernameEl = document.getElementById("loginUsername");
 const loginPasswordEl = document.getElementById("loginPassword");
@@ -6775,8 +6777,28 @@ function enableReplyGesture(wrap, messageObj, messageType) {
 }
 
 if (toggleAiBtnEl) {
-  toggleAiBtnEl.addEventListener("click", toggleAiStatus);
+  toggleAiBtnEl.addEventListener("click", async () => {
+    chatConversationMenuEl?.classList.add("hidden");
+    chatConversationMenuBtnEl?.setAttribute("aria-expanded", "false");
+    await toggleAiStatus();
+  });
 }
+
+chatConversationMenuBtnEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const willOpen = chatConversationMenuEl?.classList.contains("hidden");
+  chatConversationMenuEl?.classList.toggle("hidden", !willOpen);
+  chatConversationMenuBtnEl.setAttribute("aria-expanded", String(willOpen));
+});
+
+chatConversationMenuEl?.addEventListener("click", (event) => {
+  event.stopPropagation();
+});
+
+document.addEventListener("click", () => {
+  chatConversationMenuEl?.classList.add("hidden");
+  chatConversationMenuBtnEl?.setAttribute("aria-expanded", "false");
+});
 
 async function login() {
   loginErrorEl.textContent = "";
