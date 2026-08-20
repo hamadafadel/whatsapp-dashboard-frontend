@@ -5001,6 +5001,14 @@ body.labels-open {
   align-self: center !important;
 }
 
+.chat-header-controls-row .back-btn,
+.chat-header-controls-row .conversation-labels-btn,
+.chat-header-controls-row .meta-order-header-btn,
+.chat-header-controls-row .chat-conversation-menu-wrap {
+  grid-row: 1 !important;
+  order: 0 !important;
+}
+
 .chat-header-controls-row .chat-conversation-menu-wrap {
   width: 36px;
   height: 36px;
