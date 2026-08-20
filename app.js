@@ -3247,32 +3247,69 @@ function renderHiddenConversations(conversations) {
 
     const row = document.createElement("div");
     row.className = "session-row";
-    row.innerHTML = `
-      <div class="session-id">
-        ${escapeHtml(conv.customer_name || "عميل")}
-        <div style="font-size:12px;color:#8696a0">
-          ${escapeHtml(conv.session_id || "")}
-        </div>
-      </div>
-    `;
+    const identity = document.createElement("div");
+    identity.className = "session-id";
+    const customerName = document.createElement("div");
+    customerName.textContent = conv.customer_name || "عميل";
+    const sessionText = document.createElement("div");
+    sessionText.className = "hidden-session-id";
+    sessionText.textContent = conv.session_id || "";
+    identity.append(customerName, sessionText);
 
-    const unhideBtn = document.createElement("button");
-    unhideBtn.type = "button";
-    unhideBtn.className = "session-unhide-btn";
-    unhideBtn.textContent = "إظهار";
-    unhideBtn.addEventListener("click", async (event) => {
-      event.stopPropagation();
+    const hiddenFor = Array.isArray(conv.hidden_for) ? conv.hidden_for : [];
+    if (hiddenFor.length) {
+      const visibilityNote = document.createElement("div");
+      visibilityNote.className = "session-visibility-note";
+      visibilityNote.textContent = `مخفاة عن: ${hiddenFor
+        .map((user) => user.displayName || user.username)
+        .join("، ")}`;
+      identity.appendChild(visibilityNote);
+    }
 
-      try {
-        await unhideConversationsRequest([conv.session_id]);
-        loadHiddenConversations();
-      } catch (error) {
-        console.error(error);
-        alert("حدث خطأ، حاول مرة أخرى");
-      }
-    });
+    if (conv.hidden) {
+      const globalNote = document.createElement("div");
+      globalNote.className = "session-global-hidden-note";
+      globalNote.textContent = "مخفاة عامة";
+      identity.appendChild(globalNote);
+    }
 
-    row.appendChild(unhideBtn);
+    row.appendChild(identity);
+
+    const actions = document.createElement("div");
+    actions.className = "hidden-session-actions";
+
+    if (conv.hidden) {
+      const unhideBtn = document.createElement("button");
+      unhideBtn.type = "button";
+      unhideBtn.className = "session-unhide-btn";
+      unhideBtn.textContent = "إظهار عام";
+      unhideBtn.addEventListener("click", async (event) => {
+        event.stopPropagation();
+
+        try {
+          await unhideConversationsRequest([conv.session_id]);
+          loadHiddenConversations();
+        } catch (error) {
+          console.error(error);
+          alert("حدث خطأ، حاول مرة أخرى");
+        }
+      });
+      actions.appendChild(unhideBtn);
+    }
+
+    if (hiddenFor.length) {
+      const showForBtn = document.createElement("button");
+      showForBtn.type = "button";
+      showForBtn.className = "session-unhide-btn session-show-for-btn";
+      showForBtn.textContent = "إظهار لـ...";
+      showForBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openConversationVisibilityDialog(conv, "show", loadHiddenConversations);
+      });
+      actions.appendChild(showForBtn);
+    }
+
+    row.appendChild(actions);
     item.appendChild(row);
     conversationsEl.appendChild(item);
   });
@@ -4040,7 +4077,7 @@ function closeConversationVisibilityMenu() {
   document.querySelector(".conversation-visibility-menu")?.remove();
 }
 
-async function openConversationVisibilityDialog(conversation, mode) {
+async function openConversationVisibilityDialog(conversation, mode, onSaved = loadConversations) {
   closeConversationVisibilityMenu();
 
   const sessionId = conversation?.session_id;
@@ -4140,7 +4177,7 @@ async function openConversationVisibilityDialog(conversation, mode) {
             ? `تم إخفاء المحادثة عن ${selectedNames}`
             : `تم إظهار المحادثة لـ ${selectedNames}`
         );
-        loadConversations();
+        onSaved();
       } catch (error) {
         saveButton.disabled = false;
         saveButton.textContent = "حفظ";

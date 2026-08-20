@@ -4684,3 +4684,39 @@ body.labels-open {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+.hidden-session-id {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #8696a0;
+}
+
+.session-visibility-note,
+.session-global-hidden-note {
+  width: fit-content;
+  margin-top: 6px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.session-visibility-note {
+  background: rgba(255, 193, 7, 0.14);
+  color: #ffd36a;
+}
+
+.session-global-hidden-note {
+  background: rgba(244, 67, 54, 0.14);
+  color: #ff8a80;
+}
+
+.hidden-session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.session-show-for-btn {
+  white-space: nowrap;
+}
