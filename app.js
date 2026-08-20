@@ -4024,6 +4024,167 @@ if (!res.ok) throw new Error("Failed conversations");
   }
 }
 
+function showConversationVisibilityToast(message, isError = false) {
+  const toast = document.createElement("div");
+  toast.className = `conversation-visibility-toast${isError ? " error" : ""}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add("visible"));
+  setTimeout(() => {
+    toast.classList.remove("visible");
+    setTimeout(() => toast.remove(), 220);
+  }, 2600);
+}
+
+function closeConversationVisibilityMenu() {
+  document.querySelector(".conversation-visibility-menu")?.remove();
+}
+
+async function openConversationVisibilityDialog(conversation, mode) {
+  closeConversationVisibilityMenu();
+
+  const sessionId = conversation?.session_id;
+  if (!sessionId || getCurrentUserRole() !== "admin") return;
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/conversations/${encodeURIComponent(sessionId)}/visibility`,
+      { headers: getAuthHeaders() }
+    );
+    if (!response.ok) throw new Error("تعذر تحميل إعدادات الإخفاء");
+
+    const data = await response.json();
+    const hiddenFor = new Set(Array.isArray(data.hiddenFor) ? data.hiddenFor : []);
+    const users = (Array.isArray(data.users) ? data.users : []).filter((user) =>
+      mode === "hide" ? !hiddenFor.has(user.username) : hiddenFor.has(user.username)
+    );
+
+    const overlay = document.createElement("div");
+    overlay.className = "conversation-visibility-overlay";
+    const dialog = document.createElement("div");
+    dialog.className = "conversation-visibility-dialog";
+
+    const title = document.createElement("h3");
+    title.textContent = mode === "hide" ? "إخفاء المحادثة عن..." : "إظهار المحادثة لـ...";
+    dialog.appendChild(title);
+
+    const list = document.createElement("div");
+    list.className = "conversation-visibility-users";
+    if (!users.length) {
+      const empty = document.createElement("div");
+      empty.className = "conversation-visibility-empty";
+      empty.textContent = mode === "hide"
+        ? "لا يوجد مستخدمون آخرون متاحون للإخفاء."
+        : "المحادثة ظاهرة حاليًا لكل المستخدمين.";
+      list.appendChild(empty);
+    } else {
+      users.forEach((user) => {
+        const label = document.createElement("label");
+        label.className = "conversation-visibility-user";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = user.username;
+        const name = document.createElement("span");
+        name.textContent = user.displayName || user.username;
+        label.append(checkbox, name);
+        list.appendChild(label);
+      });
+    }
+    dialog.appendChild(list);
+
+    const actions = document.createElement("div");
+    actions.className = "conversation-visibility-actions";
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "secondary";
+    cancelButton.textContent = "إلغاء";
+    cancelButton.addEventListener("click", () => overlay.remove());
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.textContent = "حفظ";
+    saveButton.disabled = users.length === 0;
+    saveButton.addEventListener("click", async () => {
+      const selected = [...list.querySelectorAll('input[type="checkbox"]:checked')]
+        .map((input) => input.value);
+      if (!selected.length) return;
+
+      const nextHiddenFor = new Set(hiddenFor);
+      selected.forEach((username) => {
+        if (mode === "hide") nextHiddenFor.add(username);
+        else nextHiddenFor.delete(username);
+      });
+
+      saveButton.disabled = true;
+      saveButton.textContent = "جاري الحفظ...";
+      try {
+        const updateResponse = await fetch(
+          `${API_BASE}/conversations/${encodeURIComponent(sessionId)}/visibility`,
+          {
+            method: "POST",
+            headers: getAuthHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ hiddenFor: [...nextHiddenFor] })
+          }
+        );
+        const updateData = await updateResponse.json().catch(() => ({}));
+        if (!updateResponse.ok) {
+          throw new Error(updateData.error || "تعذر حفظ إعدادات الإخفاء");
+        }
+
+        overlay.remove();
+        const selectedNames = users
+          .filter((user) => selected.includes(user.username))
+          .map((user) => user.displayName || user.username)
+          .join("، ");
+        showConversationVisibilityToast(
+          mode === "hide"
+            ? `تم إخفاء المحادثة عن ${selectedNames}`
+            : `تم إظهار المحادثة لـ ${selectedNames}`
+        );
+        loadConversations();
+      } catch (error) {
+        saveButton.disabled = false;
+        saveButton.textContent = "حفظ";
+        showConversationVisibilityToast(error.message, true);
+      }
+    });
+    actions.append(cancelButton, saveButton);
+    dialog.appendChild(actions);
+    overlay.appendChild(dialog);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) overlay.remove();
+    });
+    document.body.appendChild(overlay);
+  } catch (error) {
+    showConversationVisibilityToast(error.message, true);
+  }
+}
+
+function showConversationVisibilityMenu(conversation, clientX, clientY) {
+  if (getCurrentUserRole() !== "admin") return;
+  closeConversationVisibilityMenu();
+
+  const menu = document.createElement("div");
+  menu.className = "conversation-visibility-menu";
+  [
+    ["إخفاء عن...", "hide"],
+    ["إظهار لـ...", "show"]
+  ].forEach(([label, mode]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.addEventListener("click", () => openConversationVisibilityDialog(conversation, mode));
+    menu.appendChild(button);
+  });
+
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  const left = Math.max(8, Math.min(Number(clientX) || 8, window.innerWidth - rect.width - 8));
+  const top = Math.max(8, Math.min(Number(clientY) || 8, window.innerHeight - rect.height - 8));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  setTimeout(() => document.addEventListener("pointerdown", closeConversationVisibilityMenu, { once: true }), 0);
+}
+
 // بيبني الكارت مرة واحدة بس ويربط كل الأحداث عليه — التحديثات بعد كده
 // بتتم عن طريق updateConversationItem، فمفيش إعادة ربط أحداث كل مرة
 function createConversationItem(conv) {
@@ -4064,6 +4225,11 @@ function createConversationItem(conv) {
     longPressTimer = setTimeout(() => {
       longPressFired = true;
 
+      if (getCurrentUserRole() === "admin") {
+        showConversationVisibilityMenu(item._conv, event.clientX, event.clientY);
+        return;
+      }
+
       if (!sessionsSelectMode) {
         sessionsSelectMode = true;
         sessionsSelectionBarEl?.classList.remove("hidden");
@@ -4078,6 +4244,13 @@ function createConversationItem(conv) {
   item.addEventListener("pointerup", clearLongPressTimer);
   item.addEventListener("pointerleave", clearLongPressTimer);
   item.addEventListener("pointercancel", clearLongPressTimer);
+
+  item.addEventListener("contextmenu", (event) => {
+    if (getCurrentUserRole() !== "admin") return;
+    event.preventDefault();
+    clearLongPressTimer();
+    showConversationVisibilityMenu(item._conv, event.clientX, event.clientY);
+  });
 
   item.addEventListener("click", () => {
     if (longPressFired) {

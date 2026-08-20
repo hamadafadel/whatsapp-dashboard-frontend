@@ -4560,3 +4560,127 @@ body.labels-open {
     grid-template-columns: 1fr;
   }
 }
+.conversation-visibility-menu {
+  position: fixed;
+  z-index: 10020;
+  min-width: 170px;
+  padding: 6px;
+  border: 1px solid rgba(134, 150, 160, 0.28);
+  border-radius: 10px;
+  background: #202c33;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.conversation-visibility-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #e9edef;
+  text-align: right;
+  cursor: pointer;
+}
+
+.conversation-visibility-menu button:hover {
+  background: #2a3942;
+}
+
+.conversation-visibility-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10030;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(11, 20, 26, 0.72);
+}
+
+.conversation-visibility-dialog {
+  width: min(390px, 100%);
+  padding: 20px;
+  border-radius: 14px;
+  background: #202c33;
+  color: #e9edef;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.42);
+}
+
+.conversation-visibility-dialog h3 {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+
+.conversation-visibility-users {
+  display: grid;
+  gap: 8px;
+}
+
+.conversation-visibility-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  background: #111b21;
+  cursor: pointer;
+}
+
+.conversation-visibility-user input {
+  accent-color: #00a884;
+}
+
+.conversation-visibility-empty {
+  padding: 14px;
+  color: #aebac1;
+  text-align: center;
+}
+
+.conversation-visibility-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.conversation-visibility-actions button {
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #00a884;
+  color: #fff;
+  cursor: pointer;
+}
+
+.conversation-visibility-actions button.secondary {
+  background: #374248;
+}
+
+.conversation-visibility-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.conversation-visibility-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 10040;
+  max-width: calc(100vw - 32px);
+  padding: 11px 16px;
+  border-radius: 9px;
+  background: #00a884;
+  color: #fff;
+  opacity: 0;
+  transform: translate(-50%, 12px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.conversation-visibility-toast.error {
+  background: #c62828;
+}
+
+.conversation-visibility-toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
