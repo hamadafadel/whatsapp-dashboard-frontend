@@ -4730,3 +4730,97 @@ body.labels-open {
   outline-offset: -5px;
   background: rgba(0, 168, 132, 0.1);
 }
+
+.composer-image-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(11, 20, 26, 0.82);
+}
+
+.composer-image-preview-dialog {
+  width: min(520px, 100%);
+  max-height: min(720px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #202c33;
+  color: #e9edef;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.48);
+}
+
+.composer-image-preview-header,
+.composer-image-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.composer-image-preview-header button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #374248;
+  color: #e9edef;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.composer-image-preview-grid {
+  min-height: 180px;
+  max-height: 480px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  overflow: auto;
+}
+
+.composer-image-preview-grid img {
+  width: 100%;
+  height: 100%;
+  max-height: 430px;
+  object-fit: contain;
+  border-radius: 9px;
+  background: #111b21;
+}
+
+.composer-image-preview-caption {
+  width: 100%;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid #3b4a54;
+  border-radius: 9px;
+  outline: 0;
+  background: #2a3942;
+  color: #e9edef;
+  font: inherit;
+}
+
+.composer-image-preview-caption:focus {
+  border-color: #00a884;
+}
+
+.composer-image-preview-actions {
+  justify-content: flex-end;
+}
+
+.composer-image-preview-actions button {
+  min-width: 90px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #00a884;
+  color: #fff;
+  cursor: pointer;
+}
+
+.composer-image-preview-actions button.secondary {
+  background: #374248;
+}

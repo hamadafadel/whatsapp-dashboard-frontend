@@ -7072,7 +7072,7 @@ async function uploadMediaFile(
   });
 }
 
-async function queueComposerMediaFiles(inputFiles) {
+async function queueComposerMediaFiles(inputFiles, options = {}) {
     const files = Array.from(inputFiles || []);
     if (!files.length) return;
 
@@ -7081,20 +7081,24 @@ async function queueComposerMediaFiles(inputFiles) {
       return;
     }
 
-    if (!activeSessionId) {
+    const targetSessionId = options.sessionId || activeSessionId;
+    if (!targetSessionId) {
       alert("اختر محادثة أولًا");
       return;
     }
 
-    const caption = messageInputEl.value.trim();
-    const targetSessionId = activeSessionId;
+    const caption = options.caption !== undefined
+      ? String(options.caption || "").trim()
+      : messageInputEl.value.trim();
     const uploads = files.map((file) => ({
       file,
       pending: appendPendingMedia(file, caption, targetSessionId)
     }));
 
-    messageInputEl.value = "";
-    resizeMessageInput();
+    if (options.clearComposer !== false && activeSessionId === targetSessionId) {
+      messageInputEl.value = "";
+      resizeMessageInput();
+    }
 
     enqueueSessionSend(targetSessionId, "media", async () => {
       const queueState = getSessionSendQueue(targetSessionId);
@@ -7152,12 +7156,97 @@ function getComposerDroppedImages(dataTransfer) {
     );
 }
 
+function openComposerImagePreview(images) {
+  if (!images.length || !activeSessionId) return;
+
+  document.querySelector(".composer-image-preview-overlay")?.remove();
+  const previewSessionId = activeSessionId;
+  const initialCaption = messageInputEl.value;
+  const objectUrls = images.map((file) => URL.createObjectURL(file));
+
+  const overlay = document.createElement("div");
+  overlay.className = "composer-image-preview-overlay";
+  const dialog = document.createElement("div");
+  dialog.className = "composer-image-preview-dialog";
+
+  const header = document.createElement("div");
+  header.className = "composer-image-preview-header";
+  const title = document.createElement("strong");
+  title.textContent = images.length === 1 ? "معاينة الصورة" : `معاينة ${images.length} صور`;
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "×";
+  header.append(title, closeButton);
+
+  const grid = document.createElement("div");
+  grid.className = "composer-image-preview-grid";
+  objectUrls.forEach((url) => {
+    const image = document.createElement("img");
+    image.src = url;
+    image.alt = "معاينة الصورة قبل الإرسال";
+    grid.appendChild(image);
+  });
+
+  const captionInput = document.createElement("textarea");
+  captionInput.className = "composer-image-preview-caption";
+  captionInput.rows = 2;
+  captionInput.placeholder = "اكتب تعليقًا على الصورة...";
+  captionInput.value = initialCaption;
+
+  const actions = document.createElement("div");
+  actions.className = "composer-image-preview-actions";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "secondary";
+  cancelButton.textContent = "إلغاء";
+  const sendButton = document.createElement("button");
+  sendButton.type = "button";
+  sendButton.textContent = "إرسال";
+  actions.append(cancelButton, sendButton);
+
+  dialog.append(header, grid, captionInput, actions);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  const closePreview = () => {
+    objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    overlay.remove();
+  };
+
+  closeButton.addEventListener("click", closePreview);
+  cancelButton.addEventListener("click", closePreview);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) closePreview();
+  });
+  sendButton.addEventListener("click", () => {
+    const caption = captionInput.value;
+    sendButton.disabled = true;
+    closePreview();
+
+    if (
+      activeSessionId === previewSessionId &&
+      messageInputEl.value === initialCaption
+    ) {
+      messageInputEl.value = "";
+      resizeMessageInput();
+    }
+
+    queueComposerMediaFiles(images, {
+      sessionId: previewSessionId,
+      caption,
+      clearComposer: false
+    });
+  });
+
+  setTimeout(() => captionInput.focus(), 0);
+}
+
 messageInputEl?.addEventListener("paste", (event) => {
   const images = getComposerDroppedImages(event.clipboardData);
   if (!images.length) return;
 
   event.preventDefault();
-  queueComposerMediaFiles(images);
+  openComposerImagePreview(images);
 });
 
 if (chatComposeEl) {
@@ -7179,7 +7268,7 @@ if (chatComposeEl) {
     if (!images.length) return;
 
     event.preventDefault();
-    queueComposerMediaFiles(images);
+    openComposerImagePreview(images);
   });
 }
 
