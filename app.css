@@ -4725,10 +4725,27 @@ body.labels-open {
   white-space: nowrap;
 }
 
+.chat-screen.composer-image-dragover,
 .chat-compose.composer-image-dragover {
   outline: 2px dashed #00a884;
   outline-offset: -5px;
   background: rgba(0, 168, 132, 0.1);
+}
+
+.chat-screen.composer-image-dragover::after {
+  content: "أفلت الصورة هنا للمعاينة";
+  position: absolute;
+  inset: 72px 18px 86px;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  border: 2px dashed #00a884;
+  border-radius: 14px;
+  background: rgba(17, 27, 33, 0.78);
+  color: #e9edef;
+  font-size: 18px;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .composer-image-preview-overlay {

@@ -109,6 +109,7 @@ const templatesStatusEl = document.getElementById("templatesStatus");
 const windowExpiredBannerEl = document.getElementById("windowExpiredBanner");
 const sendTemplateInsteadBtnEl = document.getElementById("sendTemplateInsteadBtn");
 const chatComposeEl = document.querySelector(".chat-compose");
+const chatScreenEl = document.getElementById("chatScreen");
 const voiceRecordingBarEl =
   document.getElementById("voiceRecordingBar");
 
@@ -7156,6 +7157,14 @@ function getComposerDroppedImages(dataTransfer) {
     );
 }
 
+function hasComposerDraggedImage(dataTransfer) {
+  const items = Array.from(dataTransfer?.items || []);
+  if (items.some((item) => item.kind === "file" && item.type.startsWith("image/"))) {
+    return true;
+  }
+  return getComposerDroppedImages(dataTransfer).length > 0;
+}
+
 function openComposerImagePreview(images) {
   if (!images.length || !activeSessionId) return;
 
@@ -7249,22 +7258,27 @@ messageInputEl?.addEventListener("paste", (event) => {
   openComposerImagePreview(images);
 });
 
-if (chatComposeEl) {
-  chatComposeEl.addEventListener("dragover", (event) => {
-    if (!getComposerDroppedImages(event.dataTransfer).length) return;
+const composerImageDropTargetEl = chatScreenEl || chatComposeEl;
+
+if (composerImageDropTargetEl) {
+  composerImageDropTargetEl.addEventListener("dragover", (event) => {
+    if (!hasComposerDraggedImage(event.dataTransfer)) return;
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-    chatComposeEl.classList.add("composer-image-dragover");
+    composerImageDropTargetEl.classList.add("composer-image-dragover");
   });
 
-  chatComposeEl.addEventListener("dragleave", (event) => {
-    if (event.relatedTarget && chatComposeEl.contains(event.relatedTarget)) return;
-    chatComposeEl.classList.remove("composer-image-dragover");
+  composerImageDropTargetEl.addEventListener("dragleave", (event) => {
+    if (
+      event.relatedTarget &&
+      composerImageDropTargetEl.contains(event.relatedTarget)
+    ) return;
+    composerImageDropTargetEl.classList.remove("composer-image-dragover");
   });
 
-  chatComposeEl.addEventListener("drop", (event) => {
+  composerImageDropTargetEl.addEventListener("drop", (event) => {
     const images = getComposerDroppedImages(event.dataTransfer);
-    chatComposeEl.classList.remove("composer-image-dragover");
+    composerImageDropTargetEl.classList.remove("composer-image-dragover");
     if (!images.length) return;
 
     event.preventDefault();
