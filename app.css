@@ -4717,6 +4717,10 @@ body.labels-open {
   gap: 6px;
 }
 
+.hidden-view-bar:not(.hidden) ~ .sessions-list .session-item {
+  cursor: pointer;
+}
+
 .session-show-for-btn {
   white-space: nowrap;
 }

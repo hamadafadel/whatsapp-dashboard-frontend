@@ -3311,6 +3311,36 @@ function renderHiddenConversations(conversations) {
 
     row.appendChild(actions);
     item.appendChild(row);
+
+    item.addEventListener("click", () => {
+      const hasCachedConversation =
+        messagesEl.dataset.loadedSessionId === conv.session_id &&
+        messagesEl.childElementCount > 0;
+
+      activeSessionId = conv.session_id;
+      syncSessionProgressVisibility();
+
+      if (conv.unread_count) {
+        conv.unread_count = 0;
+        markConversationRead(conv.session_id);
+      }
+
+      conversationLabelsCache = Array.isArray(conv.labels) ? conv.labels : [];
+      renderChatLabelsRow();
+      openChat();
+
+      if (hasCachedConversation) {
+        chatTitleEl.textContent = conv.customer_name || "عميل";
+        renderChatMeta(conv.session_id, currentLoadedMessageCount);
+        reapplyMessagingWindowCheckFromCache();
+      } else {
+        loadMessages(conv.session_id);
+      }
+
+      loadAiStatus(conv.session_id);
+      setTimeout(() => messageInputEl.focus(), 250);
+    });
+
     conversationsEl.appendChild(item);
   });
 }
