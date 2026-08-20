@@ -4895,3 +4895,67 @@ body.labels-open {
   box-shadow: none !important;
   text-align: right;
 }
+
+/* Conversation header: centered identity, then a balanced actions row. */
+.chat-mobile-header {
+  height: auto !important;
+  min-height: 0 !important;
+  flex: 0 0 auto !important;
+  gap: 7px !important;
+  padding: 8px 12px !important;
+}
+
+.chat-header-name-row {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.chat-header-name-row .chat-message-count,
+.chat-header-name-row .chat-phone-number {
+  width: 100%;
+  margin: 0 !important;
+  text-align: center !important;
+}
+
+.chat-header-name-row .chat-phone-number {
+  display: block;
+  min-height: 18px;
+  direction: ltr;
+  white-space: nowrap;
+}
+
+.chat-header-controls-row {
+  width: 100%;
+  display: grid !important;
+  grid-template-columns: 42px minmax(42px, 1fr) minmax(42px, 1fr) 42px;
+  align-items: center;
+  justify-items: center;
+  gap: 8px;
+  direction: ltr;
+}
+
+.chat-header-controls-row .back-btn {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.chat-header-controls-row .conversation-labels-btn {
+  grid-column: 2;
+}
+
+.chat-header-controls-row .meta-order-header-btn {
+  grid-column: 3;
+}
+
+.chat-header-controls-row .chat-conversation-menu-wrap {
+  grid-column: 4;
+  justify-self: end;
+}
+
+.chat-conversation-menu {
+  right: 0;
+  left: auto;
+}
