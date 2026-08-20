@@ -4724,3 +4724,9 @@ body.labels-open {
 .session-show-for-btn {
   white-space: nowrap;
 }
+
+.chat-compose.composer-image-dragover {
+  outline: 2px dashed #00a884;
+  outline-offset: -5px;
+  background: rgba(0, 168, 132, 0.1);
+}

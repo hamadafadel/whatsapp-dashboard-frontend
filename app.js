@@ -7072,21 +7072,17 @@ async function uploadMediaFile(
   });
 }
 
-if (mediaInputEl) {
-  mediaInputEl.addEventListener("change", async () => {
-    const files = Array.from(mediaInputEl.files || []);
-
+async function queueComposerMediaFiles(inputFiles) {
+    const files = Array.from(inputFiles || []);
     if (!files.length) return;
 
     if (files.length > 15) {
       alert("الحد الأقصى 15 ملف مرة واحدة");
-      mediaInputEl.value = "";
       return;
     }
 
     if (!activeSessionId) {
       alert("اختر محادثة أولًا");
-      mediaInputEl.value = "";
       return;
     }
 
@@ -7097,7 +7093,6 @@ if (mediaInputEl) {
       pending: appendPendingMedia(file, caption, targetSessionId)
     }));
 
-    mediaInputEl.value = "";
     messageInputEl.value = "";
     resizeMessageInput();
 
@@ -7135,6 +7130,56 @@ if (mediaInputEl) {
       getSessionSendQueue(targetSessionId).suppressMediaEventsUntil = Date.now() + 5000;
       console.error(error);
     });
+}
+
+if (mediaInputEl) {
+  mediaInputEl.addEventListener("change", () => {
+    const files = Array.from(mediaInputEl.files || []);
+    mediaInputEl.value = "";
+    queueComposerMediaFiles(files);
+  });
+}
+
+function getComposerDroppedImages(dataTransfer) {
+  return Array.from(dataTransfer?.files || [])
+    .filter((file) => String(file.type || "").startsWith("image/"))
+    .map((file, index) =>
+      file.name
+        ? file
+        : new File([file], `dashboard-image-${Date.now()}-${index + 1}.png`, {
+            type: file.type || "image/png"
+          })
+    );
+}
+
+messageInputEl?.addEventListener("paste", (event) => {
+  const images = getComposerDroppedImages(event.clipboardData);
+  if (!images.length) return;
+
+  event.preventDefault();
+  queueComposerMediaFiles(images);
+});
+
+if (chatComposeEl) {
+  chatComposeEl.addEventListener("dragover", (event) => {
+    if (!getComposerDroppedImages(event.dataTransfer).length) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    chatComposeEl.classList.add("composer-image-dragover");
+  });
+
+  chatComposeEl.addEventListener("dragleave", (event) => {
+    if (event.relatedTarget && chatComposeEl.contains(event.relatedTarget)) return;
+    chatComposeEl.classList.remove("composer-image-dragover");
+  });
+
+  chatComposeEl.addEventListener("drop", (event) => {
+    const images = getComposerDroppedImages(event.dataTransfer);
+    chatComposeEl.classList.remove("composer-image-dragover");
+    if (!images.length) return;
+
+    event.preventDefault();
+    queueComposerMediaFiles(images);
   });
 }
 
