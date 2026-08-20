@@ -4165,6 +4165,8 @@ function showConversationVisibilityMenu(conversation, clientX, clientY) {
 
   const menu = document.createElement("div");
   menu.className = "conversation-visibility-menu";
+  // لا تسمح لمستمع الإغلاق الخارجي بحذف القائمة قبل اكتمال click على الزر.
+  menu.addEventListener("pointerdown", (event) => event.stopPropagation());
   [
     ["إخفاء عن...", "hide"],
     ["إظهار لـ...", "show"]
