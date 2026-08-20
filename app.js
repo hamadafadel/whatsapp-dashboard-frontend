@@ -4513,6 +4513,15 @@ function findLastUserMessageTime(messages) {
 function applyMessagingWindowState(lastUserTime) {
   if (!windowExpiredBannerEl) return;
 
+  // نافذة الـ24 ساعة والتحويل إلى WhatsApp Template تخص واتساب فقط.
+  // Messenger يظل متاحًا من واجهة الداشبورد بدون تطبيق هذا العداد محليًا.
+  if (getActiveChannel() === "messenger") {
+    windowExpiredBannerEl.classList.add("hidden");
+    chatComposeEl?.classList.remove("window-expired");
+    sendTemplateInsteadBtnEl?.classList.add("hidden");
+    return;
+  }
+
   const expired =
     lastUserTime > 0 &&
     (Date.now() - lastUserTime) / (1000 * 60 * 60) >= 24;
@@ -4520,14 +4529,12 @@ function applyMessagingWindowState(lastUserTime) {
   windowExpiredBannerEl.classList.toggle("hidden", !expired);
   chatComposeEl?.classList.toggle("window-expired", expired);
 
-  const isMessenger = getActiveChannel() === "messenger";
   if (expired) {
-    windowExpiredBannerEl.textContent = isMessenger
-      ? "⚠️ انتهت نافذة Messenger القياسية (24 ساعة). لا يمكن إرسال رد عادي حتى يرسل العميل رسالة جديدة."
-      : "⚠️ مر أكثر من 24 ساعة على آخر رسالة من العميل — استخدم تيمبليت WhatsApp المعتمد.";
+    windowExpiredBannerEl.textContent =
+      "⚠️ مر أكثر من 24 ساعة على آخر رسالة من العميل — استخدم تيمبليت WhatsApp المعتمد.";
   }
 
-  sendTemplateInsteadBtnEl?.classList.toggle("hidden", !expired || isMessenger);
+  sendTemplateInsteadBtnEl?.classList.toggle("hidden", !expired);
 
   // لو المسارات أو الرد كانوا مفتوحين قبل ما الوقت ينتهي، اقفلهم فورًا
   if (expired) closeQuickActions();
@@ -5622,7 +5629,11 @@ async function sendMessageFromDashboard() {
   if (!activeSessionId) return alert("اختر محادثة أولًا");
   if (!message) return;
 
-  if (windowExpiredBannerEl && !windowExpiredBannerEl.classList.contains("hidden")) {
+  if (
+    getActiveChannel() === "whatsapp" &&
+    windowExpiredBannerEl &&
+    !windowExpiredBannerEl.classList.contains("hidden")
+  ) {
     alert("مرّ أكثر من 24 ساعة على آخر رسالة من العميل، لا يمكن إرسال رسالة نصية عادية. استخدم زرار إرسال تيمبليت.");
     return;
   }
