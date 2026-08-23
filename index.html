@@ -18,7 +18,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <link rel="stylesheet" href="app.css?v=59" />
+  <link rel="stylesheet" href="app.css?v=60" />
   <script
     type="module"
     src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.26.0/index.js"
@@ -152,7 +152,6 @@
       </div>
 
       <div id="orderConfirmationConversationBar" class="order-confirmation-conversation-bar hidden">
-        <div id="orderConfirmationConversationNotice" class="order-confirmation-conversation-notice"></div>
         <button id="reviewOrderConfirmationBtn" type="button">مراجعة تأكيد الطلب</button>
       </div>
 
@@ -381,6 +380,8 @@
         </header>
 
         <div class="order-confirmation-content">
+          <div id="orderConfirmationHistoryWarning" class="order-confirmation-history-warning"></div>
+
           <dl class="order-confirmation-details">
             <div><dt>اسم العميل</dt><dd id="confirmationCustomerName"></dd></div>
             <div><dt>رقم الطلب</dt><dd id="confirmationOrderNumber"></dd></div>
@@ -398,8 +399,6 @@
               <span>إضافة أو تعديل بيانات</span>
             </div>
           </section>
-
-          <div id="orderConfirmationHistoryWarning" class="order-confirmation-history-warning hidden"></div>
 
           <div id="orderConfirmationStatus" class="order-confirmation-status" role="status"></div>
 
@@ -476,7 +475,7 @@
     
   </div>
 
-  <script src="app.js?v=59"></script>
+  <script src="app.js?v=60"></script>
 
   <script>
   if ("serviceWorker" in navigator) {

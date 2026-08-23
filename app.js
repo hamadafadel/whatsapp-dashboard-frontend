@@ -106,8 +106,6 @@ const confirmationTotalEl =
   document.getElementById("confirmationTotal");
 const orderConfirmationConversationBarEl =
   document.getElementById("orderConfirmationConversationBar");
-const orderConfirmationConversationNoticeEl =
-  document.getElementById("orderConfirmationConversationNotice");
 const reviewOrderConfirmationBtnEl =
   document.getElementById("reviewOrderConfirmationBtn");
 const orderConfirmationHistoryWarningEl =
@@ -305,21 +303,6 @@ function closeOrderConfirmationModal({ clearUrl = false } = {}) {
   }
 }
 
-function formatOrderConfirmationHistoryNotice(context = orderConfirmationContext) {
-  if (!context?.hasPreviousConfirmation) return "";
-
-  const timestamp = context.sameOrderConfirmation?.timestamp ||
-    context.lastConfirmation?.timestamp || "";
-  const formattedTime = timestamp ? formatMessageTimestamp(timestamp) : "";
-
-  if (context.sameOrderConfirmation) {
-    return `⚠ تم إرسال تأكيد لهذا الطلب بالفعل${formattedTime ? ` — ${formattedTime}` : ""}`;
-  }
-
-  const previousOrder = context.lastConfirmation?.order || "";
-  return `يوجد تأكيد سابق لهذا العميل لطلب آخر${previousOrder ? ` رقم ${previousOrder}` : ""}${formattedTime ? ` — ${formattedTime}` : ""}`;
-}
-
 function syncOrderConfirmationConversationBar() {
   const isCurrentOrderSession = Boolean(
     pendingOrderConfirmation &&
@@ -328,11 +311,44 @@ function syncOrderConfirmationConversationBar() {
   );
 
   orderConfirmationConversationBarEl?.classList.toggle("hidden", !isCurrentOrderSession);
-  if (!isCurrentOrderSession || !orderConfirmationConversationNoticeEl) return;
+}
 
-  orderConfirmationConversationNoticeEl.textContent =
-    formatOrderConfirmationHistoryNotice() ||
-    `طلب رقم ${pendingOrderConfirmation.order || "—"} جاهز للمراجعة`;
+function renderOrderConfirmationHistoryStatus() {
+  if (!orderConfirmationHistoryWarningEl) return;
+
+  const context = orderConfirmationContext || {};
+  const sameOrder = context.sameOrderConfirmation || null;
+  const lastConfirmation = sameOrder || context.lastConfirmation || null;
+  const timestamp = lastConfirmation?.timestamp || "";
+  const formattedTime = timestamp ? formatMessageTimestamp(timestamp) : "";
+
+  let state = "none";
+  let title = "لم يتم إرسال تأكيد لهذا الطلب من قبل.";
+
+  if (sameOrder) {
+    state = "same-order";
+    title = "⚠ تم إرسال تأكيد لهذا الطلب بالفعل";
+  } else if (context.hasPreviousConfirmation) {
+    state = "other-order";
+    const previousOrder = context.lastConfirmation?.order || "غير متاح";
+    title = `ℹ️ يوجد تأكيد سابق لهذا العميل لطلب آخر رقم: ${previousOrder}`;
+  }
+
+  orderConfirmationHistoryWarningEl.className =
+    `order-confirmation-history-warning ${state}`;
+  orderConfirmationHistoryWarningEl.replaceChildren();
+
+  const titleElement = document.createElement("div");
+  titleElement.className = "order-confirmation-history-title";
+  titleElement.textContent = title;
+  orderConfirmationHistoryWarningEl.appendChild(titleElement);
+
+  if (formattedTime) {
+    const timeElement = document.createElement("div");
+    timeElement.className = "order-confirmation-history-time";
+    timeElement.textContent = `آخر إرسال: ${formattedTime}`;
+    orderConfirmationHistoryWarningEl.appendChild(timeElement);
+  }
 }
 
 function getOrderConfirmationMessageHeaders(sessionId) {
@@ -412,11 +428,7 @@ function showOrderConfirmationModal() {
   orderConfirmationStatusEl.textContent = "";
   orderConfirmationStatusEl.classList.remove("success");
 
-  const historyNotice = formatOrderConfirmationHistoryNotice();
-  if (orderConfirmationHistoryWarningEl) {
-    orderConfirmationHistoryWarningEl.textContent = historyNotice || "";
-    orderConfirmationHistoryWarningEl.classList.toggle("hidden", !historyNotice);
-  }
+  renderOrderConfirmationHistoryStatus();
 
   const canSend = ["admin", "confirmation"].includes(
     getCurrentUserRole()
