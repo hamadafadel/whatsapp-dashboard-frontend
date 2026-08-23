@@ -18,7 +18,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <link rel="stylesheet" href="app.css?v=58" />
+  <link rel="stylesheet" href="app.css?v=59" />
   <script
     type="module"
     src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.26.0/index.js"
@@ -149,6 +149,11 @@
 
       <div id="windowExpiredBanner" class="window-expired-banner hidden">
         ⚠️ مر أكتر من 24 ساعة من غير رد على آخر رسالة من العميل — التواصل النصي العادي مش متاح دلوقتي، لازم تبعت تيمبليت من زرار المسارات.
+      </div>
+
+      <div id="orderConfirmationConversationBar" class="order-confirmation-conversation-bar hidden">
+        <div id="orderConfirmationConversationNotice" class="order-confirmation-conversation-notice"></div>
+        <button id="reviewOrderConfirmationBtn" type="button">مراجعة تأكيد الطلب</button>
       </div>
 
       <footer class="chat-compose">
@@ -394,6 +399,8 @@
             </div>
           </section>
 
+          <div id="orderConfirmationHistoryWarning" class="order-confirmation-history-warning hidden"></div>
+
           <div id="orderConfirmationStatus" class="order-confirmation-status" role="status"></div>
 
           <div class="order-confirmation-actions">
@@ -469,7 +476,7 @@
     
   </div>
 
-  <script src="app.js?v=58"></script>
+  <script src="app.js?v=59"></script>
 
   <script>
   if ("serviceWorker" in navigator) {

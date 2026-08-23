@@ -104,6 +104,14 @@ const confirmationContactEl =
   document.getElementById("confirmationContact");
 const confirmationTotalEl =
   document.getElementById("confirmationTotal");
+const orderConfirmationConversationBarEl =
+  document.getElementById("orderConfirmationConversationBar");
+const orderConfirmationConversationNoticeEl =
+  document.getElementById("orderConfirmationConversationNotice");
+const reviewOrderConfirmationBtnEl =
+  document.getElementById("reviewOrderConfirmationBtn");
+const orderConfirmationHistoryWarningEl =
+  document.getElementById("orderConfirmationHistoryWarning");
 const templatesPanelEl = document.getElementById("templatesPanel");
 const backToActionsBtnEl = document.getElementById("backToActionsBtn");
 const templatesListEl = document.getElementById("templatesList");
@@ -229,7 +237,8 @@ const ORDER_CONFIRMATION_QUERY_KEYS = [
   "items",
   "address",
   "contact",
-  "total"
+  "total",
+  "sig"
 ];
 
 function readOrderConfirmationFromUrl() {
@@ -243,11 +252,14 @@ function readOrderConfirmationFromUrl() {
     items: String(params.get("items") || "").trim(),
     address: String(params.get("address") || "").trim(),
     contact: String(params.get("contact") || "").trim(),
-    total: String(params.get("total") || "").trim()
+    total: String(params.get("total") || "").trim(),
+    sig: String(params.get("sig") || "").trim()
   };
 }
 
 let pendingOrderConfirmation = readOrderConfirmationFromUrl();
+let orderConfirmationContext = null;
+let preparingOrderConfirmationContext = false;
 
 function buildOrderConfirmationPreview(orderData) {
   return [
@@ -293,6 +305,98 @@ function closeOrderConfirmationModal({ clearUrl = false } = {}) {
   }
 }
 
+function formatOrderConfirmationHistoryNotice(context = orderConfirmationContext) {
+  if (!context?.hasPreviousConfirmation) return "";
+
+  const timestamp = context.sameOrderConfirmation?.timestamp ||
+    context.lastConfirmation?.timestamp || "";
+  const formattedTime = timestamp ? formatMessageTimestamp(timestamp) : "";
+
+  if (context.sameOrderConfirmation) {
+    return `⚠ تم إرسال تأكيد لهذا الطلب بالفعل${formattedTime ? ` — ${formattedTime}` : ""}`;
+  }
+
+  const previousOrder = context.lastConfirmation?.order || "";
+  return `يوجد تأكيد سابق لهذا العميل لطلب آخر${previousOrder ? ` رقم ${previousOrder}` : ""}${formattedTime ? ` — ${formattedTime}` : ""}`;
+}
+
+function syncOrderConfirmationConversationBar() {
+  const isCurrentOrderSession = Boolean(
+    pendingOrderConfirmation &&
+    orderConfirmationContext?.sessionId &&
+    String(activeSessionId || "") === String(orderConfirmationContext.sessionId)
+  );
+
+  orderConfirmationConversationBarEl?.classList.toggle("hidden", !isCurrentOrderSession);
+  if (!isCurrentOrderSession || !orderConfirmationConversationNoticeEl) return;
+
+  orderConfirmationConversationNoticeEl.textContent =
+    formatOrderConfirmationHistoryNotice() ||
+    `طلب رقم ${pendingOrderConfirmation.order || "—"} جاهز للمراجعة`;
+}
+
+function getOrderConfirmationMessageHeaders(sessionId) {
+  if (
+    orderConfirmationContext?.accessToken &&
+    String(sessionId || "") === String(orderConfirmationContext.sessionId || "")
+  ) {
+    return { "X-Order-Confirmation-Access": orderConfirmationContext.accessToken };
+  }
+  return {};
+}
+
+async function prepareOrderConfirmationConversation({ force = false } = {}) {
+  if (!pendingOrderConfirmation || !authToken || preparingOrderConfirmationContext) return;
+  if (
+    !force &&
+    orderConfirmationContext?.sessionId === pendingOrderConfirmation.phone &&
+    activeSessionId === orderConfirmationContext.sessionId
+  ) {
+    syncOrderConfirmationConversationBar();
+    return;
+  }
+
+  preparingOrderConfirmationContext = true;
+  try {
+    const response = await fetch(`${API_BASE}/order-confirmation/context`, {
+      method: "POST",
+      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(pendingOrderConfirmation)
+    });
+    const context = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(context.error || "تعذر فتح محادثة تأكيد الطلب");
+
+    orderConfirmationContext = context;
+    const sessionId = context.sessionId;
+    let conversation = conversationsData.find((item) => item.session_id === sessionId);
+    if (!conversation) {
+      conversation = {
+        session_id: sessionId,
+        customer_name: pendingOrderConfirmation.name || "عميل",
+        channel: "whatsapp",
+        labels: [],
+        unread_count: 0,
+        is_confirmation: Boolean(context.hasPreviousConfirmation)
+      };
+      conversationsData.push(conversation);
+    }
+
+    activeSessionId = sessionId;
+    syncSessionProgressVisibility();
+    conversationLabelsCache = Array.isArray(conversation.labels) ? conversation.labels : [];
+    renderChatLabelsRow();
+    openChat();
+    await loadMessages(sessionId);
+    loadAiStatus(sessionId);
+    syncOrderConfirmationConversationBar();
+  } catch (error) {
+    console.error("Order confirmation context error:", error);
+    showConversationVisibilityToast(error.message, true);
+  } finally {
+    preparingOrderConfirmationContext = false;
+  }
+}
+
 function showOrderConfirmationModal() {
   if (!pendingOrderConfirmation || !authToken) return;
 
@@ -307,6 +411,12 @@ function showOrderConfirmationModal() {
     buildOrderConfirmationPreview(data);
   orderConfirmationStatusEl.textContent = "";
   orderConfirmationStatusEl.classList.remove("success");
+
+  const historyNotice = formatOrderConfirmationHistoryNotice();
+  if (orderConfirmationHistoryWarningEl) {
+    orderConfirmationHistoryWarningEl.textContent = historyNotice || "";
+    orderConfirmationHistoryWarningEl.classList.toggle("hidden", !historyNotice);
+  }
 
   const canSend = ["admin", "confirmation"].includes(
     getCurrentUserRole()
@@ -346,7 +456,10 @@ async function sendOrderConfirmation() {
   try {
     const response = await fetch(`${API_BASE}/send-order-confirmation`, {
       method: "POST",
-      headers: getAuthHeaders({ "Content-Type": "application/json" }),
+      headers: getAuthHeaders({
+        "Content-Type": "application/json",
+        ...getOrderConfirmationMessageHeaders(pendingOrderConfirmation.phone)
+      }),
       body: JSON.stringify(pendingOrderConfirmation)
     });
 
@@ -358,7 +471,21 @@ async function sendOrderConfirmation() {
     orderConfirmationStatusEl.classList.add("success");
     orderConfirmationStatusEl.textContent =
       "تم إرسال رسالة تأكيد الطلب بنجاح ✅";
+    closeOrderConfirmationModal();
+    await prepareOrderConfirmationConversation({ force: true });
+    if (!orderConfirmationContext?.sameOrderConfirmation) {
+      const timestamp = new Date().toISOString();
+      orderConfirmationContext.hasPreviousConfirmation = true;
+      orderConfirmationContext.sameOrderConfirmation = {
+        timestamp,
+        order: pendingOrderConfirmation.order
+      };
+      orderConfirmationContext.lastConfirmation =
+        orderConfirmationContext.sameOrderConfirmation;
+      syncOrderConfirmationConversationBar();
+    }
     loadConversations();
+    showConversationVisibilityToast("تم إرسال رسالة تأكيد الطلب بنجاح ✅");
   } catch (error) {
     console.error("Order confirmation send error:", error);
     orderConfirmationStatusEl.classList.remove("success");
@@ -377,16 +504,18 @@ sendOrderConfirmationBtnEl?.addEventListener(
   sendOrderConfirmation
 );
 cancelOrderConfirmationBtnEl?.addEventListener("click", () => {
-  closeOrderConfirmationModal({ clearUrl: true });
+  closeOrderConfirmationModal();
 });
 closeOrderConfirmationBtnEl?.addEventListener("click", () => {
-  closeOrderConfirmationModal({ clearUrl: true });
+  closeOrderConfirmationModal();
 });
 orderConfirmationOverlayEl?.addEventListener("click", (event) => {
   if (event.target === orderConfirmationOverlayEl) {
-    closeOrderConfirmationModal({ clearUrl: true });
+    closeOrderConfirmationModal();
   }
 });
+
+reviewOrderConfirmationBtnEl?.addEventListener("click", showOrderConfirmationModal);
 
 function closeEmojiPicker() {
   emojiPickerPanelEl?.classList.add("hidden");
@@ -4469,6 +4598,7 @@ function renderConversations(conversations) {
 
 function openChat() {
   appEl.classList.add("chat-open");
+  syncOrderConfirmationConversationBar();
 
   if (history.state?.chatOpen !== true) {
     history.pushState({ chatOpen: true }, "");
@@ -4594,7 +4724,7 @@ async function loadMessages(sessionId) {
       `${API_BASE}/messages/${encodeURIComponent(sessionId)}?limit=50`,
       {
         cache: "no-store",
-        headers: getAuthHeaders()
+        headers: getAuthHeaders(getOrderConfirmationMessageHeaders(sessionId))
       }
     );
 
@@ -4657,7 +4787,7 @@ async function loadOlderMessages() {
       `?limit=100&beforeId=${encodeURIComponent(oldestLoadedMessageId)}`,
       {
         cache: "no-store",
-        headers: getAuthHeaders()
+        headers: getAuthHeaders(getOrderConfirmationMessageHeaders(targetSessionId))
       }
     );
 
@@ -6846,7 +6976,7 @@ async function login() {
     refreshAllLabels();
     applyRolePermissionsToUI();
     ensurePushSubscription();
-    showOrderConfirmationModal();
+    prepareOrderConfirmationConversation();
 
   } catch (err) {
     console.error(err);
@@ -6874,7 +7004,7 @@ if (authToken && !isGalleryRoleToken) {
   loadConversations();
   refreshAllLabels();
   applyRolePermissionsToUI();
-  showOrderConfirmationModal();
+  prepareOrderConfirmationConversation();
 }
 if (appEl && window.innerWidth > 1024) {
   appEl.classList.remove("chat-open");

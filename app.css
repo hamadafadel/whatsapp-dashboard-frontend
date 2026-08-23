@@ -5017,3 +5017,62 @@ body.labels-open {
   justify-content: center;
   align-self: center;
 }
+.order-confirmation-conversation-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-top: 1px solid rgba(197, 166, 109, 0.45);
+  border-bottom: 1px solid rgba(197, 166, 109, 0.45);
+  background: #fff4cf;
+  color: #54105b;
+}
+
+.order-confirmation-conversation-bar.hidden {
+  display: none;
+}
+
+.order-confirmation-conversation-notice {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#reviewOrderConfirmationBtn {
+  flex: 0 0 auto;
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 8px;
+  background: #54105b;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.order-confirmation-history-warning {
+  padding: 10px 12px;
+  border: 1px solid #e4b74d;
+  border-radius: 9px;
+  background: #fff4cf;
+  color: #6b4300;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.order-confirmation-history-warning.hidden {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .order-confirmation-conversation-bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  #reviewOrderConfirmationBtn {
+    width: 100%;
+  }
+}
