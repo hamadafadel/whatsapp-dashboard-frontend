@@ -4176,7 +4176,9 @@ function logout() {
 }
 
 function handleInvalidToken(res) {
-  if (res.status === 401 || res.status === 403) {
+  // 401 فقط يعني أن JWT غير صالح. أما 403 فهو رفض صلاحية من الـAPI
+  // ويجب أن يظل الـcaller مسؤولًا عن قراءة وعرض رسالة الخطأ الحقيقية.
+  if (res.status === 401) {
     localStorage.removeItem("dashboard_token");
     authToken = "";
 
