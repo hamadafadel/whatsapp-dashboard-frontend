@@ -304,10 +304,16 @@ function closeOrderConfirmationModal({ clearUrl = false } = {}) {
 }
 
 function syncOrderConfirmationConversationBar() {
+  const hasConfirmationQuery =
+    new URLSearchParams(window.location.search).get("confirmOrder") === "1";
+  const orderSessionId = String(
+    orderConfirmationContext?.sessionId || pendingOrderConfirmation?.phone || ""
+  );
   const isCurrentOrderSession = Boolean(
+    hasConfirmationQuery &&
     pendingOrderConfirmation &&
-    orderConfirmationContext?.sessionId &&
-    String(activeSessionId || "") === String(orderConfirmationContext.sessionId)
+    orderSessionId &&
+    String(activeSessionId || "") === orderSessionId
   );
 
   orderConfirmationConversationBarEl?.classList.toggle("hidden", !isCurrentOrderSession);
@@ -497,6 +503,9 @@ async function sendOrderConfirmation() {
       syncOrderConfirmationConversationBar();
     }
     loadConversations();
+    pendingOrderConfirmation = null;
+    clearOrderConfirmationUrl();
+    orderConfirmationConversationBarEl?.classList.add("hidden");
     showConversationVisibilityToast("تم إرسال رسالة تأكيد الطلب بنجاح ✅");
   } catch (error) {
     console.error("Order confirmation send error:", error);
@@ -4178,6 +4187,7 @@ function hideLogin() {
 function logout() {
   localStorage.removeItem("dashboard_token");
   authToken = "";
+  orderConfirmationConversationBarEl?.classList.add("hidden");
 
   if (eventSource) {
     eventSource.close();
@@ -4193,6 +4203,7 @@ function handleInvalidToken(res) {
   if (res.status === 401) {
     localStorage.removeItem("dashboard_token");
     authToken = "";
+    orderConfirmationConversationBarEl?.classList.add("hidden");
 
     if (eventSource) {
       eventSource.close();
@@ -4621,6 +4632,7 @@ function openChat() {
 
 function closeChat() {
   appEl.classList.remove("chat-open");
+  orderConfirmationConversationBarEl?.classList.add("hidden");
   removeAiTypingIndicator();
   document.querySelector(".message-actions-menu")?.remove();
 }
