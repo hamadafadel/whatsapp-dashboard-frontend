@@ -4863,9 +4863,23 @@ messagesEl.addEventListener("scroll", () => {
   }
 });
 
-function normalizeReactionEmojiForDisplay(emoji) {
-  const value = String(emoji || "");
-  return value === "♥" ? "❤️" : value;
+function normalizeReactionEmoji(value) {
+  const emoji = String(value || "");
+  if (emoji === "♥" || emoji === "❤") return "❤️";
+  return emoji;
+}
+
+function findRenderedMessageById(messageId) {
+  const id = String(messageId || "").trim();
+  if (!id) return null;
+
+  const escapedId = CSS.escape(id);
+  return messagesEl.querySelector(
+    `[data-external-message-id="${escapedId}"], ` +
+    `[data-channel-message-id="${escapedId}"], ` +
+    `[data-wa-message-id="${escapedId}"], ` +
+    `[data-message-id="${escapedId}"]`
+  );
 }
 
 function normalizeMessage(msg) {
@@ -5250,6 +5264,20 @@ function appendMessageToUI(msg) {
 
   if (realWaMessageId) {
     wrap.setAttribute("data-wa-message-id", realWaMessageId);
+  }
+
+  const externalMessageId = String(messageObj.external_message_id || "").trim();
+  const channelMessageId = String(messageObj.channel_message_id || "").trim();
+  const genericMessageId = String(messageObj.message_id || "").trim();
+
+  if (externalMessageId) {
+    wrap.setAttribute("data-external-message-id", externalMessageId);
+  }
+  if (channelMessageId) {
+    wrap.setAttribute("data-channel-message-id", channelMessageId);
+  }
+  if (genericMessageId) {
+    wrap.setAttribute("data-message-id", genericMessageId);
   }
 
   enableReplyGesture(wrap, messageObj, messageType);
@@ -5659,7 +5687,7 @@ if (
 
   const badge = document.createElement("div");
   badge.className = "message-reaction";
-  badge.textContent = normalizeReactionEmojiForDisplay(reactionEmoji);
+  badge.textContent = normalizeReactionEmoji(reactionEmoji);
 
   bubble.appendChild(badge);
 } else {
@@ -5995,7 +6023,7 @@ function connectEvents() {
     `${API_BASE}/events?token=${encodeURIComponent(authToken)}`
   );
 
-  eventSource.onmessage = function (event) {
+  eventSource.onmessage = async function (event) {
     let data = {};
 
     try {
@@ -6124,9 +6152,15 @@ function connectEvents() {
 if (data.type === "reaction") {
   if (currentSession !== eventSession) return;
 
-  const messageWrap = messagesEl.querySelector(
-    `[data-wa-message-id="${CSS.escape(data.messageId)}"]`
+  const reactionMessageId = String(
+    data.messageId ||
+    data.external_message_id ||
+    data.channel_message_id ||
+    data.wa_message_id ||
+    data.message_id ||
+    ""
   );
+  const messageWrap = findRenderedMessageById(reactionMessageId);
 
   if (messageWrap) {
     const target = messageWrap.querySelector(".message");
@@ -6151,9 +6185,11 @@ if (data.type === "reaction") {
       }
 
       if (badge) {
-        badge.textContent = normalizeReactionEmojiForDisplay(emoji);
+        badge.textContent = normalizeReactionEmoji(emoji);
       }
     }
+  } else {
+    await loadMessages(eventSession);
   }
 
   return;
@@ -6690,7 +6726,7 @@ function showMessageActions(messageObj, messageType) {
     }
 
     if (badge) {
-      badge.textContent = normalizeReactionEmojiForDisplay(emoji);
+      badge.textContent = normalizeReactionEmoji(emoji);
     }
   };
 
