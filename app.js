@@ -5152,6 +5152,12 @@ function appendMessageToUI(msg) {
     messageObj.message_kind || "text"
   ).toLowerCase().trim();
 
+  // سجلات Messenger reaction القديمة لا تُعرض كبابل مستقلة؛ الريأكت
+  // يُرسم فقط من حقل reaction الموجود على الرسالة الأصلية.
+  if (messageObj.channel === "messenger" && messageKind === "reaction") {
+    return;
+  }
+
   const reactionEmoji =
     messageObj.reaction?.emoji ||
     "";
@@ -6111,6 +6117,8 @@ function connectEvents() {
     ).toLowerCase();
 
 if (data.type === "reaction") {
+  if (currentSession !== eventSession) return;
+
   const messageWrap = messagesEl.querySelector(
     `[data-wa-message-id="${CSS.escape(data.messageId)}"]`
   );
