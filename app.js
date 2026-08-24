@@ -4863,6 +4863,11 @@ messagesEl.addEventListener("scroll", () => {
   }
 });
 
+function normalizeReactionEmojiForDisplay(emoji) {
+  const value = String(emoji || "");
+  return value === "♥" ? "❤️" : value;
+}
+
 function normalizeMessage(msg) {
   const messageObj = msg?.message || msg || {};
 
@@ -5654,7 +5659,7 @@ if (
 
   const badge = document.createElement("div");
   badge.className = "message-reaction";
-  badge.textContent = reactionEmoji;
+  badge.textContent = normalizeReactionEmojiForDisplay(reactionEmoji);
 
   bubble.appendChild(badge);
 } else {
@@ -6146,7 +6151,7 @@ if (data.type === "reaction") {
       }
 
       if (badge) {
-        badge.textContent = emoji;
+        badge.textContent = normalizeReactionEmojiForDisplay(emoji);
       }
     }
   }
@@ -6662,7 +6667,7 @@ function showMessageActions(messageObj, messageType) {
     const objectEmoji =
       messageObj.reaction?.emoji || "";
 
-    return badgeEmoji || datasetEmoji || objectEmoji || "";
+    return datasetEmoji || objectEmoji || badgeEmoji || "";
   };
 
   const updateReactionLocally = (emoji) => {
@@ -6685,7 +6690,7 @@ function showMessageActions(messageObj, messageType) {
     }
 
     if (badge) {
-      badge.textContent = emoji;
+      badge.textContent = normalizeReactionEmojiForDisplay(emoji);
     }
   };
 
