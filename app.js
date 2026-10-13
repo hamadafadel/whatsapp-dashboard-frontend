@@ -3718,6 +3718,7 @@ function getActiveChannel() {
 let messagesRequestToken = 0;
 let currentLoadedMessageCount = 0;
 let oldestLoadedMessageId = null;
+let oldestLoadedMessageTimestamp = null;
 let hasMoreMessages = false;
 let isLoadingOlderMessages = false;
 const localMediaPreviewUrls = new Set();
@@ -4736,6 +4737,7 @@ async function loadMessages(sessionId) {
   chatTitleEl.textContent = conv?.customer_name || "عميل";
   renderChatMeta(sessionId, 0);
   oldestLoadedMessageId = null;
+  oldestLoadedMessageTimestamp = null;
   hasMoreMessages = false;
   isLoadingOlderMessages = false;
   for (const url of localMediaPreviewUrls) {
@@ -4767,6 +4769,7 @@ async function loadMessages(sessionId) {
     messagesEl.innerHTML = "";
     currentLoadedMessageCount = Number(data.total ?? messages.length);
     oldestLoadedMessageId = data.nextBeforeId || messages[0]?.id || null;
+    oldestLoadedMessageTimestamp = data.nextBeforeTimestamp || null;
     hasMoreMessages = Boolean(data.hasMore);
     renderChatMeta(sessionId, currentLoadedMessageCount);
     messagesEl.dataset.loadedSessionId = sessionId;
@@ -4808,9 +4811,13 @@ async function loadOlderMessages() {
   messagesEl.prepend(loader);
 
   try {
+    const beforeTimestampQuery = oldestLoadedMessageTimestamp
+      ? `&beforeTimestamp=${encodeURIComponent(oldestLoadedMessageTimestamp)}` 
+      : "";
     const res = await fetch(
       `${API_BASE}/messages/${encodeURIComponent(targetSessionId)}` +
-      `?limit=100&beforeId=${encodeURIComponent(oldestLoadedMessageId)}`,
+      `?limit=100&beforeId=${encodeURIComponent(oldestLoadedMessageId)}` +
+      beforeTimestampQuery,
       {
         cache: "no-store",
         headers: getAuthHeaders(getOrderConfirmationMessageHeaders(targetSessionId))
@@ -4842,6 +4849,8 @@ async function loadOlderMessages() {
 
       oldestLoadedMessageId =
         data.nextBeforeId || olderMessages[0]?.id || oldestLoadedMessageId;
+      oldestLoadedMessageTimestamp =
+        data.nextBeforeTimestamp || oldestLoadedMessageTimestamp;
       messagesEl.scrollTop = messagesEl.scrollHeight - previousScrollHeight;
     }
 
@@ -5163,7 +5172,7 @@ function extractButtons(messageObj) {
   return [];
 }
 
-function appendMessageToUI(msg) {
+function appendMessageToUI(msg, options = {}) {
   const messageObj = normalizeMessage(msg);
   const rawType = String(messageObj.type || "").toLowerCase().trim();
   const content = String(messageObj.content || "").trim();
@@ -5248,6 +5257,19 @@ function appendMessageToUI(msg) {
   wrap.dataset.messageType = messageType;
   wrap.dataset.messageContent = content;
   wrap.dataset.messageKind = messageKind;
+
+  const sortDate = parseMessageDate(messageObj.timestamp);
+  wrap.dataset.messageSortTimestamp = String(
+    sortDate ? sortDate.getTime() : Date.now()
+  );
+
+  const storageId = String(
+    messageObj.storage_id ||
+    messageObj.storageId ||
+    messageObj.id ||
+    ""
+  ).trim();
+  if (storageId) wrap.dataset.messageStorageId = storageId;
 
   const realWaMessageId =
     messageObj.external_message_id ||
@@ -5697,7 +5719,8 @@ if (
   wrap.appendChild(bubble);
   messagesEl.appendChild(wrap);
 
-  scrollMessagesToBottom();
+  if (options.autoScroll !== false) scrollMessagesToBottom();
+  return wrap;
 }
 
 function appendOptimisticTextMessage(content, replyTo) {
@@ -6011,6 +6034,147 @@ function updateGlobalUnreadIndicator() {
 }
 
 let eventSource = null;
+const messengerRealtimeQueues = new Map();
+let messengerRealtimeSequence = 0;
+
+function isMessagesNearBottom() {
+  return (
+    messagesEl.scrollHeight -
+    messagesEl.scrollTop -
+    messagesEl.clientHeight
+  ) <= 80;
+}
+
+function compareRenderedMessageOrder(left, right) {
+  const leftTime = Number(left?.dataset?.messageSortTimestamp || 0);
+  const rightTime = Number(right?.dataset?.messageSortTimestamp || 0);
+  if (leftTime !== rightTime) return leftTime - rightTime;
+
+  const leftStorage = String(left?.dataset?.messageStorageId || "");
+  const rightStorage = String(right?.dataset?.messageStorageId || "");
+  if (leftStorage && rightStorage && /^\d+$/.test(leftStorage) && /^\d+$/.test(rightStorage)) {
+    const leftId = BigInt(leftStorage);
+    const rightId = BigInt(rightStorage);
+    if (leftId !== rightId) return leftId < rightId ? -1 : 1;
+  }
+
+  return Number(left?.dataset?.realtimeSequence || 0) -
+    Number(right?.dataset?.realtimeSequence || 0);
+}
+
+function getFirstVisibleMessage() {
+  const containerTop = messagesEl.getBoundingClientRect().top;
+  return [...messagesEl.querySelectorAll(".message-wrap")].find((node) =>
+    node.getBoundingClientRect().bottom >= containerTop
+  ) || null;
+}
+
+function insertMessengerRealtimeMessage(messageObj) {
+  const messageId = String(
+    messageObj.external_message_id ||
+    messageObj.channel_message_id ||
+    messageObj.wa_message_id ||
+    messageObj.message_id ||
+    ""
+  ).trim();
+  if (messageId && findRenderedMessageById(messageId)) return false;
+
+  if (messageObj.type === "agent" && messageObj.content) {
+    const pending = [...messagesEl.querySelectorAll('[data-pending-agent="true"]')].find(
+      (node) => node.dataset.pendingContent === String(messageObj.content)
+    );
+    if (pending) pending.remove();
+  }
+
+  messagesEl.querySelector(".empty-state")?.remove();
+  const wasNearBottom = isMessagesNearBottom();
+  const anchor = wasNearBottom ? null : getFirstVisibleMessage();
+  const anchorTop = anchor?.getBoundingClientRect().top || 0;
+
+  const wrap = appendMessageToUI(messageObj, { autoScroll: false });
+  if (!wrap) return false;
+  wrap.dataset.realtimeSequence = String(++messengerRealtimeSequence);
+
+  const siblings = [...messagesEl.querySelectorAll(".message-wrap")].filter(
+    (node) => node !== wrap && !node.hasAttribute("data-typing-indicator")
+  );
+  const next = siblings.find((node) => compareRenderedMessageOrder(wrap, node) < 0);
+  if (next) messagesEl.insertBefore(wrap, next);
+
+  if (wasNearBottom) {
+    scrollMessagesToBottom();
+  } else if (anchor?.isConnected) {
+    messagesEl.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
+  }
+
+  currentLoadedMessageCount += 1;
+  renderChatMeta(activeSessionId, currentLoadedMessageCount);
+  return true;
+}
+
+function scheduleMessengerRealtimeMessage(sessionId, messageObj) {
+  const normalizedSessionId = String(sessionId || "").trim();
+  if (!normalizedSessionId) return;
+
+  let state = messengerRealtimeQueues.get(normalizedSessionId);
+  if (!state) {
+    state = { items: [], timer: null };
+    messengerRealtimeQueues.set(normalizedSessionId, state);
+  }
+
+  const messageId = String(
+    messageObj.external_message_id ||
+    messageObj.channel_message_id ||
+    messageObj.wa_message_id ||
+    messageObj.message_id ||
+    ""
+  ).trim();
+  if (messageId && state.items.some((item) => item.messageId === messageId)) return;
+
+  state.items.push({ messageId, messageObj });
+  if (state.timer) return;
+
+  state.timer = setTimeout(() => {
+    state.timer = null;
+    const items = state.items.splice(0);
+    if (!state.items.length) messengerRealtimeQueues.delete(normalizedSessionId);
+    if (String(activeSessionId || "").trim() !== normalizedSessionId) return;
+
+    items
+      .sort((left, right) => {
+        const leftTime = parseMessageDate(left.messageObj.timestamp)?.getTime() || 0;
+        const rightTime = parseMessageDate(right.messageObj.timestamp)?.getTime() || 0;
+        if (leftTime !== rightTime) return leftTime - rightTime;
+        return Number(left.messageObj.storage_id || 0) - Number(right.messageObj.storage_id || 0);
+      })
+      .forEach(({ messageObj: queuedMessage }) => {
+        insertMessengerRealtimeMessage(queuedMessage);
+      });
+  }, 80);
+}
+
+function updateRenderedReaction(messageId, emojiValue) {
+  const messageWrap = findRenderedMessageById(messageId);
+  if (!messageWrap) return false;
+
+  const target = messageWrap.querySelector(".message");
+  let badge = target?.querySelector(".message-reaction");
+  const emoji = String(emojiValue || "");
+  messageWrap.dataset.currentReaction = emoji;
+
+  if (!emoji) {
+    badge?.remove();
+    return true;
+  }
+
+  if (!badge && target) {
+    badge = document.createElement("div");
+    badge.className = "message-reaction";
+    target.appendChild(badge);
+  }
+  if (badge) badge.textContent = normalizeReactionEmoji(emoji);
+  return true;
+}
 
 function connectEvents() {
   if (!authToken) return;
@@ -6106,7 +6270,9 @@ function connectEvents() {
     if (data.type === "user_message") {
       if (currentSession === eventSession) {
         removeAiTypingIndicator();
-        loadMessages(currentSession);
+        if (getChannelFromSessionId(eventSession) !== "messenger") {
+          loadMessages(currentSession);
+        }
       }
 
       updateConversationPreview();
@@ -6150,53 +6316,33 @@ function connectEvents() {
     ).toLowerCase();
 
 if (data.type === "reaction") {
-  if (currentSession !== eventSession) return;
+      if (currentSession !== eventSession) return;
 
-  const reactionMessageId = String(
-    data.messageId ||
-    data.external_message_id ||
-    data.channel_message_id ||
-    data.wa_message_id ||
-    data.message_id ||
-    ""
-  );
-  const messageWrap = findRenderedMessageById(reactionMessageId);
+      const reactionMessageId = String(
+        data.messageId ||
+        data.external_message_id ||
+        data.channel_message_id ||
+        data.wa_message_id ||
+        data.message_id ||
+        ""
+      );
+      const applied = updateRenderedReaction(reactionMessageId, data.emoji);
 
-  if (messageWrap) {
-    const target = messageWrap.querySelector(".message");
-    let badge = target?.querySelector(".message-reaction");
-
-    const emoji = String(data.emoji || "");
-
-    // حفظ الريأكت الحالي عشان نعرف إن الضغط الثاني إزالة
-    messageWrap.dataset.currentReaction = emoji;
-
-    if (!emoji) {
-      // إزالة الريأكت
-      if (badge) {
-        badge.remove();
-      }
-    } else {
-      // إضافة أو تغيير الريأكت
-      if (!badge && target) {
-        badge = document.createElement("div");
-        badge.className = "message-reaction";
-        target.appendChild(badge);
+      if (!applied) {
+        setTimeout(() => {
+          if (String(activeSessionId || "").trim() !== eventSession) return;
+          updateRenderedReaction(reactionMessageId, data.emoji);
+        }, 140);
       }
 
-      if (badge) {
-        badge.textContent = normalizeReactionEmoji(emoji);
-      }
+      return;
     }
-  } else {
-    await loadMessages(eventSession);
-  }
-
-  return;
-}
     
     if (data.type === "new_message") {
-      if (data.content === "__image__") {
+      if (
+        data.content === "__image__" &&
+        (data.channel || getChannelFromSessionId(eventSession)) !== "messenger"
+      ) {
         if (currentSession === eventSession) {
           removeAiTypingIndicator();
           loadMessages(activeSessionId);
@@ -6208,6 +6354,9 @@ if (data.type === "reaction") {
 
       if (currentSession === eventSession) {
         removeAiTypingIndicator();
+
+        const realtimeChannel =
+          data.channel || getChannelFromSessionId(eventSession);
 
         const realtimeMessageId = String(
           data.external_message_id ||
@@ -6246,28 +6395,41 @@ if (data.type === "reaction") {
           data.created_at ||
           new Date().toISOString();
 
-        appendRealtimeMessage({
+        const realtimeMessage = {
           type: data.messageType || "ai",
-          channel: data.channel || getChannelFromSessionId(data.sessionId),
+          channel: realtimeChannel,
           content: data.content || "",
           message_kind: data.messageKind || data.message_kind || "text",
           media: data.mediaUrl || data.media_url || data.media || null,
           interactive: data.interactive || null,
           whatsapp_payload: data.whatsapp_payload || null,
+          external_message_id: data.external_message_id || "",
+          channel_message_id: data.channel_message_id || "",
+          message_id: data.messageId || data.message_id || "",
+          storage_id: data.storage_id || data.storageId || "",
 
           wa_message_id:
             data.external_message_id ||
             data.channel_message_id ||
-            data.wa_message_id ||
+            data.messageId ||
             data.message_id ||
+            data.wa_message_id ||
             data.whatsapp_message_id ||
             data.whatsapp_message?.id ||
             "",
 
           whatsapp_message: data.whatsapp_message || null,
           reply_to: data.reply_to || null,
+          reaction: data.reaction || null,
+          agent_name: data.agentName || data.agent_name || "",
           timestamp: realtimeTimestamp
-        });
+        };
+
+        if (realtimeChannel === "messenger") {
+          scheduleMessengerRealtimeMessage(eventSession, realtimeMessage);
+        } else {
+          appendRealtimeMessage(realtimeMessage);
+        }
 
         // العميل بعت رسالة جديدة دلوقتي — نافذة الـ 24 ساعة بتتجدد على
         // طول من غير ما نحتاج نعمل reload كامل للمحادثة
