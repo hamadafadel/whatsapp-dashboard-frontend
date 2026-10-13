@@ -4891,6 +4891,81 @@ function findRenderedMessageById(messageId) {
   );
 }
 
+function getMessengerMessageSourcePriority(messageObj = {}) {
+  const source = String(
+    messageObj.canonical_source || messageObj.canonicalSource ||
+    messageObj.message_source || messageObj.messageSource || ""
+  ).toLowerCase();
+  if (source === "dashboard") return 30;
+  if (source === "webhook_user") return 20;
+  if (["echo", "business_suite", "graph", "graph_sync"].includes(source)) return 10;
+
+  const agentName = String(messageObj.agent_name || messageObj.agentName || "").toLowerCase();
+  const mediaUrl = String(messageObj.media_url || messageObj.mediaUrl || messageObj.media || "");
+  if (mediaUrl.includes("/uploads/") || (agentName && agentName !== "meta business suite")) return 30;
+  if (agentName === "meta business suite") return 10;
+  return 0;
+}
+
+function updateRenderedMessengerMessage(messageObj) {
+  const messageId = String(
+    messageObj.external_message_id || messageObj.channel_message_id ||
+    messageObj.wa_message_id || messageObj.message_id || ""
+  ).trim();
+  const existing = messageId ? findRenderedMessageById(messageId) : null;
+  if (!existing) return { handled: false, updated: false };
+
+  const incomingPriority = getMessengerMessageSourcePriority(messageObj);
+  const existingPriority = Number(existing.dataset.canonicalSourcePriority || 0);
+  const incomingOperation = String(messageObj.canonical_operation || messageObj.operation || "").toLowerCase();
+
+  if (incomingPriority < existingPriority) return { handled: true, updated: false };
+  if (incomingPriority === existingPriority && incomingPriority > 0 && incomingPriority < 30 && !incomingOperation.startsWith("updated")) {
+    return { handled: true, updated: false };
+  }
+
+  const wasNearBottom = isMessagesNearBottom();
+  const anchor = wasNearBottom ? null : getFirstVisibleMessage();
+  const anchorTop = anchor?.getBoundingClientRect().top || 0;
+  const preservedReaction = existing.dataset.currentReaction || "";
+  const replacement = appendMessageToUI({
+    ...messageObj,
+    reaction: messageObj.reaction || (preservedReaction ? { emoji: preservedReaction } : null)
+  }, { autoScroll: false });
+
+  if (!replacement) return { handled: true, updated: false, reload: true };
+  replacement.dataset.realtimeSequence = existing.dataset.realtimeSequence || String(++messengerRealtimeSequence);
+  existing.replaceWith(replacement);
+
+  if (wasNearBottom) {
+    scrollMessagesToBottom();
+  } else {
+    const currentAnchor = anchor === existing ? replacement : anchor;
+    if (currentAnchor?.isConnected) {
+      messagesEl.scrollTop += currentAnchor.getBoundingClientRect().top - anchorTop;
+    }
+  }
+  return { handled: true, updated: true };
+}
+
+async function reloadActiveConversationPreservingScroll(sessionId) {
+  const normalizedSessionId = String(sessionId || "").trim();
+  if (!normalizedSessionId || String(activeSessionId || "").trim() !== normalizedSessionId) return;
+
+  const wasNearBottom = isMessagesNearBottom();
+  const anchor = wasNearBottom ? null : getFirstVisibleMessage();
+  const anchorMessageId = anchor?.dataset.externalMessageId || anchor?.dataset.channelMessageId || anchor?.dataset.waMessageId || "";
+  const anchorTop = anchor?.getBoundingClientRect().top || 0;
+  await loadMessages(normalizedSessionId);
+
+  if (String(activeSessionId || "").trim() !== normalizedSessionId) return;
+  if (wasNearBottom) scrollMessagesToBottom();
+  else if (anchorMessageId) {
+    const restoredAnchor = findRenderedMessageById(anchorMessageId);
+    if (restoredAnchor) messagesEl.scrollTop += restoredAnchor.getBoundingClientRect().top - anchorTop;
+  }
+}
+
 function normalizeMessage(msg) {
   const messageObj = msg?.message || msg || {};
 
@@ -5257,6 +5332,13 @@ function appendMessageToUI(msg, options = {}) {
   wrap.dataset.messageType = messageType;
   wrap.dataset.messageContent = content;
   wrap.dataset.messageKind = messageKind;
+  wrap.dataset.canonicalSourcePriority = String(
+    getMessengerMessageSourcePriority(messageObj)
+  );
+  wrap.dataset.canonicalSource = String(
+    messageObj.canonical_source || messageObj.canonicalSource ||
+    messageObj.message_source || messageObj.messageSource || ""
+  );
 
   const sortDate = parseMessageDate(messageObj.timestamp);
   wrap.dataset.messageSortTimestamp = String(
@@ -6077,7 +6159,13 @@ function insertMessengerRealtimeMessage(messageObj) {
     messageObj.message_id ||
     ""
   ).trim();
-  if (messageId && findRenderedMessageById(messageId)) return false;
+  if (messageId) {
+    const updateResult = updateRenderedMessengerMessage(messageObj);
+    if (updateResult.reload) {
+      reloadActiveConversationPreservingScroll(activeSessionId).catch(console.error);
+    }
+    if (updateResult.handled) return updateResult.updated;
+  }
 
   if (messageObj.type === "agent" && messageObj.content) {
     const pending = [...messagesEl.querySelectorAll('[data-pending-agent="true"]')].find(
@@ -6129,7 +6217,19 @@ function scheduleMessengerRealtimeMessage(sessionId, messageObj) {
     messageObj.message_id ||
     ""
   ).trim();
-  if (messageId && state.items.some((item) => item.messageId === messageId)) return;
+  if (messageId) {
+    const queuedIndex = state.items.findIndex((item) => item.messageId === messageId);
+    if (queuedIndex !== -1) {
+      const queued = state.items[queuedIndex];
+      if (
+        getMessengerMessageSourcePriority(messageObj) >=
+        getMessengerMessageSourcePriority(queued.messageObj)
+      ) {
+        state.items[queuedIndex] = { messageId, messageObj };
+      }
+      return;
+    }
+  }
 
   state.items.push({ messageId, messageObj });
   if (state.timer) return;
@@ -6367,6 +6467,7 @@ if (data.type === "reaction") {
         );
 
         if (
+          realtimeChannel !== "messenger" &&
           realtimeMessageId &&
           messagesEl.querySelector(
             `[data-wa-message-id="${CSS.escape(realtimeMessageId)}"]`
@@ -6422,6 +6523,9 @@ if (data.type === "reaction") {
           reply_to: data.reply_to || null,
           reaction: data.reaction || null,
           agent_name: data.agentName || data.agent_name || "",
+          caption: data.caption || "",
+          canonical_source: data.canonicalSource || data.canonical_source || "",
+          canonical_operation: data.operation || data.canonical_operation || "",
           timestamp: realtimeTimestamp
         };
 
