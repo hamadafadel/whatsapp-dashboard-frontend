@@ -6641,11 +6641,31 @@ function escapeHtml(str) {
 }
 
 function linkifyText(text) {
-  const safe = escapeHtml(text);
-  return safe.replace(/((https?:\/\/[^\s]+)|(www\.[^\s]+))/g, (url) => {
-    const href = url.startsWith("http") ? url : `https://${url}`;
-    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
-  });
+  const source = String(text);
+  // Match raw text, not HTML entities. Escape each output context separately.
+  const escapeAttribute = (value) => escapeHtml(value)
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+  const pattern = /https?:\/\/[^\s]+|www\.[^\s]+/gi;
+  let html = "";
+  let offset = 0;
+  for (const match of source.matchAll(pattern)) {
+    const url = match[0];
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    html += escapeHtml(source.slice(offset, match.index));
+    let allowed = false;
+    try {
+      const parsed = new URL(href);
+      allowed = ["http:", "https:"].includes(parsed.protocol);
+    } catch (_) {
+      // Malformed URLs remain readable text, never executable markup.
+    }
+    html += allowed
+      ? `<a href="${escapeAttribute(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`
+      : escapeHtml(url);
+    offset = match.index + url.length;
+  }
+  return html + escapeHtml(source.slice(offset));
 }
 
 searchInputEl.addEventListener("input", () => {
