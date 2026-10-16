@@ -4374,6 +4374,11 @@ body.labels-open {
   background: #e4f0ff;
 }
 
+.session-channel-badge.instagram {
+  color: #a72570;
+  background: #fbe6f2;
+}
+
 .order-confirmation-overlay {
   position: fixed;
   inset: 0;

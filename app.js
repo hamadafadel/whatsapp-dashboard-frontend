@@ -2669,6 +2669,7 @@ const validChannelFilters = new Set([
   "all",
   "whatsapp",
   "messenger",
+  "instagram",
   "confirmation"
 ]);
 function getStoredDashboardRole() {
@@ -3075,14 +3076,9 @@ function applyConversationFilters() {
       }
 
       const sessionId = String(conv.session_id || "");
-      const inferredChannel = sessionId.startsWith("fb:")
-        ? "messenger"
-        : "whatsapp";
+      const inferredChannel = getChannelFromSessionId(sessionId);
       const channel = String(conv.channel || inferredChannel).toLowerCase();
-
-      return activeChannelFilter === "messenger"
-        ? channel === "messenger" || sessionId.startsWith("fb:")
-        : channel === "whatsapp" || !sessionId.startsWith("fb:");
+      return channel === activeChannelFilter;
     });
   }
 
@@ -3704,6 +3700,7 @@ async function searchConversationHistory(query) {
 }
 
 function getChannelFromSessionId(sessionId) {
+  if (String(sessionId || "").startsWith("ig:")) return "instagram";
   return String(sessionId || "").startsWith("fb:")
     ? "messenger"
     : "whatsapp";
@@ -4550,7 +4547,7 @@ function updateConversationItem(item, conv) {
   const channel = conv.channel || getChannelFromSessionId(conv.session_id);
   const channelBadgeEl = item.querySelector(".session-channel-badge");
   if (channelBadgeEl) {
-    channelBadgeEl.textContent = channel === "messenger" ? "Messenger" : "WhatsApp";
+    channelBadgeEl.textContent = channel === "instagram" ? "Instagram" : channel === "messenger" ? "Messenger" : "WhatsApp";
     channelBadgeEl.className = `session-channel-badge ${channel}`;
   }
 
@@ -4642,7 +4639,7 @@ function renderChatMeta(sessionId, total) {
   const channel = getActiveChannel();
   if (chatPhoneNumberEl) {
     chatPhoneNumberEl.textContent = `${
-      channel === "messenger" ? "Messenger" : "WhatsApp"
+channel === "instagram" ? "Instagram" : channel === "messenger" ? "Messenger" : "WhatsApp"
     } · ${sessionId || ""}`;
   }
 
@@ -4690,10 +4687,10 @@ function applyMessagingWindowState(lastUserTime) {
 
   if (expired) {
     windowExpiredBannerEl.textContent =
-      "⚠️ مر أكثر من 24 ساعة على آخر رسالة من العميل — استخدم تيمبليت WhatsApp المعتمد.";
+      getActiveChannel() === "instagram" ? "⚠️ انتهت نافذة الرد على Instagram. انتظر رسالة جديدة من العميل." : "⚠️ مر أكثر من 24 ساعة على آخر رسالة من العميل — استخدم تيمبليت WhatsApp المعتمد.";
   }
 
-  sendTemplateInsteadBtnEl?.classList.toggle("hidden", !expired);
+  sendTemplateInsteadBtnEl?.classList.toggle("hidden", !expired || getActiveChannel() === "instagram");
 
   // لو المسارات أو الرد كانوا مفتوحين قبل ما الوقت ينتهي، اقفلهم فورًا
   if (expired) closeQuickActions();
@@ -5095,6 +5092,7 @@ function normalizeMessage(msg) {
       "",
 
     message_kind: String(messageKind).toLowerCase(),
+    attachments: messageObj.attachments || msg?.attachments || [],
 
     latitude,
 
@@ -5174,6 +5172,34 @@ function normalizeMessage(msg) {
   };
 }
 
+
+function appendInstagramAttachments(bubble, attachments) {
+  for (const attachment of attachments) {
+    const value = attachment?.payload?.url || attachment?.image_data?.url ||
+      attachment?.video_data?.url || attachment?.file_url || attachment?.url || "";
+    let url;
+    try { url = new URL(value); } catch { continue; }
+    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) continue;
+    const kind = String(attachment.type || attachment.mime_type?.split("/")[0] || "file");
+    let element;
+    if (kind === "image" || kind === "sticker") {
+      element = document.createElement("img");
+      element.src = url.href; element.dataset.fullSrc = url.href;
+      element.alt = kind; element.loading = "lazy";
+      element.style.maxWidth = "240px"; element.style.borderRadius = "8px";
+    } else if (kind === "video" || kind === "audio") {
+      element = document.createElement(kind); element.src = url.href;
+      element.controls = true; element.preload = "metadata";
+    } else {
+      element = document.createElement("a"); element.href = url.href;
+      element.target = "_blank"; element.rel = "noopener noreferrer";
+      element.textContent = "فتح المرفق";
+    }
+    element.style.display = "block"; element.style.maxWidth = "100%";
+    bubble.appendChild(element);
+  }
+}
+
 function buildThumbnailUrl(mediaUrl) {
   if (!mediaUrl) return "";
 
@@ -5249,6 +5275,10 @@ function extractButtons(messageObj) {
 
 function appendMessageToUI(msg, options = {}) {
   const messageObj = normalizeMessage(msg);
+  if (messageObj.channel === "instagram" && messageObj.is_deleted === true) {
+    messageObj.content = "تم إلغاء إرسال هذه الرسالة على Instagram";
+    messageObj.attachments = []; messageObj.media = null; messageObj.media_url = ""; messageObj.mediaUrl = ""; messageObj.reply_to = null;
+  }
   const rawType = String(messageObj.type || "").toLowerCase().trim();
   const content = String(messageObj.content || "").trim();
   const messageKind = String(
@@ -5297,7 +5327,8 @@ function appendMessageToUI(msg, options = {}) {
     mediaUrl = mediaUrl.replace("http://", "https://");
   }
 
-  const media = mediaUrl ? { url: mediaUrl } : null;
+  const instagramAttachments = messageObj.channel === "instagram" && Array.isArray(messageObj.attachments) ? messageObj.attachments : [];
+  const media = instagramAttachments.length ? null : mediaUrl ? { url: mediaUrl } : null;
   const buttons = extractButtons(messageObj);
 
   if (
@@ -5436,6 +5467,8 @@ if (
     bubble.appendChild(label);
   }
 
+  if (instagramAttachments.length) appendInstagramAttachments(bubble, instagramAttachments);
+
   if (messageKind === "sticker" && media?.url) {
   const sticker = document.createElement("img");
 
@@ -5565,9 +5598,9 @@ if (
     const replyName = document.createElement("div");
     replyName.className = "quoted-reply-name";
     replyName.textContent =
-      messageObj.reply_to.type === "user"
-        ? "العميل"
-        : "أنت";
+      messageObj.channel === "instagram" && messageObj.reply_to.type === "unknown"
+        ? "رسالة سابقة"
+        : messageObj.reply_to.type === "user" ? "العميل" : "أنت";
 
     const replyText = document.createElement("div");
     replyText.className = "quoted-reply-text";
@@ -5947,7 +5980,8 @@ async function sendMessageFromDashboard() {
   resizeMessageInput();
   clearSelectedReply();
 
-  const optimisticWrap = appendOptimisticTextMessage(message, replyTo);
+  // Instagram is rendered from the saved MID-bearing realtime event only.
+  const optimisticWrap = getChannelFromSessionId(targetSessionId) === "instagram" ? null : appendOptimisticTextMessage(message, replyTo);
 
   enqueueSessionSend(targetSessionId, "text", async () => {
     const res = await fetch(`${API_BASE}/send-message`, {
@@ -5960,11 +5994,18 @@ async function sendMessageFromDashboard() {
       })
     });
 
-    if (!res.ok) throw new Error("فشل الإرسال");
+    if (!res.ok) {
+      if (getChannelFromSessionId(targetSessionId) === "instagram") { const data = await res.json().catch(() => ({})); throw new Error(data.error || "فشل إرسال Instagram"); }
+      throw new Error("فشل الإرسال");
+    }
+    if (getChannelFromSessionId(targetSessionId) === "instagram" && activeSessionId === targetSessionId) {
+      await reloadActiveConversationPreservingScroll(targetSessionId);
+    }
     loadConversations();
   }).catch((error) => {
     console.error(error);
     alert("خطأ في الإرسال");
+    if (getChannelFromSessionId(targetSessionId) === "instagram") { alert(error.message); return; }
     markOptimisticMessageFailed(message, optimisticWrap);
   });
 }
@@ -6467,7 +6508,7 @@ if (data.type === "reaction") {
         );
 
         if (
-          realtimeChannel !== "messenger" &&
+          !["messenger", "instagram"].includes(realtimeChannel) &&
           realtimeMessageId &&
           messagesEl.querySelector(
             `[data-wa-message-id="${CSS.escape(realtimeMessageId)}"]`
@@ -6499,6 +6540,8 @@ if (data.type === "reaction") {
         const realtimeMessage = {
           type: data.messageType || "ai",
           channel: realtimeChannel,
+          is_deleted: realtimeChannel === "instagram" && data.is_deleted === true,
+          attachments: data.attachments || [],
           content: data.content || "",
           message_kind: data.messageKind || data.message_kind || "text",
           media: data.mediaUrl || data.media_url || data.media || null,
@@ -6529,7 +6572,7 @@ if (data.type === "reaction") {
           timestamp: realtimeTimestamp
         };
 
-        if (realtimeChannel === "messenger") {
+        if (["messenger", "instagram"].includes(realtimeChannel)) {
           scheduleMessengerRealtimeMessage(eventSession, realtimeMessage);
         } else {
           appendRealtimeMessage(realtimeMessage);
@@ -6773,6 +6816,7 @@ async function loadAiStatus(sessionId) {
 
 function updateAiButton() {
   if (!toggleAiBtnEl) return;
+  if (getActiveChannel() === "instagram") { toggleAiBtnEl.style.display = "none"; return; }
 
   toggleAiBtnEl.style.display = activeSessionId ? "inline-flex" : "none";
   toggleAiBtnEl.textContent = currentAiEnabled ? "إيقاف AI" : "تشغيل AI";
@@ -6942,6 +6986,7 @@ function rememberReactionEmoji(emoji) {
 }
 
 function showMessageActions(messageObj, messageType) {
+  if (getActiveChannel() === "instagram") { alert("إرسال تفاعلات Instagram غير مفعّل حاليًا."); return; }
   if (getActiveChannel() === "messenger") {
     alert("Messenger يدعم استقبال التفاعلات، لكن Send API لا يدعم إرسالها من الداشبورد.");
     return;
@@ -7103,6 +7148,7 @@ function showMessageActions(messageObj, messageType) {
 }
 
 function selectReplyMessage(messageObj, messageType) {
+  if (getActiveChannel() === "instagram") { alert("الرد المقتبس لإنستجرام غير مفعّل حاليًا؛ يمكنك إرسال رسالة عادية."); return; }
   if (
     messageType !== "user" &&
     messageType !== "agent" &&
