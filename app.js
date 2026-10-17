@@ -7148,7 +7148,7 @@ function showMessageActions(messageObj, messageType) {
 }
 
 function selectReplyMessage(messageObj, messageType) {
-  if (getActiveChannel() === "instagram") { alert("الرد المقتبس لإنستجرام غير مفعّل حاليًا؛ يمكنك إرسال رسالة عادية."); return; }
+  const isInstagramReply = getActiveChannel() === "instagram";
   if (
     messageType !== "user" &&
     messageType !== "agent" &&
@@ -7162,6 +7162,10 @@ function selectReplyMessage(messageObj, messageType) {
     messageObj.whatsapp_message_id ||
     "";
 
+  if (isInstagramReply && (!waMessageId || /^\d+$/.test(waMessageId) ||
+      /^(ig-|ig:|fb:|wamid[.:])/.test(waMessageId) || /\s/.test(waMessageId))) {
+    alert("هذه الرسالة لا تحمل Instagram MID أصليًا صالحًا للرد."); return;
+  }
   const messageKind = messageObj.message_kind || "text";
   const mediaUrl = messageObj.media_url || "";
 
@@ -7181,6 +7185,7 @@ function selectReplyMessage(messageObj, messageType) {
     content,
     message_kind: messageKind,
     wa_message_id: waMessageId,
+    ...(isInstagramReply ? { sessionId: activeSessionId, external_message_id: waMessageId, channel_message_id: waMessageId } : {}),
     media_url: mediaUrl
   };
 
@@ -7605,6 +7610,9 @@ async function uploadMediaFile(
   formData.append("sessionId", targetSessionId);
   formData.append("caption", caption);
   formData.append("messageKind", messageKind);
+  const instagramMediaReply = getChannelFromSessionId(targetSessionId) === "instagram" &&
+    selectedReplyMessage?.sessionId === targetSessionId ? selectedReplyMessage : null;
+  if (instagramMediaReply) formData.append("replyTo", JSON.stringify(instagramMediaReply));
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -7622,11 +7630,12 @@ async function uploadMediaFile(
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         pending.done();
+        if (instagramMediaReply && selectedReplyMessage === instagramMediaReply) clearSelectedReply();
         resolve();
         return;
       }
 
-      if (xhr.status === 401 || xhr.status === 403) {
+      if (xhr.status === 401 || (xhr.status === 403 && getChannelFromSessionId(targetSessionId) !== "instagram")) {
         logout();
       }
 
@@ -8209,6 +8218,9 @@ function sendRecordedAudio(audioFile, pending) {
   formData.append("caption", "");
   formData.append("messageKind", "audio");
   formData.append("isVoiceRecording", "true");
+  const instagramAudioReply = getActiveChannel() === "instagram" &&
+    selectedReplyMessage?.sessionId === activeSessionId ? selectedReplyMessage : null;
+  if (instagramAudioReply) formData.append("replyTo", JSON.stringify(instagramAudioReply));
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -8233,7 +8245,7 @@ function sendRecordedAudio(audioFile, pending) {
         result = {};
       }
 
-      if (xhr.status === 401 || xhr.status === 403) {
+      if (xhr.status === 401 || (xhr.status === 403 && !String(formData.get("sessionId")).startsWith("ig:"))) {
         logout();
         pending?.fail();
         resolve();
@@ -8242,6 +8254,7 @@ function sendRecordedAudio(audioFile, pending) {
 
       if (xhr.status >= 200 && xhr.status < 300) {
         pending?.done();
+        if (instagramAudioReply && selectedReplyMessage === instagramAudioReply) clearSelectedReply();
         loadConversations();
       } else {
         console.error("Send recorded audio error:", result);
