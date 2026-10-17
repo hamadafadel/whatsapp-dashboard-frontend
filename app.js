@@ -4957,6 +4957,11 @@ function updateRenderedMessengerMessage(messageObj) {
   }
   replacement.dataset.realtimeSequence = existing.dataset.realtimeSequence || String(++messengerRealtimeSequence);
   existing.replaceWith(replacement);
+  const displayCountDelta = Number(replacement.dataset.messageDisplayCount || 1) - Number(existing.dataset.messageDisplayCount || 1);
+  if (displayCountDelta !== 0) {
+    currentLoadedMessageCount += displayCountDelta;
+    renderChatMeta(activeSessionId, currentLoadedMessageCount);
+  }
 
   if (wasNearBottom) {
     scrollMessagesToBottom();
@@ -5197,6 +5202,10 @@ function normalizeMessage(msg) {
 }
 
 
+function getMessageDisplayCount(messageObj) {
+  return Math.max(1, getMessengerImageGallery(normalizeMessage(messageObj)).length);
+}
+
 function getMessengerImageGallery(messageObj) {
   if (messageObj.channel !== "messenger" || !Array.isArray(messageObj.attachments)) return [];
   const seen = new Set();
@@ -5407,6 +5416,7 @@ function appendMessageToUI(msg, options = {}) {
   wrap.dataset.messageType = messageType;
   wrap.dataset.messageContent = content;
   wrap.dataset.messageKind = messageKind;
+  wrap.dataset.messageDisplayCount = String(getMessageDisplayCount(messageObj));
   wrap.dataset.canonicalSourcePriority = String(
     getMessengerMessageSourcePriority(messageObj)
   );
@@ -6300,7 +6310,7 @@ function insertMessengerRealtimeMessage(messageObj) {
     messagesEl.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
   }
 
-  currentLoadedMessageCount += 1;
+  currentLoadedMessageCount += getMessageDisplayCount(messageObj);
   renderChatMeta(activeSessionId, currentLoadedMessageCount);
   return true;
 }
@@ -6691,7 +6701,7 @@ function appendRealtimeMessage(messageObj) {
     message: messageObj
   });
 
-  currentLoadedMessageCount += 1;
+  currentLoadedMessageCount += getMessageDisplayCount(messageObj);
   if (activeSessionId) {
     renderChatMeta(activeSessionId, currentLoadedMessageCount);
   }
