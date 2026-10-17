@@ -4875,6 +4875,24 @@ function normalizeReactionEmoji(value) {
   return emoji;
 }
 
+// Agent ownership is separate from the visible badge, which may belong to the customer.
+function getInstagramAgentReaction(messageObj, messageWrap) {
+  const cached = messageWrap?.dataset.instagramAgentReaction;
+  if (typeof cached === "string") return cached;
+  return messageObj.agent_reaction?.emoji ??
+    (messageObj.reaction?.from === "agent" ? messageObj.reaction.emoji : "") ?? "";
+}
+
+function instagramReactionKey(emoji) {
+  return normalizeReactionEmoji(String(emoji || "").normalize("NFC").replace(/[\uFE0E\uFE0F]/g, "")).replace(/\uFE0F/g, "");
+}
+
+function markInstagramReactionButton(button, emoji, currentEmoji) {
+  const selected = !!currentEmoji && instagramReactionKey(emoji) === instagramReactionKey(currentEmoji);
+  button.classList.toggle("instagram-reaction-selected", selected);
+  button.setAttribute("aria-pressed", String(selected));
+}
+
 function findRenderedMessageById(messageId) {
   const id = String(messageId || "").trim();
   if (!id) return null;
@@ -4925,12 +4943,18 @@ function updateRenderedMessengerMessage(messageObj) {
   const anchor = wasNearBottom ? null : getFirstVisibleMessage();
   const anchorTop = anchor?.getBoundingClientRect().top || 0;
   const preservedReaction = existing.dataset.currentReaction || "";
+  const preservedInstagramAgentReaction = existing.dataset.instagramAgentReaction;
   const replacement = appendMessageToUI({
     ...messageObj,
     reaction: messageObj.reaction || (preservedReaction ? { emoji: preservedReaction } : null)
   }, { autoScroll: false });
 
   if (!replacement) return { handled: true, updated: false, reload: true };
+  if (messageObj.channel === "instagram" && typeof preservedInstagramAgentReaction === "string" &&
+      !Object.prototype.hasOwnProperty.call(messageObj, "agent_reaction") &&
+      messageObj.reaction?.from !== "agent") {
+    replacement.dataset.instagramAgentReaction = preservedInstagramAgentReaction;
+  }
   replacement.dataset.realtimeSequence = existing.dataset.realtimeSequence || String(++messengerRealtimeSequence);
   existing.replaceWith(replacement);
 
@@ -5396,6 +5420,9 @@ function appendMessageToUI(msg, options = {}) {
 
   messageObj.wa_message_id = realWaMessageId;
   wrap.dataset.waMessageId = realWaMessageId;
+  if (messageObj.channel === "instagram") {
+    wrap.dataset.instagramAgentReaction = getInstagramAgentReaction(messageObj);
+  }
 
   if (realWaMessageId) {
     wrap.setAttribute("data-wa-message-id", realWaMessageId);
@@ -7042,6 +7069,13 @@ function showMessageActions(messageObj, messageType) {
     `[data-wa-message-id="${CSS.escape(waMessageId)}"]`
   );
 
+  if (isInstagramReaction) {
+    const current = getInstagramAgentReaction(messageObj, messageWrap);
+    if (current && !basicEmojis.some(emoji => instagramReactionKey(emoji) === instagramReactionKey(current))) {
+      basicEmojis.splice(7, 1, current);
+    }
+  }
+
   const getCurrentReaction = () => {
     const badgeEmoji =
       messageWrap
@@ -7085,9 +7119,8 @@ function showMessageActions(messageObj, messageType) {
   const sendEmoji = async (emoji) => {
     if (isInstagramReaction) {
       const selectedEmoji = normalizeReactionEmoji(emoji);
-      const ownReaction = messageWrap?.dataset.instagramAgentReaction ?? messageObj.agent_reaction?.emoji ??
-        (messageObj.reaction?.from === "agent" ? messageObj.reaction.emoji : "");
-      const emojiToSend = normalizeReactionEmoji(ownReaction) === selectedEmoji ? "" : selectedEmoji;
+      const ownReaction = getInstagramAgentReaction(messageObj, messageWrap);
+      const emojiToSend = instagramReactionKey(ownReaction) === instagramReactionKey(selectedEmoji) ? "" : selectedEmoji;
       rememberReactionEmoji(selectedEmoji); menu.remove();
       const result = await sendReactionFromDashboard(waMessageId, emojiToSend);
       if (result && (!result.sessionId || result.sessionId === activeSessionId)) {
@@ -7118,6 +7151,9 @@ function showMessageActions(messageObj, messageType) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = emoji;
+    if (isInstagramReaction) {
+      markInstagramReactionButton(button, emoji, getInstagramAgentReaction(messageObj, messageWrap));
+    }
 
     button.addEventListener("click", async (e) => {
       e.stopPropagation();
