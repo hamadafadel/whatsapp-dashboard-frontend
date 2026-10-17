@@ -6015,6 +6015,8 @@ async function sendReactionFromDashboard(messageId, emoji) {
 
   if (typeof emoji !== "string") return;
 
+  const reactionSession = activeSessionId;
+  const isInstagramReaction = getChannelFromSessionId(reactionSession) === "instagram";
   try {
     const res = await fetch(`${API_BASE}/send-message`, {
       method: "POST",
@@ -6022,19 +6024,33 @@ async function sendReactionFromDashboard(messageId, emoji) {
         "Content-Type": "application/json"
       }),
       body: JSON.stringify({
-        sessionId: activeSessionId,
+        sessionId: reactionSession,
         messageKind: "reaction",
         messageId,
         emoji
       })
     });
 
+    if (isInstagramReaction) {
+      const data = await res.json().catch(() => null);
+      if (!res.ok || data?.success !== true) {
+        throw new Error(typeof data?.error === "string" ? data.error : "فشل إرسال الريأكشن");
+      }
+      if (data.channel !== "instagram" || data.messageKind !== "reaction" ||
+          data.message_id !== messageId || data.emoji !== emoji ||
+          !/^[1-9][0-9]*$/.test(String(data.storage_id || "")) ||
+          typeof data.displayEmoji !== "string") {
+        throw new Error("لم يتم تأكيد حفظ تفاعل Instagram؛ تحقق من المحادثة قبل إعادة المحاولة");
+      }
+      return { displayEmoji: data.displayEmoji, emoji: data.emoji, sessionId: reactionSession };
+    }
     if (!res.ok) {
       throw new Error("فشل إرسال الريأكشن");
     }
   } catch (error) {
     console.error(error);
-    alert("خطأ في إرسال الريأكشن");
+    alert(isInstagramReaction ? error.message : "خطأ في إرسال الريأكشن");
+    return false;
   }
 }
 
@@ -6467,9 +6483,14 @@ if (data.type === "reaction") {
         data.message_id ||
         ""
       );
+      if (getChannelFromSessionId(eventSession) === "instagram" && typeof data.agentEmoji === "string") {
+        const wrap = findRenderedMessageById(reactionMessageId); if (wrap) wrap.dataset.instagramAgentReaction = data.agentEmoji;
+      }
       const applied = updateRenderedReaction(reactionMessageId, data.emoji);
 
-      if (!applied) {
+      if (!applied && getChannelFromSessionId(eventSession) === "instagram") {
+        await reloadActiveConversationPreservingScroll(eventSession);
+      } else if (!applied) {
         setTimeout(() => {
           if (String(activeSessionId || "").trim() !== eventSession) return;
           updateRenderedReaction(reactionMessageId, data.emoji);
@@ -6986,7 +7007,7 @@ function rememberReactionEmoji(emoji) {
 }
 
 function showMessageActions(messageObj, messageType) {
-  if (getActiveChannel() === "instagram") { alert("إرسال تفاعلات Instagram غير مفعّل حاليًا."); return; }
+  const isInstagramReaction = getActiveChannel() === "instagram";
   if (getActiveChannel() === "messenger") {
     alert("Messenger يدعم استقبال التفاعلات، لكن Send API لا يدعم إرسالها من الداشبورد.");
     return;
@@ -7008,7 +7029,7 @@ function showMessageActions(messageObj, messageType) {
 
   if (!waMessageId) return;
 
-  const basicEmojis = getFrequentReactionEmojis();
+  const basicEmojis = isInstagramReaction ? [...new Set(["🙏", "🌹", "❤️", "👍", ...getFrequentReactionEmojis()])].slice(0, 8) : getFrequentReactionEmojis();
 
   const menu = document.createElement("div");
   menu.className = "message-actions-menu";
@@ -7062,6 +7083,19 @@ function showMessageActions(messageObj, messageType) {
   };
 
   const sendEmoji = async (emoji) => {
+    if (isInstagramReaction) {
+      const selectedEmoji = normalizeReactionEmoji(emoji);
+      const ownReaction = messageWrap?.dataset.instagramAgentReaction ?? messageObj.agent_reaction?.emoji ??
+        (messageObj.reaction?.from === "agent" ? messageObj.reaction.emoji : "");
+      const emojiToSend = normalizeReactionEmoji(ownReaction) === selectedEmoji ? "" : selectedEmoji;
+      rememberReactionEmoji(selectedEmoji); menu.remove();
+      const result = await sendReactionFromDashboard(waMessageId, emojiToSend);
+      if (result && (!result.sessionId || result.sessionId === activeSessionId)) {
+        updateReactionLocally(result.displayEmoji ?? emojiToSend);
+        if (messageWrap) messageWrap.dataset.instagramAgentReaction = emojiToSend;
+      }
+      return;
+    }
     const currentReaction = getCurrentReaction();
 
     const emojiToSend =
