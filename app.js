@@ -5197,6 +5197,25 @@ function normalizeMessage(msg) {
 }
 
 
+function getMessengerImageGallery(messageObj) {
+  if (messageObj.channel !== "messenger" || !Array.isArray(messageObj.attachments)) return [];
+  const seen = new Set();
+  const images = [];
+  for (const attachment of messageObj.attachments) {
+    const kind = String(attachment?.type || attachment?.mime_type?.split("/")[0] || "");
+    // Preserve existing rendering for single images and mixed/non-image messages.
+    if (kind !== "image") return [];
+    const value = attachment?.payload?.url || attachment?.image_data?.url || attachment?.url || "";
+    let url;
+    try { url = new URL(value); } catch { continue; }
+    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) continue;
+    if (seen.has(url.href)) continue;
+    seen.add(url.href);
+    images.push(attachment);
+  }
+  return images.length > 1 ? images : [];
+}
+
 function appendInstagramAttachments(bubble, attachments) {
   for (const attachment of attachments) {
     const value = attachment?.payload?.url || attachment?.image_data?.url ||
@@ -5352,7 +5371,8 @@ function appendMessageToUI(msg, options = {}) {
   }
 
   const instagramAttachments = messageObj.channel === "instagram" && Array.isArray(messageObj.attachments) ? messageObj.attachments : [];
-  const media = instagramAttachments.length ? null : mediaUrl ? { url: mediaUrl } : null;
+  const messengerImages = getMessengerImageGallery(messageObj);
+  const media = instagramAttachments.length || messengerImages.length ? null : mediaUrl ? { url: mediaUrl } : null;
   const buttons = extractButtons(messageObj);
 
   if (
@@ -5495,6 +5515,7 @@ if (
   }
 
   if (instagramAttachments.length) appendInstagramAttachments(bubble, instagramAttachments);
+  if (messengerImages.length) appendInstagramAttachments(bubble, messengerImages);
 
   if (messageKind === "sticker" && media?.url) {
   const sticker = document.createElement("img");
