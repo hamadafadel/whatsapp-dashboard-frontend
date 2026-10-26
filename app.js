@@ -1208,6 +1208,8 @@ function syncSessionProgressVisibility() {
   sessionSendQueues.forEach((state, sessionId) => {
     state.progressToast?.setVisible(sessionId === activeSessionId);
   });
+  selectServerSendQueueConversation(activeSessionId);
+  if(activeSessionId)monitorServerSendQueue(activeSessionId);
 }
 
 async function processSessionSendQueue(sessionId) {
@@ -1539,17 +1541,34 @@ async function deleteSavedMediaItem(id) {
 
 let serverSendQueueConfig = null;
 const serverSendQueueViews = new Map();
-const serverSendQueueMonitors = new Set();
+const serverSendQueueMonitors = new Map();
 const serverSendQueueCallbacks = new Map();
+let serverSendQueueDisplaySession = null;
+function selectServerSendQueueConversation(sessionId) {
+  if(serverSendQueueDisplaySession===sessionId)return;
+  serverSendQueueDisplaySession=sessionId;
+  for(const monitor of serverSendQueueMonitors.values()){monitor.controller.abort();monitor.wake?.();}
+  serverSendQueueMonitors.clear();
+  for(const [sid,view]of serverSendQueueViews) {
+    if(view.drag) {
+      const id=view.drag.id;view.drag=null;view.root.classList.remove("is-dragging");
+      if(view.handle.hasPointerCapture(id))view.handle.releasePointerCapture(id);
+    }
+    view.hasWork=false;view.remaining=null;view.attention=0;view.statusUnavailable=false;
+    view.label.textContent="جارٍ تحميل طابور المحادثة…";view.list.replaceChildren();view.cancel.disabled=true;
+    syncServerSendQueueVisibility(sid);
+  }
+}
 let serverSendQueuePanelPreferences = null;
 let serverSendQueuePanelLayout = null;
 function getServerSendQueuePanelPreferences() {
   if(!serverSendQueuePanelPreferences) {
-    serverSendQueuePanelPreferences={minimized:false,x:0};
+    serverSendQueuePanelPreferences={minimized:false,x:0,y:1};
     try {
       const saved=JSON.parse(localStorage.getItem("dashboard_send_queue_panel_v1")||"null");
       if(saved&&typeof saved.minimized==='boolean')serverSendQueuePanelPreferences.minimized=saved.minimized;
       if(saved&&Number.isFinite(saved.x))serverSendQueuePanelPreferences.x=Math.max(0,Math.min(1,saved.x));
+      if(saved&&Number.isFinite(saved.y))serverSendQueuePanelPreferences.y=Math.max(0,Math.min(1,saved.y));
     } catch {/* Presentation preferences are optional; never block sending. */}
   }
   return serverSendQueuePanelPreferences;
@@ -1568,14 +1587,14 @@ function serverSendQueuePanelBounds(view) {
   const aboveComposer=compose&&compose.width>0&&compose.height>0&&compose.top>top&&compose.top<bottom?compose.top-margin:bottom;
   view.root.style.maxHeight=`${Math.max(44,Math.min(height*0.45,aboveComposer-top))}px`;
   const rect=view.root.getBoundingClientRect();
-  return {left,right:Math.max(left,left+width-margin*2-rect.width),top,y:Math.max(top,aboveComposer-rect.height)};
+  return {left,right:Math.max(left,left+width-margin*2-rect.width),top,bottom:Math.max(top,aboveComposer-rect.height)};
 }
 function positionServerSendQueuePanel(view) {
   if(view.drag||view.root.classList.contains?.("hidden"))return;
   const bounds=serverSendQueuePanelBounds(view);if(!bounds)return;
-  const x=getServerSendQueuePanelPreferences().x;
+  const {x,y}=getServerSendQueuePanelPreferences();
   view.root.style.left=`${bounds.left+(bounds.right-bounds.left)*x}px`;
-  view.root.style.top=`${bounds.y}px`;view.root.style.bottom="auto";
+  view.root.style.top=`${bounds.top+(bounds.bottom-bounds.top)*y}px`;view.root.style.bottom="auto";
 }
 function applyServerSendQueuePanelPreferences(view) {
   const {minimized}=getServerSendQueuePanelPreferences();
@@ -1593,35 +1612,42 @@ function bindServerSendQueuePanel(view) {
     for(const panel of serverSendQueueViews.values())applyServerSendQueuePanelPreferences(panel);
     saveServerSendQueuePanelPreferences();
   };
-  const rememberPosition=left=>{
+  const rememberPosition=(left,top)=>{
     const bounds=serverSendQueuePanelBounds(view);if(!bounds)return;
     const clamped=Math.max(bounds.left,Math.min(bounds.right,left));
     getServerSendQueuePanelPreferences().x=bounds.right>bounds.left?(clamped-bounds.left)/(bounds.right-bounds.left):0;
+    const clampedTop=Math.max(bounds.top,Math.min(bounds.bottom,top));
+    getServerSendQueuePanelPreferences().y=bounds.bottom>bounds.top?(clampedTop-bounds.top)/(bounds.bottom-bounds.top):1;
   };
   handle.addEventListener("pointerdown",event=>{
     if(view.drag||event.isPrimary===false||(event.button!==undefined&&event.button!==0))return;
     if(!serverSendQueuePanelBounds(view))return;
     try {handle.setPointerCapture(event.pointerId);} catch {return;}
-    view.drag={id:event.pointerId,startX:event.clientX,left:root.getBoundingClientRect().left};
+    const rect=root.getBoundingClientRect();
+    view.drag={id:event.pointerId,startX:event.clientX,startY:event.clientY,left:rect.left,top:rect.top};
     root.classList.add("is-dragging");
   });
   handle.addEventListener("pointermove",event=>{
     const drag=view.drag;if(!drag||drag.id!==event.pointerId)return;
     const bounds=serverSendQueuePanelBounds(view);if(!bounds)return;
     root.style.left=`${Math.max(bounds.left,Math.min(bounds.right,drag.left+event.clientX-drag.startX))}px`;
+    root.style.top=`${Math.max(bounds.top,Math.min(bounds.bottom,drag.top+event.clientY-drag.startY))}px`;
     event.preventDefault();
   });
   const finish=event=>{
     if(!view.drag||view.drag.id!==event.pointerId)return;
-    rememberPosition(root.getBoundingClientRect().left);view.drag=null;root.classList.remove("is-dragging");
+    const rect=root.getBoundingClientRect();
+    rememberPosition(rect.left,rect.top);view.drag=null;root.classList.remove("is-dragging");
     if(handle.hasPointerCapture(event.pointerId))handle.releasePointerCapture(event.pointerId);
     for(const panel of serverSendQueueViews.values())positionServerSendQueuePanel(panel);
     saveServerSendQueuePanelPreferences();
   };
   for(const event of ["pointerup","pointercancel","lostpointercapture"])handle.addEventListener(event,finish);
   handle.addEventListener("keydown",event=>{
-    if(event.key!=="ArrowLeft"&&event.key!=="ArrowRight")return;
-    event.preventDefault();rememberPosition(root.getBoundingClientRect().left+(event.key==="ArrowLeft"?-24:24));
+    const delta={ArrowLeft:[-24,0],ArrowRight:[24,0],ArrowUp:[0,-24],ArrowDown:[0,24]}[event.key];
+    if(!delta)return;
+    const rect=root.getBoundingClientRect();
+    event.preventDefault();rememberPosition(rect.left+delta[0],rect.top+delta[1]);
     for(const panel of serverSendQueueViews.values())positionServerSendQueuePanel(panel);
     saveServerSendQueuePanelPreferences();
   });
@@ -1664,10 +1690,11 @@ function syncServerSendQueueVisibility(sessionId) {
   const notAccepted=(admission?.pendingMediaCount||0)+(admission?.pendingTextCount||0);
   view.summary.textContent=`المتبقي: ${view.remaining??"…"}${notAccepted?` · انتظار قبول: ${notAccepted}`:""}${view.attention?` · مراجعة: ${view.attention}`:""}${view.statusUnavailable?" · الاتصال منقطع":""}`;
   view.summary.title=view.summary.textContent;
-  view.root.classList.toggle("hidden",sessionId!==activeSessionId||(!view.hasWork&&!notAccepted));
+  view.root.classList.toggle("hidden",sessionId!==activeSessionId||sessionId!==serverSendQueueDisplaySession||(!view.hasWork&&!notAccepted));
   positionServerSendQueuePanel(view);
 }
 function serverSendQueueView(sessionId) {
+  selectServerSendQueueConversation(activeSessionId);
   let view=serverSendQueueViews.get(sessionId);
   if (!view) {
     const root=document.createElement("section");root.className="server-send-queue";root.classList.toggle("hidden",true);root.setAttribute("aria-live","polite");
@@ -1675,14 +1702,15 @@ function serverSendQueueView(sessionId) {
     const header=document.createElement("div"),handle=document.createElement("div"),title=document.createElement("span"),summary=document.createElement("span"),toggle=document.createElement("button"),content=document.createElement("div");
     header.className="server-send-queue-header";handle.className="server-send-queue-handle";title.className="server-send-queue-title";
     summary.className="server-send-queue-summary";toggle.className="server-send-queue-toggle";content.className="server-send-queue-content";
-    title.textContent="↔ حالة الإرسال";handle.tabIndex=0;
-    handle.setAttribute("role","group");handle.setAttribute("aria-label","تحريك الطابور يمينًا ويسارًا بالسحب أو بمفاتيح الأسهم");
+    title.textContent="⠿ حالة الإرسال";handle.tabIndex=0;
+    handle.setAttribute("role","group");handle.setAttribute("aria-label","تحريك الطابور في جميع الاتجاهات بالسحب أو بمفاتيح الأسهم");
     toggle.type="button";handle.append(title,summary);header.append(handle,toggle);
     cancel.type="button";cancel.textContent="إلغاء بقية الإرسال";
     content.append(label,list,cancel);root.append(header,content);document.body.appendChild(root);
     view={root,label,list,cancel,header,handle,summary,toggle,content,hasWork:false,remaining:null,attention:0};serverSendQueueViews.set(sessionId,view);
     bindServerSendQueuePanel(view);
     cancel.onclick=async()=>{
+      if(sessionId!==activeSessionId||sessionId!==serverSendQueueDisplaySession)return;
       cancel.disabled=true;
       try {
         const response=await fetch(`${API_BASE}/send-queue/${encodeURIComponent(sessionId)}/cancel`,{method:"POST",headers:getAuthHeaders()});
@@ -1696,24 +1724,32 @@ function serverSendQueueView(sessionId) {
   syncServerSendQueueVisibility(sessionId);
   return view;
 }
-async function readServerSendQueue(sessionId) {
+async function readServerSendQueue(sessionId,signal=null) {
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
+  const abort=()=>controller.abort();
+  signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
   try {
     const response=await fetch(`${API_BASE}/send-queue/${encodeURIComponent(sessionId)}`,{headers:getAuthHeaders(),cache:"no-store",signal:controller.signal});
     const data=await response.json();
     if(!response.ok||data.sessionId!==sessionId||!Array.isArray(data.items))throw Error("QUEUE_STATUS_UNAVAILABLE");
-    return data;
-  } finally {clearTimeout(timeout);}
+    return {...data,items:data.items.filter(item=>item?.session_id===sessionId)};
+  } finally {clearTimeout(timeout);signal?.removeEventListener('abort',abort);}
 }
 async function monitorServerSendQueue(sessionId) {
+  if(sessionId!==activeSessionId)return;
+  selectServerSendQueueConversation(sessionId);
   if(serverSendQueueMonitors.has(sessionId))return;
-  serverSendQueueMonitors.add(sessionId);let errors=0;
+  const monitor={controller:new AbortController(),wake:null};
+  serverSendQueueMonitors.set(sessionId,monitor);let errors=0;
   try {
-    while(activeSessionId===sessionId) {
+    while(activeSessionId===sessionId&&!monitor.controller.signal.aborted) {
       const view=serverSendQueueView(sessionId);
       try {
         await ensureBackendSendQueueReady();
-        const {items}=await readServerSendQueue(sessionId);errors=0;
+        if(monitor.controller.signal.aborted)break;
+        const {items}=await readServerSendQueue(sessionId,monitor.controller.signal);
+        if(monitor.controller.signal.aborted||activeSessionId!==sessionId||serverSendQueueDisplaySession!==sessionId)break;
+        errors=0;
         const count=state=>items.filter(item=>item.state===state).length;
         view.remaining=count('pending')+count('sending');view.statusUnavailable=false;
         view.attention=items.filter(item=>!item.resolution_at&&(item.state==='unknown'||item.state==='failed')).length;
@@ -1749,11 +1785,18 @@ async function monitorServerSendQueue(sessionId) {
         view.hasWork=items.some(item=>item.state==='pending'||item.state==='sending'||
           (!item.resolution_at&&(item.state==='unknown'||item.state==='failed')));
         syncServerSendQueueVisibility(sessionId);
-      } catch {errors++;view.statusUnavailable=true;view.label.textContent="تعذرت متابعة طابور السيرفر؛ الإرسال قد يكون مستمرًا. سنعيد المتابعة تلقائيًا.";syncServerSendQueueVisibility(sessionId);}
-      await new Promise(resolve=>setTimeout(resolve,Math.min(15000,1000*2**Math.min(errors,4))));
+      } catch {
+        if(monitor.controller.signal.aborted||activeSessionId!==sessionId)break;
+        errors++;view.statusUnavailable=true;view.label.textContent="تعذرت متابعة طابور السيرفر؛ الإرسال قد يكون مستمرًا. سنعيد المتابعة تلقائيًا.";syncServerSendQueueVisibility(sessionId);
+      }
+      await new Promise(resolve=>{
+        const done=()=>{clearTimeout(timer);monitor.wake=null;resolve();};
+        const timer=setTimeout(done,Math.min(15000,1000*2**Math.min(errors,4)));
+        monitor.wake=done;if(monitor.controller.signal.aborted)done();
+      });
     }
   } catch(error) {console.error("Send queue status unavailable");}
-  finally {serverSendQueueMonitors.delete(sessionId);syncServerSendQueueVisibility(sessionId);}
+  finally {if(serverSendQueueMonitors.get(sessionId)===monitor)serverSendQueueMonitors.delete(sessionId);syncServerSendQueueVisibility(sessionId);}
 }
 function observeServerSendQueue(start,sessionId,pending=null) {
   if(start?.durable!==true)return false;
