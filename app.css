@@ -3392,6 +3392,26 @@ body.saved-media-open {
   cursor: pointer;
 }
 
+.server-send-queue {
+  position: fixed;
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  left: 12px;
+  width: min(340px, 90vw);
+  max-height: 40vh;
+  overflow: auto;
+  z-index: 21001;
+  padding: 12px;
+  border: 1px solid #25d366;
+  border-radius: 10px;
+  background: #202c33;
+  color: #e9edef;
+  direction: rtl;
+  font-size: 13px;
+}
+.server-send-queue.hidden { display: none; }
+.server-send-queue ol { padding-inline-start: 20px; }
+.server-send-queue button { margin-top: 6px; cursor: pointer; }
+
 .media-progress-toast-retry-btn:focus-visible {
   outline: 2px solid #25d366;
   outline-offset: 2px;

@@ -1196,6 +1196,7 @@ function getSessionSendQueue(sessionId) {
       pendingMediaCount: 0,
       pendingTextCount: 0,
       activeSends: 0,
+      admissionGeneration: 0,
       suppressMediaEventsUntil: 0,
       progressToast: null
     });
@@ -1218,6 +1219,7 @@ async function processSessionSendQueue(sessionId) {
     while (state.jobs.length) {
       const job = state.jobs.shift();
       state.activeSends = 1;
+      state.activeAdmissionGeneration = state.admissionGeneration;
 
       try {
         const result = await job.run();
@@ -1232,6 +1234,7 @@ async function processSessionSendQueue(sessionId) {
           state.pendingTextCount = Math.max(0, state.pendingTextCount - 1);
         }
         state.activeSends = 0;
+        state.activeAdmissionGeneration = null;
       }
     }
   } finally {
@@ -1534,8 +1537,160 @@ async function deleteSavedMediaItem(id) {
   invalidateSavedMediaCache(savedMediaCurrentFolder?.id);
 }
 
+let serverSendQueueConfig = null;
+const serverSendQueueViews = new Map();
+const serverSendQueueMonitors = new Set();
+const serverSendQueueCallbacks = new Map();
+function cancelWaitingSendAdmissions(sessionId) {
+  const state=getSessionSendQueue(sessionId);state.admissionGeneration++;
+  for(const job of state.jobs.splice(0)) {
+    if(job.type==='media')state.pendingMediaCount=Math.max(0,state.pendingMediaCount-1);
+    if(job.type==='text')state.pendingTextCount=Math.max(0,state.pendingTextCount-1);
+    job.resolve({cancelled:true,notAccepted:true});
+  }
+}
+async function ensureBackendSendQueueReady() {
+  if (!serverSendQueueConfig) serverSendQueueConfig = (async () => {
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+    try {
+      const response = await fetch(`${API_BASE}/send-queue/config`, {headers:getAuthHeaders(),cache:"no-store",signal:controller.signal});
+      const data = await response.json();
+      if (!response.ok || data.ready !== true || data.protocolVersion !== 1) throw new Error("طابور السيرفر غير جاهز؛ لم يتم قبول إرسال جديد");
+      return true;
+    } finally {clearTimeout(timer);}
+  })().catch(error => {serverSendQueueConfig=null;throw error;});
+  return serverSendQueueConfig;
+}
+function serverSendQueueView(sessionId) {
+  let view=serverSendQueueViews.get(sessionId);
+  if (!view) {
+    const root=document.createElement("section");root.className="server-send-queue";root.setAttribute("aria-live","polite");
+    const label=document.createElement("div"),list=document.createElement("ol"),cancel=document.createElement("button");
+    cancel.type="button";cancel.textContent="إلغاء بقية الإرسال";
+    root.append(label,list,cancel);document.body.appendChild(root);
+    view={root,label,list,cancel};serverSendQueueViews.set(sessionId,view);
+    cancel.onclick=async()=>{
+      cancel.disabled=true;
+      try {
+        const response=await fetch(`${API_BASE}/send-queue/${encodeURIComponent(sessionId)}/cancel`,{method:"POST",headers:getAuthHeaders()});
+        const data=await response.json();if(!response.ok||data.success!==true)throw Error();
+        cancelWaitingSendAdmissions(sessionId);
+        label.textContent="تم إلغاء العناصر المنتظرة؛ العنصر الجاري قد يكتمل";
+      } catch {label.textContent="تعذر تأكيد الإلغاء؛ الإرسال قد يكون مستمرًا. حاول الإلغاء مرة أخرى";}
+      finally{cancel.disabled=false;}
+    };
+  }
+  view.root.classList.toggle("hidden",sessionId!==activeSessionId);
+  return view;
+}
+async function readServerSendQueue(sessionId) {
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
+  try {
+    const response=await fetch(`${API_BASE}/send-queue/${encodeURIComponent(sessionId)}`,{headers:getAuthHeaders(),cache:"no-store",signal:controller.signal});
+    const data=await response.json();
+    if(!response.ok||data.sessionId!==sessionId||!Array.isArray(data.items))throw Error("QUEUE_STATUS_UNAVAILABLE");
+    return data;
+  } finally {clearTimeout(timeout);}
+}
+async function monitorServerSendQueue(sessionId) {
+  if(serverSendQueueMonitors.has(sessionId))return;
+  serverSendQueueMonitors.add(sessionId);let errors=0;
+  try {
+    while(activeSessionId===sessionId) {
+      const view=serverSendQueueView(sessionId);
+      try {
+        await ensureBackendSendQueueReady();
+        const {items}=await readServerSendQueue(sessionId);errors=0;
+        const count=state=>items.filter(item=>item.state===state).length;
+        view.label.textContent=`مرسلة: ${count('sent')} — منتظرة: ${count('pending')} — جارية: ${count('sending')} — ملغاة: ${count('cancelled')} — فاشلة: ${count('failed')} — غير مؤكدة: ${count('unknown')}`;
+        const admissionState=getSessionSendQueue(sessionId);
+        const notAccepted=admissionState.pendingMediaCount+admissionState.pendingTextCount;
+        if(notAccepted)view.label.textContent+=` — ${notAccepted} طلب لم يُقبل بعد؛ انتظر قبوله قبل إغلاق التطبيق`;
+        view.cancel.disabled=count('pending')===0;
+        view.list.replaceChildren();
+        const names={pending:"بانتظار الإرسال",sending:"جارٍ الإرسال",sent:"تم الإرسال",failed:"لم يبدأ الإرسال: مرفوض",unknown:"نتيجة غير مؤكدة؛ لن نعيد الإرسال تلقائيًا",cancelled:"ملغى قبل البدء"};
+        for(const item of items.slice(-30)) {
+          const li=document.createElement("li");li.textContent=`${item.kind==='text'?'نص':'وسائط'} — ${names[item.state]||item.state}`;
+          if(item.state==='unknown'&&!item.resolution_at) {
+            const button=document.createElement("button");button.type="button";button.textContent="راجعت المحادثة؛ تجاوز العنصر دون إعادة إرساله";
+            button.onclick=async()=>{
+              if(!confirm("قد يكون هذا العنصر أُرسل بالفعل. هل راجعت المحادثة وتوافق على متابعة البقية دون إعادة إرساله؟"))return;
+              button.disabled=true;
+              try {
+                const response=await fetch(`${API_BASE}/send-queue/${encodeURIComponent(sessionId)}/${item.id}/resolve-unknown`,{
+                  method:"POST",headers:getAuthHeaders({"Content-Type":"application/json"}),body:JSON.stringify({confirmedNoResend:true})});
+                if(!response.ok)throw Error();
+              } catch {view.label.textContent="تعذر تأكيد استكمال الطابور؛ لم نعد إرسال العنصر";button.disabled=false;}
+            };li.appendChild(button);
+          }
+          view.list.appendChild(li);
+        }
+        for(const [jobId,callback] of serverSendQueueCallbacks) {
+          const batch=items.filter(item=>item.batch_id===jobId);
+          if(batch.length&&batch.every(item=>!['pending','sending'].includes(item.state))) {
+            serverSendQueueCallbacks.delete(jobId);callback(batch);
+          }
+        }
+        view.root.classList.toggle("hidden",items.length===0||sessionId!==activeSessionId);
+      } catch {errors++;view.label.textContent="تعذرت متابعة طابور السيرفر؛ الإرسال قد يكون مستمرًا. سنعيد المتابعة تلقائيًا.";}
+      await new Promise(resolve=>setTimeout(resolve,Math.min(15000,1000*2**Math.min(errors,4))));
+    }
+  } catch(error) {console.error("Send queue status unavailable");}
+  finally {serverSendQueueMonitors.delete(sessionId);serverSendQueueViews.get(sessionId)?.root.classList.toggle("hidden",sessionId!==activeSessionId);}
+}
+function observeServerSendQueue(start,sessionId,pending=null) {
+  if(start?.durable!==true)return false;
+  if(start.notAccepted===true&&start.cancelled===true){pending?.fail?.('تم الإلغاء قبل قبول الإرسال');return true;}
+  pending?.queued?.();
+  if(pending)serverSendQueueCallbacks.set(start.jobId,items=>{
+    if(items.every(item=>item.state==='sent'))pending.done();
+    else pending.fail(items.some(item=>item.state==='unknown')?"النتيجة غير مؤكدة؛ لا تُعد الإرسال":items.some(item=>item.state==='cancelled')?"تم الإلغاء قبل الإرسال":"لم يتم الإرسال");
+  });
+  monitorServerSendQueue(sessionId);
+  return true;
+}
+async function fetchSendSubmission(url,options) {
+  const requestId=crypto.randomUUID();
+  const sessionId=typeof options.body==="string"?JSON.parse(options.body).sessionId:options.body.get("sessionId");
+  const admissionState=getSessionSendQueue(sessionId),localGeneration=admissionState.activeAdmissionGeneration??admissionState.admissionGeneration;
+  let generation=null;
+  let failures=0;
+  const queuedUrl=url.replace(API_BASE+"/",API_BASE+"/queued/");
+  while(true) {
+    if(admissionState.admissionGeneration!==localGeneration)return {ok:true,status:202,json:async()=>({success:true,durable:true,cancelled:true,notAccepted:true})};
+    try {
+      await ensureBackendSendQueueReady();
+      if(generation===null){generation=(await readServerSendQueue(sessionId)).generation;if(!Number.isSafeInteger(generation)||generation<0)throw Error('QUEUE_GENERATION_UNAVAILABLE');}
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
+      let response;
+      try {
+        response=await fetch(queuedUrl,{...options,headers:{...options.headers,"Idempotency-Key":requestId,"X-Send-Queue-Generation":String(generation)},signal:controller.signal});
+        if(response.ok) {
+          const acknowledgement=await response.clone().json();
+          if(acknowledgement.durable!==true||!acknowledgement.jobId)throw Error("QUEUE_ACCEPTANCE_UNCONFIRMED");
+        }
+      }
+      finally {clearTimeout(timer);}
+      if(response.status===409) {
+        const conflict=await response.clone().json();
+        if(conflict.error==='QUEUE_CANCELLED_OR_STALE_GENERATION') {
+          cancelWaitingSendAdmissions(sessionId);
+          return {ok:true,status:202,json:async()=>({success:true,durable:true,cancelled:true,notAccepted:true})};
+        }
+      }
+      if(response.ok||(response.status<500&&response.status!==404&&failures===0))return response;
+    } catch {/* A lost acceptance response is not permission to create a new job. */}
+    failures++;
+    const view=serverSendQueueView(sessionId);view.label.textContent="تعذر تأكيد قبول المهمة؛ نتحقق بنفس معرّف الطلب. لا تُعد الإرسال.";
+    try {
+      const {items}=await readServerSendQueue(sessionId),batch=items.filter(item=>item.request_id===requestId);
+      if(batch.length)return {ok:true,status:202,json:async()=>({success:true,queued:true,durable:true,jobId:batch[0].batch_id,total:batch.length,replayed:true})};
+    } catch {}
+    await new Promise(resolve=>setTimeout(resolve,Math.min(15000,1000*2**Math.min(failures,4))));
+  }
+}
 async function sendSavedMediaItemToCustomer(id, sessionId) {
-  const response = await fetch(`${API_BASE}/saved-media-items/${id}/send`, {
+  const response = await fetchSendSubmission(`${API_BASE}/saved-media-items/${id}/send`, {
     method: "POST",
     headers: getAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ sessionId })
@@ -1552,7 +1707,7 @@ async function sendSavedMediaItemToCustomer(id, sessionId) {
 }
 
 async function sendSavedMediaFolderToCustomer(id, sessionId) {
-  const response = await fetch(`${API_BASE}/saved-media-folders/${id}/send`, {
+  const response = await fetchSendSubmission(`${API_BASE}/saved-media-folders/${id}/send`, {
     method: "POST",
     headers: getAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ sessionId })
@@ -1569,7 +1724,7 @@ async function sendSavedMediaFolderToCustomer(id, sessionId) {
 }
 
 async function sendSelectedSavedMediaItemsToCustomer(itemIds, sessionId) {
-  const response = await fetch(`${API_BASE}/saved-media-items/send-batch`, {
+  const response = await fetchSendSubmission(`${API_BASE}/saved-media-items/send-batch`, {
     method: "POST",
     headers: getAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ sessionId, itemIds })
@@ -2636,6 +2791,7 @@ sendFolderBtnEl?.addEventListener("click", async (event) => {
 
   enqueueSessionSend(targetSessionId, "media", async () => {
     const start = await sendSavedMediaFolderToCustomer(folderId, targetSessionId);
+    if(observeServerSendQueue(start,targetSessionId))return start;
     const result = await trackSendMediaJob(start.jobId, start.total, targetSessionId);
     if (result?.failed) {
       const reasons = Array.isArray(result.failReasons) && result.failReasons.length
@@ -2683,6 +2839,7 @@ sendSelectedBtnEl?.addEventListener("click", async (event) => {
 
   enqueueSessionSend(targetSessionId, "media", async () => {
     const start = await sendSelectedSavedMediaItemsToCustomer(ids, targetSessionId);
+    if(observeServerSendQueue(start,targetSessionId))return start;
     const result = await trackSendMediaJob(start.jobId, start.total, targetSessionId);
     if (result?.failed) {
       const reasons = Array.isArray(result.failReasons) && result.failReasons.length
@@ -2726,6 +2883,7 @@ confirmSavedMediaSendBtnEl?.addEventListener("click", async (event) => {
 
   enqueueSessionSend(targetSessionId, "media", async () => {
     const start = await sendSavedMediaItemToCustomer(itemId, targetSessionId);
+    if(observeServerSendQueue(start,targetSessionId))return start;
     const result = await trackSendMediaJob(start.jobId, start.total, targetSessionId);
     if (result?.failed) {
       alert(
@@ -4807,6 +4965,8 @@ function reapplyMessagingWindowCheckFromCache() {
 }
 
 async function loadMessages(sessionId) {
+  for(const [sid,view]of serverSendQueueViews)view.root.classList.toggle("hidden",sid!==sessionId);
+  monitorServerSendQueue(sessionId);
   const conv = conversationsData.find(c => c.session_id === sessionId);
 
   windowExpiredBannerEl?.classList.add("hidden");
@@ -6129,7 +6289,7 @@ async function sendMessageFromDashboard() {
   const optimisticWrap = getChannelFromSessionId(targetSessionId) === "instagram" ? null : appendOptimisticTextMessage(message, replyTo);
 
   enqueueSessionSend(targetSessionId, "text", async () => {
-    const res = await fetch(`${API_BASE}/send-message`, {
+    const res = await fetchSendSubmission(`${API_BASE}/send-message`, {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
@@ -6143,6 +6303,8 @@ async function sendMessageFromDashboard() {
       if (getChannelFromSessionId(targetSessionId) === "instagram") { const data = await res.json().catch(() => ({})); throw new Error(data.error || "فشل إرسال Instagram"); }
       throw new Error("فشل الإرسال");
     }
+    const accepted = await res.json().catch(()=>({}));
+    if(observeServerSendQueue(accepted,targetSessionId))return accepted;
     if (getChannelFromSessionId(targetSessionId) === "instagram" && activeSessionId === targetSessionId) {
       await reloadActiveConversationPreservingScroll(targetSessionId);
     }
@@ -7748,6 +7910,9 @@ function appendPendingMedia(file, caption = "", sessionId = "") {
   scrollMessagesToBottom();
 
   return {
+    queued() {
+      overlay.textContent = "في طابور السيرفر؛ لم يُرسل بعد";
+    },
     progress(percent) {
       overlay.textContent = `جاري الإرسال... ${percent}%`;
     },
@@ -7802,42 +7967,14 @@ async function uploadMediaFile(
     selectedReplyMessage?.sessionId === targetSessionId ? selectedReplyMessage : null;
   if (instagramMediaReply) formData.append("replyTo", JSON.stringify(instagramMediaReply));
 
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
+  {
+    const response=await fetchSendSubmission(`${API_BASE}/send-media`,{method:"POST",headers:getAuthHeaders(),body:formData});
+    const data=await response.json();
+    if(!response.ok||!observeServerSendQueue(data,targetSessionId,pending))throw Error(data.error||"لم يتم قبول الملف في الطابور");
+    if(instagramMediaReply&&selectedReplyMessage===instagramMediaReply)clearSelectedReply();
+    return data;
+  }
 
-    xhr.open("POST", `${API_BASE}/send-media`);
-    xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
-
-    xhr.upload.onprogress = (event) => {
-      if (!event.lengthComputable) return;
-
-      const percent = Math.round((event.loaded / event.total) * 100);
-      pending.progress(percent);
-    };
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        pending.done();
-        if (instagramMediaReply && selectedReplyMessage === instagramMediaReply) clearSelectedReply();
-        resolve();
-        return;
-      }
-
-      if (xhr.status === 401 || (xhr.status === 403 && getChannelFromSessionId(targetSessionId) !== "instagram")) {
-        logout();
-      }
-
-      pending.fail();
-      reject(new Error(`Failed to send media: ${xhr.status}`));
-    };
-
-    xhr.onerror = () => {
-      pending.fail("خطأ في الاتصال");
-      reject(new Error("Upload error"));
-    };
-
-    xhr.send(formData);
-  });
 }
 
 async function queueComposerMediaFiles(inputFiles, options = {}) {
@@ -7872,11 +8009,12 @@ async function queueComposerMediaFiles(inputFiles, options = {}) {
       const queueState = getSessionSendQueue(targetSessionId);
       queueState.suppressMediaEventsUntil = Date.now() + 60000;
 
-      const results = await Promise.allSettled(
-        uploads.map(({ file, pending }) =>
-          uploadMediaFile(file, caption, pending, targetSessionId)
-        )
-      );
+      const results = [];
+      // Admission is sequential; after acceptance execution belongs exclusively to Backend.
+      for(const {file,pending} of uploads) {
+        try {results.push({status:"fulfilled",value:await uploadMediaFile(file,caption,pending,targetSessionId)});}
+        catch(reason){results.push({status:"rejected",reason});}
+      }
 
       const failedCount = results.filter(
         (result) => result.status === "rejected"
@@ -8377,6 +8515,9 @@ function appendPendingAudioBubble() {
   scrollMessagesToBottom();
 
   return {
+    queued() {
+      overlay.textContent = "في طابور السيرفر؛ لم يُرسل بعد";
+    },
     progress(percent) {
       overlay.textContent = `جاري الإرسال... ${percent}%`;
     },
@@ -8391,7 +8532,12 @@ function appendPendingAudioBubble() {
 }
 
 function sendRecordedAudio(audioFile, pending) {
-  if (!activeSessionId) {
+  const sessionId=activeSessionId;
+  if(!sessionId){pending?.fail();return Promise.resolve();}
+  return enqueueSessionSend(sessionId,"media",()=>sendRecordedAudioNow(audioFile,pending,sessionId));
+}
+async function sendRecordedAudioNow(audioFile, pending, targetSessionId) {
+  if (!targetSessionId) {
     pending?.fail();
     return Promise.resolve();
   }
@@ -8402,67 +8548,24 @@ function sendRecordedAudio(audioFile, pending) {
   const formData = new FormData();
 
   formData.append("file", audioFile);
-  formData.append("sessionId", activeSessionId);
+  formData.append("sessionId", targetSessionId);
   formData.append("caption", "");
   formData.append("messageKind", "audio");
   formData.append("isVoiceRecording", "true");
-  const instagramAudioReply = getActiveChannel() === "instagram" &&
-    selectedReplyMessage?.sessionId === activeSessionId ? selectedReplyMessage : null;
+  const instagramAudioReply = getChannelFromSessionId(targetSessionId) === "instagram" &&
+    selectedReplyMessage?.sessionId === targetSessionId ? selectedReplyMessage : null;
   if (instagramAudioReply) formData.append("replyTo", JSON.stringify(instagramAudioReply));
 
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
+  {
+    try {
+      const response=await fetchSendSubmission(`${API_BASE}/send-media`,{method:"POST",headers:getAuthHeaders(),body:formData});
+      const data=await response.json();
+      if(!response.ok||!observeServerSendQueue(data,targetSessionId,pending))throw Error(data.error||"لم يتم قبول التسجيل");
+      if(instagramAudioReply&&selectedReplyMessage===instagramAudioReply)clearSelectedReply();
+      return data;
+    } finally {recordAudioBtnEl.disabled=false;recordAudioBtnEl.textContent="🎤";}
+  }
 
-    xhr.open("POST", `${API_BASE}/send-media`);
-    xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
-
-    xhr.upload.onprogress = (event) => {
-      if (!event.lengthComputable) return;
-      pending?.progress(Math.round((event.loaded / event.total) * 100));
-    };
-
-    xhr.onload = () => {
-      recordAudioBtnEl.disabled = false;
-      recordAudioBtnEl.textContent = "🎤";
-      messageInputEl.focus();
-
-      let result = {};
-      try {
-        result = JSON.parse(xhr.responseText || "{}");
-      } catch (e) {
-        result = {};
-      }
-
-      if (xhr.status === 401 || (xhr.status === 403 && !String(formData.get("sessionId")).startsWith("ig:"))) {
-        logout();
-        pending?.fail();
-        resolve();
-        return;
-      }
-
-      if (xhr.status >= 200 && xhr.status < 300) {
-        pending?.done();
-        if (instagramAudioReply && selectedReplyMessage === instagramAudioReply) clearSelectedReply();
-        loadConversations();
-      } else {
-        console.error("Send recorded audio error:", result);
-        alert("فشل إرسال الرسالة الصوتية");
-        pending?.fail();
-      }
-
-      resolve();
-    };
-
-    xhr.onerror = () => {
-      recordAudioBtnEl.disabled = false;
-      recordAudioBtnEl.textContent = "🎤";
-      alert("فشل إرسال الرسالة الصوتية");
-      pending?.fail("خطأ في الاتصال");
-      resolve();
-    };
-
-    xhr.send(formData);
-  });
 }
 
 
