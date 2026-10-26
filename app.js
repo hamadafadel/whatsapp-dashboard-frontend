@@ -1561,14 +1561,21 @@ async function ensureBackendSendQueueReady() {
   })().catch(error => {serverSendQueueConfig=null;throw error;});
   return serverSendQueueConfig;
 }
+function syncServerSendQueueVisibility(sessionId) {
+  const view=serverSendQueueViews.get(sessionId);
+  if(!view)return;
+  const admission=sessionSendQueues.get(String(sessionId||""));
+  const notAccepted=(admission?.pendingMediaCount||0)+(admission?.pendingTextCount||0);
+  view.root.classList.toggle("hidden",sessionId!==activeSessionId||(!view.hasWork&&!notAccepted));
+}
 function serverSendQueueView(sessionId) {
   let view=serverSendQueueViews.get(sessionId);
   if (!view) {
-    const root=document.createElement("section");root.className="server-send-queue";root.setAttribute("aria-live","polite");
+    const root=document.createElement("section");root.className="server-send-queue";root.classList.toggle("hidden",true);root.setAttribute("aria-live","polite");
     const label=document.createElement("div"),list=document.createElement("ol"),cancel=document.createElement("button");
     cancel.type="button";cancel.textContent="إلغاء بقية الإرسال";
     root.append(label,list,cancel);document.body.appendChild(root);
-    view={root,label,list,cancel};serverSendQueueViews.set(sessionId,view);
+    view={root,label,list,cancel,hasWork:false};serverSendQueueViews.set(sessionId,view);
     cancel.onclick=async()=>{
       cancel.disabled=true;
       try {
@@ -1580,7 +1587,7 @@ function serverSendQueueView(sessionId) {
       finally{cancel.disabled=false;}
     };
   }
-  view.root.classList.toggle("hidden",sessionId!==activeSessionId);
+  syncServerSendQueueVisibility(sessionId);
   return view;
 }
 async function readServerSendQueue(sessionId) {
@@ -1631,16 +1638,19 @@ async function monitorServerSendQueue(sessionId) {
             serverSendQueueCallbacks.delete(jobId);callback(batch);
           }
         }
-        view.root.classList.toggle("hidden",items.length===0||sessionId!==activeSessionId);
+        view.hasWork=items.some(item=>item.state==='pending'||item.state==='sending'||
+          (!item.resolution_at&&(item.state==='unknown'||item.state==='failed')));
+        syncServerSendQueueVisibility(sessionId);
       } catch {errors++;view.label.textContent="تعذرت متابعة طابور السيرفر؛ الإرسال قد يكون مستمرًا. سنعيد المتابعة تلقائيًا.";}
       await new Promise(resolve=>setTimeout(resolve,Math.min(15000,1000*2**Math.min(errors,4))));
     }
   } catch(error) {console.error("Send queue status unavailable");}
-  finally {serverSendQueueMonitors.delete(sessionId);serverSendQueueViews.get(sessionId)?.root.classList.toggle("hidden",sessionId!==activeSessionId);}
+  finally {serverSendQueueMonitors.delete(sessionId);syncServerSendQueueVisibility(sessionId);}
 }
 function observeServerSendQueue(start,sessionId,pending=null) {
   if(start?.durable!==true)return false;
   if(start.notAccepted===true&&start.cancelled===true){pending?.fail?.('تم الإلغاء قبل قبول الإرسال');return true;}
+  const view=serverSendQueueView(sessionId);view.hasWork=true;syncServerSendQueueVisibility(sessionId);
   pending?.queued?.();
   if(pending)serverSendQueueCallbacks.set(start.jobId,items=>{
     if(items.every(item=>item.state==='sent'))pending.done();
@@ -4965,7 +4975,7 @@ function reapplyMessagingWindowCheckFromCache() {
 }
 
 async function loadMessages(sessionId) {
-  for(const [sid,view]of serverSendQueueViews)view.root.classList.toggle("hidden",sid!==sessionId);
+  for(const sid of serverSendQueueViews.keys())syncServerSendQueueVisibility(sid);
   monitorServerSendQueue(sessionId);
   const conv = conversationsData.find(c => c.session_id === sessionId);
 
