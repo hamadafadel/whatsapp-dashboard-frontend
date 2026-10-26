@@ -3396,11 +3396,14 @@ body.saved-media-open {
   position: fixed;
   bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   left: 12px;
-  width: min(340px, 90vw);
-  max-height: 40vh;
-  overflow: auto;
+  width: min(340px, calc(100vw - 16px));
+  max-height: 45vh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
   z-index: 21001;
-  padding: 12px;
+  padding: 0;
   border: 1px solid #25d366;
   border-radius: 10px;
   background: #202c33;
@@ -3409,8 +3412,39 @@ body.saved-media-open {
   font-size: 13px;
 }
 .server-send-queue.hidden { display: none; }
-.server-send-queue ol { padding-inline-start: 20px; }
-.server-send-queue button { margin-top: 6px; cursor: pointer; }
+.server-send-queue-header { display: flex; align-items: center; flex: 0 0 44px; min-height: 44px; }
+.server-send-queue-handle {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding-inline: 10px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.server-send-queue.is-dragging .server-send-queue-handle { cursor: grabbing; }
+.server-send-queue-content { min-height: 0; padding: 0 12px 12px; overflow-y: auto; overscroll-behavior: contain; }
+.server-send-queue-content[hidden] { display: none; }
+.server-send-queue ol { margin-block: 8px; padding-inline-start: 20px; }
+.server-send-queue button {
+  cursor: pointer;
+  min-height: 44px;
+  border: 1px solid #52646e;
+  border-radius: 7px;
+  background: #2a3942;
+  color: inherit;
+  padding: 6px 10px;
+}
+.server-send-queue-content button { margin-top: 6px; }
+.server-send-queue-toggle { flex: 0 0 auto; margin-inline-end: 4px; }
+.server-send-queue button:focus-visible, .server-send-queue-handle:focus-visible { outline: 2px solid #25d366; outline-offset: -3px; }
+.server-send-queue-summary { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.server-send-queue.is-minimized { width: min(260px, calc(100vw - 16px)); }
+.server-send-queue.is-minimized .server-send-queue-title { display: none; }
+.server-send-queue.is-minimized .server-send-queue-summary { display: block; }
 
 .media-progress-toast-retry-btn:focus-visible {
   outline: 2px solid #25d366;
