@@ -1291,6 +1291,7 @@ function createMediaProgressToast({
   toast.appendChild(track);
 
   let stopBtn = null;
+  let retryBtn = null;
 
   if (showStop) {
     stopBtn = document.createElement("button");
@@ -1316,6 +1317,27 @@ function createMediaProgressToast({
 
     setLabel(text) {
       labelText.textContent = text;
+    },
+    setRetryAction(label, action) {
+      if (!label) {
+        retryBtn?.remove();
+        retryBtn = null;
+        return;
+      }
+      if (!retryBtn) {
+        retryBtn = document.createElement("button");
+        retryBtn.type = "button";
+        retryBtn.className = "media-progress-toast-retry-btn";
+        toast.appendChild(retryBtn);
+      }
+      retryBtn.textContent = label;
+      retryBtn.onclick = action;
+    },
+    resetStopButton() {
+      if (stopBtn) {
+        stopBtn.disabled = false;
+        stopBtn.textContent = "إيقاف الإرسال";
+      }
     },
     update(percent) {
       const clamped = Math.max(0, Math.min(100, Math.round(percent || 0)));
@@ -1567,19 +1589,32 @@ async function sendSelectedSavedMediaItemsToCustomer(itemIds, sessionId) {
 // الداشبورد اتقفل)؛ الدالة دي بتتابعه بـ polling وتظهر توست فيه نسبة
 // التقدم وزرار إيقاف اختياري
 async function fetchSendMediaJobStatus(jobId) {
-  const response = await fetch(
-    `${API_BASE}/saved-media-send-jobs/${jobId}`,
-    { headers: getAuthHeaders() }
-  );
-
-  if (handleInvalidToken(response)) return null;
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || "تعذر متابعة حالة الإرسال");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(
+      `${API_BASE}/saved-media-send-jobs/${encodeURIComponent(jobId)}`,
+      { headers: getAuthHeaders(), cache: "no-store", signal: controller.signal }
+    );
+    if (handleInvalidToken(response) || !response.ok) {
+      const error = new Error("تعذر متابعة حالة الإرسال");
+      error.status = response.status;
+      error.retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+      throw error;
+    }
+    const data = await response.json();
+    const validCount = value => Number.isInteger(value) && value >= 0;
+    if (!data || data.id !== jobId || !validCount(data.total) ||
+        !validCount(data.sent) || !validCount(data.failed) ||
+        data.sent + data.failed > data.total ||
+        typeof data.done !== "boolean" || typeof data.cancelled !== "boolean" ||
+        (data.done && !data.cancelled && data.sent + data.failed !== data.total)) {
+      throw new Error("لم تصل حالة مؤكدة لمهمة الإرسال");
+    }
+    return data;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return data;
 }
 
 async function cancelSendMediaJob(jobId) {
@@ -1588,29 +1623,79 @@ async function cancelSendMediaJob(jobId) {
     { method: "POST", headers: getAuthHeaders() }
   );
 
-  return response.json().catch(() => ({}));
+  if (!response.ok) throw new Error("تعذر تأكيد إيقاف الإرسال");
+  return response.json();
 }
 
 async function trackSendMediaJob(jobId, total, sessionId) {
+  // Keep this job in its session queue. Never repeat the creation POST.
+  let failures = 0;
+  let lastStatus = null;
+  let wake = null;
+  const retryDelays = [1000, 2000, 4000, 8000, 15000];
+  const retryNow = () => {
+    failures = 0;
+    wake?.();
+  };
+  const wait = delay => new Promise(resolve => {
+    let timer;
+    const finish = () => {
+      clearTimeout(timer);
+      if (wake === finish) wake = null;
+      resolve();
+    };
+    wake = finish;
+    if (delay !== null) timer = setTimeout(finish, delay);
+  });
+  const uncertainLabel = () => lastStatus
+    ? `آخر تقدم مؤكد ${lastStatus.sent + lastStatus.failed} من ${lastStatus.total}`
+    : "لم تصل حالة مؤكدة بعد";
   const toast = createMediaProgressToast({
     label: `جاري الإرسال 0 من ${total}`,
     showStop: true,
-    onStop: () => {
-      cancelSendMediaJob(jobId).catch((err) => console.error(err));
+    onStop: async () => {
+      try {
+        await cancelSendMediaJob(jobId);
+        toast.setLabel("تم طلب الإيقاف؛ جارٍ التحقق من حالة المهمة");
+      } catch {
+        toast.resetStopButton();
+        toast.setLabel(`تعذر تأكيد الإيقاف؛ الإرسال قد يكون مستمرًا. ${uncertainLabel()}`);
+        toast.setRetryAction("استكمال متابعة نفس المهمة", retryNow);
+      }
+      retryNow();
     },
     sessionId
   });
 
+  window.addEventListener("online", retryNow);
   try {
     while (true) {
-      const status = await fetchSendMediaJobStatus(jobId);
-      if (!status) return null;
+      let status;
+      try {
+        status = await fetchSendMediaJobStatus(jobId);
+      } catch (error) {
+        failures++;
+        const paused = error.retryable === false || failures > retryDelays.length;
+        const detail = error.status === 404
+          ? "تعذر العثور على المهمة؛ لا يمكن تأكيد نتيجتها. لا تُعد إرسال الصور."
+          : error.status === 401 || error.status === 403
+            ? "تعذر الوصول إلى حالة المهمة؛ تحقق من تسجيل الدخول والصلاحية."
+            : "تعذر الاتصال لمتابعة المهمة؛ الإرسال قد يكون مستمرًا.";
+        toast.setLabel(`${detail} ${uncertainLabel()}. ${paused ? "استكمل المتابعة عند عودة الاتصال." : "ستتم إعادة المتابعة تلقائيًا."}`);
+        toast.setRetryAction("استكمال متابعة نفس المهمة", retryNow);
+        // A monitoring failure is not a send result: no alert and no POST retry.
+        await wait(paused ? null : retryDelays[failures - 1]);
+        continue;
+      }
+      failures = 0;
+      lastStatus = status;
+      toast.setRetryAction(null);
 
       const completed = status.sent + status.failed;
 
       toast.setLabel(
         status.cancelled
-          ? `تم إيقاف الإرسال (${completed} من ${status.total})`
+          ? `${status.done ? "تم إيقاف الإرسال" : "تم طلب الإيقاف"} (${completed} من ${status.total})`
           : `جاري الإرسال ${completed} من ${status.total}`
       );
 
@@ -1618,9 +1703,11 @@ async function trackSendMediaJob(jobId, total, sessionId) {
 
       if (status.done) return status;
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await wait(1000);
     }
   } finally {
+    window.removeEventListener("online", retryNow);
+    wake?.();
     toast.remove();
   }
 }

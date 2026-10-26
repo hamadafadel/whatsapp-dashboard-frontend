@@ -3380,6 +3380,23 @@ body.saved-media-open {
   cursor: pointer;
 }
 
+.media-progress-toast-retry-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #25d366;
+  border-radius: 8px;
+  background: #2a3942;
+  color: #e9edef;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.media-progress-toast-retry-btn:focus-visible {
+  outline: 2px solid #25d366;
+  outline-offset: 2px;
+}
+
 .saved-media-preview-sheet {
   position: relative;
   width: min(420px, 100%);
