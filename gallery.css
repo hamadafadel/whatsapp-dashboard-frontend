@@ -186,8 +186,29 @@ button {
 }
 
 .gallery-folder-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 88px;
+  overflow: hidden;
+  border-radius: 8px;
   font-size: 34px;
 }
+
+.gallery-folder-thumbnail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gallery-folder-icon.has-cover .gallery-folder-thumbnail { opacity: 1; }
+.gallery-folder-icon.has-cover .gallery-folder-fallback { visibility: hidden; }
 
 .gallery-folder-name {
   font-size: 13px;

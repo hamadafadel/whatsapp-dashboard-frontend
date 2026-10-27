@@ -74,6 +74,125 @@ function canWriteHere() {
   );
 }
 
+// Covers use only direct children from the existing browse API. No original
+// image downloads, recursive searches, new credentials or n8n actions.
+const galleryFolderCoverCache = new Map();
+const galleryFolderCoverPending = new Map();
+const galleryFolderCoverQueue = [];
+const galleryFolderCoverLoads = new WeakMap();
+let galleryFolderCoverObserver = null;
+let galleryFolderCoverActive = 0;
+let galleryFolderCoverEpoch = 0;
+let galleryFolderCoverAuthToken = authToken;
+function invalidateGalleryFolderCovers() {
+  galleryFolderCoverEpoch++;
+  galleryFolderCoverCache.clear();galleryFolderCoverPending.clear();
+  galleryFolderCoverAuthToken=authToken;
+}
+function syncGalleryFolderCoverAccount() {
+  if(galleryFolderCoverAuthToken!==authToken)invalidateGalleryFolderCovers();
+}
+function safeGalleryFolderThumbnail(value) {
+  try {const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.href:null;} catch {return null;}
+}
+function cacheGalleryFolderCover(folderId,items) {
+  syncGalleryFolderCoverAccount();
+  const firstImage=items.find(item=>String(item.mimeType||'').startsWith('image/'));
+  const thumbnailUrl=safeGalleryFolderThumbnail(firstImage?.thumbnailUrl);
+  galleryFolderCoverCache.delete(folderId);
+  galleryFolderCoverCache.set(folderId,{thumbnailUrl,expiresAt:Date.now()+(thumbnailUrl?300000:30000)});
+  while(galleryFolderCoverCache.size>200)galleryFolderCoverCache.delete(galleryFolderCoverCache.keys().next().value);
+  return thumbnailUrl;
+}
+function pumpGalleryFolderCovers() {
+  while(galleryFolderCoverActive<2&&galleryFolderCoverQueue.length) {
+    const job=galleryFolderCoverQueue.shift();
+    const valid=()=>job.epoch===galleryFolderCoverEpoch&&job.token===authToken;
+    if(!valid()||!job.consumers.some(needed=>needed())) {
+      if(galleryFolderCoverPending.get(job.folderId)===job)galleryFolderCoverPending.delete(job.folderId);
+      job.resolve(null);continue;
+    }
+    galleryFolderCoverActive++;
+    (async()=>{
+      let thumbnailUrl=null;
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+      try {
+        const cached=galleryFolderCoverCache.get(job.folderId);
+        if(cached&&cached.expiresAt>Date.now())thumbnailUrl=cached.thumbnailUrl;
+        else {
+          const response=await fetch(`${API_BASE}/gallery/browse/${encodeURIComponent(job.folderId)}`,{
+            headers:getAuthHeaders(),signal:controller.signal
+          });
+          const data=await response.json();
+          if(!response.ok||!Array.isArray(data.items))throw Error('COVER_UNAVAILABLE');
+          if(valid()) {
+            const fresh=galleryFolderCoverCache.get(job.folderId);
+            thumbnailUrl=fresh&&fresh.expiresAt>Date.now()?fresh.thumbnailUrl:cacheGalleryFolderCover(job.folderId,data.items);
+          }
+        }
+      } catch {
+        const fresh=galleryFolderCoverCache.get(job.folderId);
+        if(valid()&&(!fresh||fresh.expiresAt<=Date.now()))cacheGalleryFolderCover(job.folderId,[]);
+      } finally {
+        clearTimeout(timer);galleryFolderCoverActive--;
+        if(galleryFolderCoverPending.get(job.folderId)===job)galleryFolderCoverPending.delete(job.folderId);
+        job.resolve(valid()?thumbnailUrl:null);pumpGalleryFolderCovers();
+      }
+    })();
+  }
+}
+function getGalleryFolderCover(folderId,isNeeded=()=>true) {
+  syncGalleryFolderCoverAccount();
+  if(!authToken||!folderId)return Promise.resolve(null);
+  const cached=galleryFolderCoverCache.get(folderId);
+  if(cached&&cached.expiresAt>Date.now())return Promise.resolve(cached.thumbnailUrl);
+  const pending=galleryFolderCoverPending.get(folderId);
+  if(pending){pending.consumers.push(isNeeded);return pending.promise;}
+  let job;
+  const promise=new Promise(resolve=>{job={folderId,resolve,token:authToken,epoch:galleryFolderCoverEpoch,consumers:[isNeeded]};});
+  job.promise=promise;galleryFolderCoverPending.set(folderId,job);galleryFolderCoverQueue.push(job);
+  pumpGalleryFolderCovers();return promise;
+}
+function releaseGalleryFolderCovers(container) {
+  for(const icon of container.querySelectorAll('.gallery-folder-icon')) {
+    galleryFolderCoverObserver?.unobserve(icon);galleryFolderCoverLoads.delete(icon);
+  }
+}
+function createGalleryFolderIcon(folder) {
+  const icon=document.createElement('div'),fallback=document.createElement('span');
+  icon.className='gallery-folder-icon';fallback.className='gallery-folder-fallback';
+  fallback.textContent='📁';fallback.setAttribute('aria-hidden','true');icon.appendChild(fallback);
+  const load=async()=>{
+    if(!icon.isConnected)return;
+    syncGalleryFolderCoverAccount();
+    const epoch=galleryFolderCoverEpoch,token=authToken;
+    const thumbnailUrl=safeGalleryFolderThumbnail(folder.coverThumbnailUrl)||await getGalleryFolderCover(folder.id,()=>icon.isConnected);
+    if(!thumbnailUrl||!icon.isConnected||epoch!==galleryFolderCoverEpoch||token!==authToken)return;
+    const image=document.createElement('img');image.className='gallery-folder-thumbnail';
+    image.alt='';image.loading='lazy';image.decoding='async';image.draggable=false;
+    image.onload=()=>{
+      if(!icon.isConnected||epoch!==galleryFolderCoverEpoch||token!==authToken){image.remove();return;}
+      icon.classList.add('has-cover');
+    };
+    image.onerror=()=>{
+      image.remove();icon.classList.remove('has-cover');
+      if(epoch===galleryFolderCoverEpoch&&token===authToken&&galleryFolderCoverCache.get(folder.id)?.thumbnailUrl===thumbnailUrl)cacheGalleryFolderCover(folder.id,[]);
+    };
+    icon.appendChild(image);image.src=thumbnailUrl;
+  };
+  if(typeof IntersectionObserver==='function') {
+    if(!galleryFolderCoverObserver)galleryFolderCoverObserver=new IntersectionObserver(entries=>{
+      for(const entry of entries)if(entry.isIntersecting) {
+        const start=galleryFolderCoverLoads.get(entry.target);
+        galleryFolderCoverObserver.unobserve(entry.target);galleryFolderCoverLoads.delete(entry.target);
+        start?.().catch(()=>{});
+      }
+    },{rootMargin:'120px'});
+    galleryFolderCoverLoads.set(icon,load);galleryFolderCoverObserver.observe(icon);
+  } else setTimeout(()=>load().catch(()=>{}),0);
+  return icon;
+}
+
 function getAuthHeaders(extraHeaders = {}) {
   return { ...extraHeaders, Authorization: `Bearer ${authToken}` };
 }
@@ -105,6 +224,7 @@ function showApp() {
 function logout() {
   localStorage.removeItem("dashboard_token");
   authToken = "";
+  invalidateGalleryFolderCovers();
   showLogin();
 }
 
@@ -252,6 +372,7 @@ async function loadCurrent() {
   uploadFabEl.classList.toggle("hidden", !canWriteHere());
   newFolderFabEl.classList.toggle("hidden", !canWriteHere());
 
+  releaseGalleryFolderCovers(foldersGridEl);
   foldersGridEl.innerHTML = "";
   itemsGridEl.innerHTML = "";
   itemsToolbarEl.classList.add("hidden");
@@ -272,6 +393,7 @@ async function loadCurrent() {
 
     const folders = Array.isArray(data.folders) ? data.folders : [];
     const items = Array.isArray(data.items) ? data.items : [];
+    if(folderId)cacheGalleryFolderCover(folderId,items);
 
     if (!folderStack.length) {
       const ownFolder = folders.find((f) => f.isOwnUploadFolder);
@@ -320,6 +442,7 @@ async function reorderItemBefore(fileId, targetItem) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "فشل الترتيب");
 
+    invalidateGalleryFolderCovers();
     loadCurrent();
   } catch (error) {
     console.error(error);
@@ -342,6 +465,7 @@ async function moveNodeToFolder(nodeId, targetFolderId) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "فشل النقل");
 
+    invalidateGalleryFolderCovers();
     loadCurrent();
   } catch (error) {
     console.error(error);
@@ -566,6 +690,7 @@ async function loadPickerCurrent() {
     : "المعرض";
   pickerBackBtnEl.classList.toggle("hidden", pickerStack.length === 0);
 
+  releaseGalleryFolderCovers(pickerGridEl);
   pickerGridEl.innerHTML = "";
   pickerStatusEl.textContent = "جاري التحميل...";
 
@@ -579,6 +704,7 @@ async function loadPickerCurrent() {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "فشل تحميل الفولدرات");
+    if(folderId&&Array.isArray(data.items))cacheGalleryFolderCover(folderId,data.items);
 
     const folders = Array.isArray(data.folders) ? data.folders : [];
     pickerStatusEl.textContent = folders.length ? "" : "مفيش فولدرات هنا";
@@ -590,9 +716,7 @@ async function loadPickerCurrent() {
       const card = document.createElement("div");
       card.className = "gallery-folder-card";
 
-      const icon = document.createElement("div");
-      icon.className = "gallery-folder-icon";
-      icon.textContent = "📁";
+      const icon = createGalleryFolderIcon(folder);
 
       const name = document.createElement("div");
       name.className = "gallery-folder-name";
@@ -644,6 +768,7 @@ pickerConfirmBtnEl.addEventListener("click", async () => {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "فشل النقل");
+      invalidateGalleryFolderCovers();
     }
 
     closeFolderPicker();
@@ -665,6 +790,7 @@ moveSelectedBtnEl.addEventListener("click", () => {
 });
 
 function renderFolders(folders) {
+  releaseGalleryFolderCovers(foldersGridEl);
   foldersGridEl.innerHTML = "";
 
   folders.forEach((folder) => {
@@ -673,9 +799,7 @@ function renderFolders(folders) {
     card.draggable = canWriteHere();
     card.dataset.folderId = folder.id;
 
-    const icon = document.createElement("div");
-    icon.className = "gallery-folder-icon";
-    icon.textContent = "📁";
+    const icon = createGalleryFolderIcon(folder);
 
     const name = document.createElement("div");
     name.className = "gallery-folder-name";
@@ -835,6 +959,7 @@ function renderItems() {
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || "فشل الحذف");
 
+          invalidateGalleryFolderCovers();
           loadCurrent();
         } catch (error) {
           console.error(error);
@@ -1217,6 +1342,7 @@ async function uploadFiles(files) {
     alert(`تم رفع ${uploaded} ملف بنجاح`);
   }
 
+  if(uploaded)invalidateGalleryFolderCovers();
   loadCurrent();
 }
 
