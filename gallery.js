@@ -50,6 +50,54 @@ let selectMode = false;
 let selectedItemIds = new Set();
 let previewItem = null;
 let myUploadFolderId = null;
+let galleryOwnFolderResolved = false;
+let galleryBrowseRequest = 0;
+
+// One real history entry per folder; never insert synthetic parent entries.
+function restoreGalleryNavigation() {
+  const id = new URLSearchParams(window.location.hash.slice(1)).get("folder");
+  const validId = typeof id === "string" && /^[A-Za-z0-9_-]+$/.test(id);
+  const saved = window.history.state?.galleryNavigation;
+  const stack = Array.isArray(saved) && saved.every((f) =>
+    f && typeof f.id === "string" && /^[A-Za-z0-9_-]+$/.test(f.id) && typeof f.name === "string"
+  ) ? saved.map((f) => ({ id: f.id, name: f.name })) : [];
+  folderStack = validId
+    ? (stack.length && stack[stack.length - 1].id === id ? stack : [{ id, name: "فولدر" }])
+    : [];
+}
+
+function saveGalleryNavigation(replace = false) {
+  const url = new URL(window.location.href);
+  url.hash = currentFolderId() ? new URLSearchParams({ folder: currentFolderId() }).toString() : "";
+  const state = { ...window.history.state, galleryNavigation: folderStack.map((f) => ({ ...f })) };
+  window.history[replace ? "replaceState" : "pushState"](state, "", url);
+}
+
+function openGalleryFolder(folder) {
+  if (folder.id === currentFolderId()) return;
+  folderStack.push({ id: folder.id, name: folder.name || "فولدر" });
+  saveGalleryNavigation();
+  loadCurrent();
+}
+
+function goBackInGallery() {
+  if (!folderStack.length) return;
+  if (window.history.length > 1) {
+    window.history.back();
+  } else {
+    // A standalone direct link has no previous entry to return to.
+    folderStack = [];
+    saveGalleryNavigation(true);
+    if (authToken) loadCurrent();
+  }
+}
+
+window.addEventListener("popstate", () => {
+  restoreGalleryNavigation();
+  if (authToken) loadCurrent();
+});
+restoreGalleryNavigation();
+saveGalleryNavigation(true);
 
 function currentFolderId() {
   return folderStack.length ? folderStack[folderStack.length - 1].id : null;
@@ -222,6 +270,9 @@ function showApp() {
 }
 
 function logout() {
+  galleryBrowseRequest++;
+  myUploadFolderId = null;
+  galleryOwnFolderResolved = false;
   localStorage.removeItem("dashboard_token");
   authToken = "";
   invalidateGalleryFolderCovers();
@@ -348,7 +399,7 @@ async function login() {
     localStorage.setItem("dashboard_token", authToken);
 
     showApp();
-    folderStack = [];
+    restoreGalleryNavigation();
     loadCurrent();
   } catch (err) {
     console.error(err);
@@ -364,6 +415,8 @@ logoutBtnEl.addEventListener("click", logout);
 
 // ===== التصفح (فولدرات + ملفات في نفس الشاشة) =====
 async function loadCurrent() {
+  const request = ++galleryBrowseRequest;
+  const token = authToken;
   exitSelectMode();
 
   const folderId = currentFolderId();
@@ -380,15 +433,31 @@ async function loadCurrent() {
   currentItems = [];
 
   try {
+    // Deep links/reloads still need the existing root ownership metadata.
+    if (folderId && !galleryOwnFolderResolved && decodeAuthToken()?.role !== "admin") {
+      const rootRes = await fetch(`${API_BASE}/gallery/browse`, { headers: getAuthHeaders() });
+      if (request !== galleryBrowseRequest || token !== authToken) return;
+      if (handleInvalidToken(rootRes)) return;
+      const rootData = await rootRes.json();
+      if (request !== galleryBrowseRequest || token !== authToken) return;
+      if (!rootRes.ok) throw new Error(rootData.error || "فشل تحميل المحتوى");
+      myUploadFolderId = (rootData.folders || []).find((f) => f.isOwnUploadFolder)?.id || null;
+      galleryOwnFolderResolved = true;
+      uploadFabEl.classList.toggle("hidden", !canWriteHere());
+      newFolderFabEl.classList.toggle("hidden", !canWriteHere());
+    }
     const url = folderId
       ? `${API_BASE}/gallery/browse/${encodeURIComponent(folderId)}`
       : `${API_BASE}/gallery/browse`;
 
     const res = await fetch(url, { headers: getAuthHeaders() });
 
+    if (request !== galleryBrowseRequest || token !== authToken) return;
+
     if (handleInvalidToken(res)) return;
 
     const data = await res.json().catch(() => ({}));
+    if (request !== galleryBrowseRequest || token !== authToken) return;
     if (!res.ok) throw new Error(data.error || "فشل تحميل المحتوى");
 
     const folders = Array.isArray(data.folders) ? data.folders : [];
@@ -398,6 +467,7 @@ async function loadCurrent() {
     if (!folderStack.length) {
       const ownFolder = folders.find((f) => f.isOwnUploadFolder);
       myUploadFolderId = ownFolder ? ownFolder.id : null;
+      galleryOwnFolderResolved = true;
       uploadFabEl.classList.toggle("hidden", !canWriteHere());
       newFolderFabEl.classList.toggle("hidden", !canWriteHere());
     }
@@ -411,6 +481,7 @@ async function loadCurrent() {
     browseStatusEl.textContent =
       folders.length || items.length ? "" : "الفولدر فارغ";
   } catch (error) {
+    if (request !== galleryBrowseRequest || token !== authToken) return;
     console.error(error);
     browseStatusEl.textContent = error.message || "تعذر تحميل المحتوى";
   }
@@ -809,8 +880,7 @@ function renderFolders(folders) {
     card.appendChild(name);
 
     const openFolder = () => {
-      folderStack.push({ id: folder.id, name: folder.name || "فولدر" });
-      loadCurrent();
+      openGalleryFolder(folder);
     };
 
     enableCardGestures(card, {
@@ -1101,10 +1171,7 @@ selectModeBtnEl.addEventListener("click", () => {
 
 cancelSelectBtnEl.addEventListener("click", exitSelectMode);
 
-backBtnEl.addEventListener("click", () => {
-  folderStack.pop();
-  loadCurrent();
-});
+backBtnEl.addEventListener("click", goBackInGallery);
 
 // ===== التحميل =====
 async function downloadBlobFromZipEndpoint(payload, downloadName) {
