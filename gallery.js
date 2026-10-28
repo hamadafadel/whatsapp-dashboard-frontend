@@ -283,6 +283,9 @@ function showApp() {
 }
 
 function logout() {
+  cancelMobileDrag();
+  clearGalleryDropIndicator();
+  activeGalleryDragId = null;
   galleryBrowseRequest++;
   myUploadFolderId = null;
   galleryOwnFolderResolved = false;
@@ -429,6 +432,9 @@ logoutBtnEl.addEventListener("click", logout);
 
 // ===== التصفح (فولدرات + ملفات في نفس الشاشة) =====
 async function loadCurrent() {
+  cancelMobileDrag();
+  clearGalleryDropIndicator();
+  activeGalleryDragId = null;
   const request = ++galleryBrowseRequest;
   const token = authToken;
   hideGalleryPreview();
@@ -570,8 +576,105 @@ async function reorderItemBefore(fileId, targetItem, after = false) {
   const index = ids.indexOf(targetItem.id);
   if (index < 0) return;
   ids.splice(index + (after ? 1 : 0), 0, fileId);
+  if (ids.every((id, i) => id === currentItems[i].id)) return;
   await saveGallerySort("custom", ids);
 }
+
+let galleryDropIndicatorEl = null;
+let galleryDropTarget = null;
+let activeGalleryDragId = null;
+let gallerySuppressClickUntil = 0;
+
+function clearGalleryDropIndicator() {
+  galleryDropIndicatorEl?.remove();
+  galleryDropIndicatorEl = null;
+  galleryDropTarget = null;
+}
+
+function resolveGalleryDrop(nodeId, x, y) {
+  if (!canWriteHere() || selectMode || galleryOrderSaving || !galleryOrderState.available ||
+      galleryOrderState.mode !== "custom" || !currentItems.some((i) => i.id === nodeId)) return null;
+  const bounds = itemsGridEl.getBoundingClientRect();
+  if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return null;
+  const cards = Array.from(itemsGridEl.querySelectorAll(".gallery-item-card"));
+  const itemsById = new Map(currentItems.map((item) => [item.id, item]));
+  const rtl = window.getComputedStyle(itemsGridEl).direction === "rtl";
+  const first = cards[0]?.getBoundingClientRect();
+  const second = cards[1]?.getBoundingClientRect();
+  const vertical = !second || Math.abs(first.top - second.top) > 2;
+  let best = null;
+  for (const card of cards) {
+    const rect = card.getBoundingClientRect();
+    if (card.dataset.itemId === nodeId) {
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return null;
+      continue;
+    }
+    const item = itemsById.get(card.dataset.itemId);
+    if (!item) continue;
+    const dx = Math.max(rect.left - x, 0, x - rect.right);
+    const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+    const distance = dx * dx + dy * dy;
+    if (!best || distance < best.distance) best = { item, rect, distance };
+  }
+  if (!best) return null;
+  const { item, rect } = best;
+  const after = vertical ? y >= rect.top + rect.height / 2 :
+    rtl ? x < rect.left + rect.width / 2 : x >= rect.left + rect.width / 2;
+  return { nodeId, item, after, folderId: currentFolderId(), vertical, rect, rtl };
+}
+
+function updateGalleryDropIndicator(nodeId, x, y) {
+  const target = resolveGalleryDrop(nodeId, x, y);
+  if (!target) { clearGalleryDropIndicator(); return null; }
+  if (!galleryDropIndicatorEl) {
+    galleryDropIndicatorEl = document.createElement("div");
+    galleryDropIndicatorEl.className = "gallery-drop-indicator";
+    galleryDropIndicatorEl.setAttribute("aria-hidden", "true");
+    document.body.appendChild(galleryDropIndicatorEl);
+  }
+  const { rect, vertical, after, rtl } = target;
+  const style = galleryDropIndicatorEl.style;
+  // Fixed viewport coordinates also work across wrapped rows and page scroll.
+  style.left = `${vertical ? rect.left : ((after !== rtl) ? rect.right : rect.left) - 2}px`;
+  style.top = `${vertical ? (after ? rect.bottom : rect.top) - 2 : rect.top}px`;
+  style.width = `${vertical ? rect.width : 4}px`;
+  style.height = `${vertical ? 4 : rect.height}px`;
+  galleryDropTarget = target;
+  return target;
+}
+
+function commitGalleryDrop(nodeId) {
+  const target = galleryDropTarget;
+  clearGalleryDropIndicator();
+  if (target && target.nodeId === nodeId && target.folderId === currentFolderId()) {
+    reorderItemBefore(nodeId, target.item, target.after);
+  }
+}
+
+itemsGridEl.addEventListener("dragover", (event) => {
+  if (!event.dataTransfer.types.includes(DRAG_MIME) || !activeGalleryDragId) return;
+  const target = updateGalleryDropIndicator(activeGalleryDragId, event.clientX, event.clientY);
+  if (target) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+  }
+});
+itemsGridEl.addEventListener("dragleave", (event) => {
+  if (!itemsGridEl.contains(event.relatedTarget)) clearGalleryDropIndicator();
+});
+itemsGridEl.addEventListener("drop", (event) => {
+  if (!event.dataTransfer.types.includes(DRAG_MIME)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const nodeId = event.dataTransfer.getData(DRAG_MIME);
+  if (nodeId === activeGalleryDragId) {
+    updateGalleryDropIndicator(nodeId, event.clientX, event.clientY);
+    commitGalleryDrop(nodeId);
+  } else clearGalleryDropIndicator();
+  activeGalleryDragId = null;
+  gallerySuppressClickUntil = Date.now() + 500;
+});
 
 async function moveNodeToFolder(nodeId, targetFolderId) {
   if (!nodeId || nodeId === targetFolderId) return;
@@ -600,6 +703,8 @@ async function moveNodeToFolder(nodeId, targetFolderId) {
 let mobileDragState = null;
 
 function startMobileDrag(nodeId, sourceCard, x, y) {
+  clearGalleryDropIndicator();
+  activeGalleryDragId = currentItems.some((i) => i.id === nodeId) ? nodeId : null;
   const ghost = document.createElement("div");
   ghost.className = "gallery-drag-ghost";
   ghost.textContent = "📄";
@@ -626,9 +731,10 @@ function updateMobileDrag(x, y) {
   mobileDragState.ghost.style.display = "";
 
   const target = el?.closest(".gallery-folder-card, .gallery-item-card");
-  if (target && target.dataset.itemId !== mobileDragState.nodeId) {
+  if (target?.dataset.folderId) {
+    clearGalleryDropIndicator();
     target.classList.add("drop-target");
-  }
+  } else updateGalleryDropIndicator(mobileDragState.nodeId, x, y);
 }
 
 function endMobileDrag(x, y) {
@@ -639,6 +745,7 @@ function endMobileDrag(x, y) {
   ghost.style.display = "none";
   const el = document.elementFromPoint(x, y);
   const target = el?.closest(".gallery-folder-card, .gallery-item-card");
+  if (!target?.dataset.folderId) updateGalleryDropIndicator(nodeId, x, y);
 
   document
     .querySelectorAll(".dragging")
@@ -649,16 +756,17 @@ function endMobileDrag(x, y) {
 
   ghost.remove();
   mobileDragState = null;
+  activeGalleryDragId = null;
+  gallerySuppressClickUntil = Date.now() + 500;
 
   if (target?.dataset.folderId) {
+    clearGalleryDropIndicator();
     moveNodeToFolder(nodeId, target.dataset.folderId);
-  } else if (target?.dataset.itemId && target.dataset.itemId !== nodeId) {
-    const targetItem = currentItems.find((i) => i.id === target.dataset.itemId);
-    if (targetItem) reorderItemBefore(nodeId, targetItem, y > target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2);
-  }
+  } else commitGalleryDrop(nodeId);
 }
 
 function cancelMobileDrag() {
+  clearGalleryDropIndicator();
   if (!mobileDragState) return;
 
   mobileDragState.ghost.remove();
@@ -669,6 +777,8 @@ function cancelMobileDrag() {
     .querySelectorAll(".gallery-folder-card.drop-target")
     .forEach((c) => c.classList.remove("drop-target"));
   mobileDragState = null;
+  activeGalleryDragId = null;
+  gallerySuppressClickUntil = Date.now() + 500;
 }
 
 // بيربط كارت بلمسة طويلة (قايمة إجراءات) وسحب (نقل) وضغطة عادية (تاب)،
@@ -781,6 +891,7 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
       touchHandled = false;
       return;
     }
+    if (activeGalleryDragId || Date.now() < gallerySuppressClickUntil) return;
     onTap?.();
   });
 }
@@ -943,6 +1054,8 @@ function renderFolders(folders) {
     // نقل فولدر/ملف تاني جوه الفولدر ده بالسحب والإفلات (ديسكتوب)
     card.addEventListener("dragstart", (event) => {
       event.stopPropagation();
+      clearGalleryDropIndicator();
+      activeGalleryDragId = null;
       event.dataTransfer.setData(DRAG_MIME, folder.id);
       event.dataTransfer.effectAllowed = "move";
     });
@@ -984,34 +1097,18 @@ function renderItems() {
 
     card.addEventListener("dragstart", (event) => {
       event.stopPropagation();
+      clearGalleryDropIndicator();
+      activeGalleryDragId = item.id;
       event.dataTransfer.setData(DRAG_MIME, item.id);
       event.dataTransfer.effectAllowed = "move";
       card.classList.add("dragging");
     });
 
     card.addEventListener("dragend", () => {
+      clearGalleryDropIndicator();
+      activeGalleryDragId = null;
+      gallerySuppressClickUntil = Date.now() + 500;
       card.classList.remove("dragging");
-    });
-
-    // إفلات ملف تاني فوق الملف ده = رتّبه قبله (سحب وإفلات، ديسكتوب)
-    card.addEventListener("dragover", (event) => {
-      if (!canWriteHere() || !event.dataTransfer.types.includes(DRAG_MIME)) return;
-      event.preventDefault();
-      card.classList.add("drop-target");
-    });
-
-    card.addEventListener("dragleave", () => {
-      card.classList.remove("drop-target");
-    });
-
-    card.addEventListener("drop", (event) => {
-      if (!canWriteHere() || !event.dataTransfer.types.includes(DRAG_MIME)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      card.classList.remove("drop-target");
-
-      const draggedId = event.dataTransfer.getData(DRAG_MIME);
-      reorderItemBefore(draggedId, item, event.clientY > card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2);
     });
 
     card.addEventListener("contextmenu", (event) => {

@@ -343,6 +343,17 @@ button {
 
 .gallery-item-card.dragging {
   opacity: 0.4;
+  outline: 2px dashed var(--mehrab-purple);
+  outline-offset: -3px;
+}
+
+.gallery-drop-indicator {
+  position: fixed;
+  z-index: 10001;
+  pointer-events: none;
+  border-radius: 4px;
+  background: var(--mehrab-purple);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--mehrab-gold);
 }
 
 .gallery-item-card.drop-target {
