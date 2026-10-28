@@ -61,6 +61,8 @@ let galleryBrowseRequest = 0;
 let galleryOrderState = { mode: "custom", revision: 0, available: false };
 let galleryOrderSaving = false;
 let galleryPreviewClosing = false;
+let gallerySelectionClosing = null;
+const GALLERY_LONG_PRESS_MS = 700;
 
 // One real history entry per folder; never insert synthetic parent entries.
 function restoreGalleryNavigation() {
@@ -75,14 +77,16 @@ function restoreGalleryNavigation() {
     : [];
 }
 
-function saveGalleryNavigation(replace = false, preview = null) {
+function saveGalleryNavigation(replace = false, preview = null, selection = null) {
   const url = new URL(window.location.href);
   url.hash = currentFolderId() ? new URLSearchParams({ folder: currentFolderId() }).toString() : "";
-  const state = { ...window.history.state, galleryNavigation: folderStack.map((f) => ({ ...f })), galleryPreview: preview };
+  const state = { ...window.history.state, galleryNavigation: folderStack.map((f) => ({ ...f })),
+    galleryPreview: preview, gallerySelection: selection };
   window.history[replace ? "replaceState" : "pushState"](state, "", url);
 }
 
 function openGalleryFolder(folder) {
+  if (gallerySelectionClosing) return;
   if (folder.id === currentFolderId()) return;
   folderStack.push({ id: folder.id, name: folder.name || "فولدر" });
   saveGalleryNavigation();
@@ -90,6 +94,9 @@ function openGalleryFolder(folder) {
 }
 
 function goBackInGallery() {
+  if (gallerySelectionClosing) return;
+  if (previewItem || window.history.state?.galleryPreview) { closePreview(); return; }
+  if (selectedItemIds.size) { exitSelectMode(); return; }
   if (!folderStack.length) return;
   if (window.history.length > 1) {
     window.history.back();
@@ -103,16 +110,21 @@ function goBackInGallery() {
 
 window.addEventListener("popstate", () => {
   galleryPreviewClosing = false;
+  const selectionClosing = gallerySelectionClosing;
+  gallerySelectionClosing = null;
   const previousFolder = currentFolderId();
   hideGalleryPreview();
   restoreGalleryNavigation();
   if (authToken) {
     if (previousFolder !== currentFolderId()) loadCurrent();
-    else restoreGalleryPreview();
+    else {
+      restoreGallerySelection(Boolean(selectionClosing?.keepMode));
+      restoreGalleryPreview();
+    }
   }
 });
 restoreGalleryNavigation();
-saveGalleryNavigation(true, window.history.state?.galleryPreview || null);
+saveGalleryNavigation(true, window.history.state?.galleryPreview || null, window.history.state?.gallerySelection || null);
 
 function currentFolderId() {
   return folderStack.length ? folderStack[folderStack.length - 1].id : null;
@@ -443,7 +455,7 @@ async function loadCurrent() {
   sortMenuEl.classList.add("hidden");
   sortBtnEl.setAttribute("aria-expanded", "false");
   sortBtnEl.disabled = true;
-  exitSelectMode();
+  exitSelectMode({ history: false });
 
   const folderId = currentFolderId();
   headerTitleEl.textContent = currentFolderName();
@@ -505,6 +517,7 @@ async function loadCurrent() {
 
     currentItems = items;
     renderItems();
+    restoreGallerySelection();
     restoreGalleryPreview();
     itemsToolbarEl.classList.toggle("hidden", !items.length);
 
@@ -647,7 +660,7 @@ function tickGalleryDragAutoScroll(time) {
   const edge = Math.min(100, (area.bottom - area.top) / 3);
   const up = Math.max(0, (area.top + edge - state.y) / edge);
   const down = Math.max(0, (state.y - area.bottom + edge) / edge);
-  const speed = 1200 * (down * down - up * up);
+  const speed = 600 * (down * down - up * up);
   const dt = state.lastTime == null ? 16 : Math.min(48, Math.max(1, time - state.lastTime));
   state.lastTime = time;
   const before = state.target.scrollTop;
@@ -983,7 +996,7 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
         updateMobileDrag(lastX, lastY);
       }
       if (navigator.vibrate) navigator.vibrate(15);
-    }, customTouch || onHoldSelect ? 400 : 500);
+    }, GALLERY_LONG_PRESS_MS);
   }, { passive: true });
 
   card.addEventListener("touchmove", (event) => {
@@ -1146,7 +1159,7 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
       mouseSelectionUndo = onHoldSelect();
       // Keep this source eligible until release or native dragstart decides.
       if (canDrag) card.draggable = true;
-    }, 400);
+    }, GALLERY_LONG_PRESS_MS);
     window.addEventListener("mousemove", moveMouseHold);
     window.addEventListener("mouseup", finishMouseHold);
     window.addEventListener("blur", cancelMouseHold);
@@ -1544,6 +1557,7 @@ function showItemActionMenu(item, x, y) {
 }
 
 function toggleItemSelection(itemId) {
+  if (gallerySelectionClosing) return;
   if (!currentItems.some((item) => item.id === itemId)) return;
   if (selectedItemIds.has(itemId)) {
     selectedItemIds.delete(itemId);
@@ -1551,6 +1565,35 @@ function toggleItemSelection(itemId) {
     selectedItemIds.add(itemId);
   }
 
+  updateGallerySelectionUI();
+  syncGallerySelectionHistory();
+}
+
+function syncGallerySelectionHistory() {
+  if (gallerySelectionClosing) return;
+  const state = window.history.state || {};
+  const saved = state.gallerySelection;
+  if (selectMode && selectedItemIds.size) {
+    const next = { ...state, gallerySelection: { folderId: currentFolderId(), ids: [...selectedItemIds] } };
+    window.history[saved?.folderId === currentFolderId() ? "replaceState" : "pushState"](next, "", window.location.href);
+  } else if (saved?.folderId === currentFolderId()) {
+    if (state.galleryPreview) {
+      // Never pop a viewer entry just to clear its selection metadata.
+      window.history.replaceState({ ...state, gallerySelection: null }, "", window.location.href);
+    } else {
+      gallerySelectionClosing = { keepMode: selectMode };
+      window.history.back();
+    }
+  }
+}
+
+function restoreGallerySelection(keepEmptyMode = false) {
+  const saved = window.history.state?.gallerySelection;
+  const allowed = new Set(currentItems.map((item) => item.id));
+  const ids = saved?.folderId === currentFolderId() && Array.isArray(saved.ids)
+    ? saved.ids.filter((id) => typeof id === "string" && allowed.has(id)) : [];
+  selectedItemIds = new Set(ids);
+  selectMode = Boolean(ids.length || keepEmptyMode);
   updateGallerySelectionUI();
 }
 
@@ -1572,20 +1615,24 @@ function updateGallerySelectionUI() {
 }
 
 function beginGalleryHoldSelection(itemId) {
+  if (gallerySelectionClosing) return () => {};
   const previousMode = selectMode;
   const previousIds = new Set(selectedItemIds);
   selectMode = true;
   selectedItemIds.add(itemId);
   updateGallerySelectionUI();
+  syncGallerySelectionHistory();
   // Only the pending gesture is reversible; already confirmed selection is kept.
   return () => {
     selectMode = previousMode;
     selectedItemIds = previousIds;
     updateGallerySelectionUI();
+    syncGallerySelectionHistory();
   };
 }
 
 function enterSelectMode() {
+  if (gallerySelectionClosing) return;
   if (!currentItems.length) return;
 
   selectMode = true;
@@ -1593,11 +1640,12 @@ function enterSelectMode() {
   updateGallerySelectionUI();
 }
 
-function exitSelectMode() {
+function exitSelectMode(options = {}) {
   selectMode = false;
   selectedItemIds.clear();
 
   updateGallerySelectionUI();
+  if (options.history !== false) syncGallerySelectionHistory();
 }
 
 selectModeBtnEl.addEventListener("click", () => {
@@ -1693,6 +1741,7 @@ function restoreGalleryPreview() {
 }
 
 function openPreview(item, fromHistory = false) {
+  if (gallerySelectionClosing && !fromHistory) return;
   if (galleryPreviewClosing && !fromHistory) return;
   if (!fromHistory && previewItem?.id !== item.id) {
     const state = { ...window.history.state, galleryPreview: { id: item.id, folderId: currentFolderId() } };
