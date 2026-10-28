@@ -1227,6 +1227,7 @@ previewOverlayEl.addEventListener("click", (event) => {
   if (event.target === previewOverlayEl) closePreview();
 });
 
+let galleryDownloadRequestSequence = 0;
 async function downloadSingleItem(item, onDone) {
   const isVideo =
     item.isVideo || String(item.mimeType || "").startsWith("video/");
@@ -1253,10 +1254,12 @@ async function downloadSingleItem(item, onDone) {
     // لازم نجيب الملف كـ blob ونحمّله بلينك محلي (blob:) بدل ما نحط لينك
     // API الأصلي مباشرة على <a download> — سمة download بيتجاهلها المتصفح
     // لو اللينك من دومين مختلف (وده حالتنا هنا)
-    const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/download?token=${encodeURIComponent(authToken)}`;
+    // Explicit downloads bypass even responses cached before this release.
+    const fresh = `${Date.now()}-${++galleryDownloadRequestSequence}`;
+    const fileUrl = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/download?token=${encodeURIComponent(authToken)}&fresh=${fresh}`;
     const blob = await fetchBlobWithProgress(
       fileUrl,
-      {},
+      { cache: "no-store" },
       (percent) => updateProgressToast("جاري التحضير...", percent)
     );
 
