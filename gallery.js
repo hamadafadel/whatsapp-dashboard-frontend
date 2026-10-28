@@ -790,12 +790,22 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
   let longPressFired = false;
   let dragging = false;
   let moved = false;
-  let touchHandled = false;
+  let touchActive = false;
+  let customTouch = false;
+  let touchId = null;
+  let lastX = 0;
+  let lastY = 0;
+  let startScrollX = 0;
+  let startScrollY = 0;
+  let suppressClickUntil = 0;
+  let nativeDragNodes = [];
 
-  // شاشات اللمس الحقيقية بتسجل رعشة إصباع طبيعية حتى لو الضغطة "ساكنة"
-  // فعليًا — 10px كانت حساسة جدًا وكانت بتلغي تاب حقيقي وتعتبره سكرول.
-  // 24px بتفرّق صح بين رعشة عادية وسكرول حقيقي
+  // Preserve the browsing tap tolerance; Custom mode cancels its drag timer
+  // sooner (10px) so an ordinary scroll never becomes a delayed drag.
   const TAP_MOVE_THRESHOLD = 24;
+  const canReorderTouch = () => draggableId && canWriteHere() && !selectMode &&
+    !galleryOrderSaving && galleryOrderState.available && galleryOrderState.mode === "custom" &&
+    currentItems.some((item) => item.id === draggableId);
 
   const clearLongPressTimer = () => {
     if (longPressTimer) {
@@ -804,46 +814,88 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
     }
   };
 
+  const restoreNativeDrag = () => {
+    for (const { node, draggable } of nativeDragNodes) node.draggable = draggable;
+    nativeDragNodes = [];
+  };
+
+  const cancelTouch = () => {
+    clearLongPressTimer();
+    restoreNativeDrag();
+    if (dragging) cancelMobileDrag();
+    dragging = false;
+    touchActive = false;
+    moved = true;
+    suppressClickUntil = Date.now() + 800;
+  };
+
   card.addEventListener("touchstart", (event) => {
-    if (event.touches.length !== 1) return;
+    if (event.touches.length !== 1) { cancelTouch(); return; }
+    // Leave the existing delete/action buttons to their own click handlers.
+    if (event.target?.closest("button, a, input, select, textarea")) return;
 
     const t = event.touches[0];
-    startX = t.clientX;
-    startY = t.clientY;
+    clearLongPressTimer();
+    startX = lastX = t.clientX;
+    startY = lastY = t.clientY;
+    startScrollX = window.scrollX;
+    startScrollY = window.scrollY;
+    touchId = t.identifier;
+    touchActive = true;
+    customTouch = Boolean(canReorderTouch());
+    restoreNativeDrag();
+    if (customTouch) {
+      nativeDragNodes = [card, ...card.querySelectorAll("img")].map((node) => ({ node, draggable: node.draggable }));
+      for (const { node } of nativeDragNodes) node.draggable = false;
+    }
     longPressFired = false;
     dragging = false;
     moved = false;
-    touchHandled = true;
-
-    // بعد نص ثانية إمساك من غير ما الإصباع يتحرك: نهز الموبايل كإشارة، وبعدين
-    // بنقرر في touchend لو هيفتح قايمة (سايبه ساكن) أو هيبدأ سحب (لو اتحرك)
     longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      if (!touchActive || moved) return;
+      if (card.isConnected === false) { cancelTouch(); return; }
+      if (customTouch && (!canReorderTouch() || window.scrollX !== startScrollX || window.scrollY !== startScrollY)) {
+        cancelTouch();
+        return;
+      }
       longPressFired = true;
+      if (customTouch) {
+        dragging = true;
+        suppressClickUntil = Date.now() + 800;
+        startMobileDrag(draggableId, card, lastX, lastY);
+        updateMobileDrag(lastX, lastY);
+      }
       if (navigator.vibrate) navigator.vibrate(15);
-    }, 500);
+    }, customTouch ? 400 : 500);
   }, { passive: true });
 
   card.addEventListener("touchmove", (event) => {
+    if (!touchActive) return;
+    if (event.touches.length !== 1 || event.touches[0].identifier !== touchId) { cancelTouch(); return; }
     const t = event.touches[0];
+    lastX = t.clientX;
+    lastY = t.clientY;
     const dist = Math.hypot(t.clientX - startX, t.clientY - startY);
 
     if (!longPressFired) {
       // قبل ما الضغطة الطويلة تحصل، أي تحريك واضح يبقى سكرول عادي للصفحة —
       // نلغي مؤقت الضغطة الطويلة ونمنع onTap يشتغل بعدين في touchend،
       // ونسيب المتصفح يسكرول عادي (من غير preventDefault)
-      if (dist > TAP_MOVE_THRESHOLD) {
+      if (dist > (customTouch ? 10 : TAP_MOVE_THRESHOLD)) {
         moved = true;
         clearLongPressTimer();
       }
       return;
     }
 
-    if (!dragging && dist > 6 && draggableId && canWriteHere()) {
+    if (!dragging && !customTouch && dist > 6 && draggableId && canWriteHere()) {
       dragging = true;
       startMobileDrag(draggableId, card, t.clientX, t.clientY);
     }
 
     if (dragging) {
+      if (customTouch && !canReorderTouch()) { cancelTouch(); return; }
       updateMobileDrag(t.clientX, t.clientY);
     }
 
@@ -851,10 +903,17 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
   }, { passive: false });
 
   card.addEventListener("touchend", (event) => {
+    if (!touchActive) return;
+    if (card.isConnected === false) { cancelTouch(); return; }
+    const t = Array.from(event.changedTouches).find((touch) => touch.identifier === touchId);
+    if (!t || event.touches.length) { cancelTouch(); return; }
     clearLongPressTimer();
+    touchActive = false;
+    restoreNativeDrag();
+    suppressClickUntil = Date.now() + 800;
 
     if (dragging) {
-      const t = event.changedTouches[0];
+      if (event.cancelable) event.preventDefault();
       endMobileDrag(t.clientX, t.clientY);
       dragging = false;
       return;
@@ -862,6 +921,7 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
 
     // اتحرك أكتر من عتبة الرعشة الطبيعية من غير ما نوصل لمرحلة السحب = سكرول حقيقي، مش تاب
     if (moved) return;
+    if (event.cancelable) event.preventDefault();
 
     if (longPressFired) {
       // إمساك ساكن وسايبه من غير ما يسحب = افتح القايمة لو فيه واحدة،
@@ -875,20 +935,24 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
     }
 
     onTap?.();
-  });
+  }, { passive: false });
 
-  card.addEventListener("touchcancel", () => {
-    clearLongPressTimer();
-    if (dragging) {
-      cancelMobileDrag();
-      dragging = false;
+  card.addEventListener("touchcancel", cancelTouch);
+
+  // Prevent the browser's native image drag from stealing a held touch. Mouse
+  // drag handlers are unchanged; touch uses only the handlers above.
+  card.addEventListener("dragstart", (event) => {
+    if (customTouch && (touchActive || Date.now() < suppressClickUntil)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
     }
-  });
+  }, true);
 
   // الديسكتوب: نفس منطق الرفع القديم، مع تجاهل الـ click الاصطناعي بعد اللمس
-  card.addEventListener("click", () => {
-    if (touchHandled) {
-      touchHandled = false;
+  card.addEventListener("click", (event) => {
+    if (touchActive || dragging || Date.now() < suppressClickUntil) {
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
     if (activeGalleryDragId || Date.now() < gallerySuppressClickUntil) return;
