@@ -22,6 +22,8 @@ const downloadFolderBtnEl = document.getElementById("galleryDownloadFolderBtn");
 const downloadSelectedBtnEl = document.getElementById("galleryDownloadSelectedBtn");
 const moveSelectedBtnEl = document.getElementById("galleryMoveSelectedBtn");
 const cancelSelectBtnEl = document.getElementById("galleryCancelSelectBtn");
+const selectionBarEl = document.getElementById("gallerySelectionBar");
+const selectionCountEl = document.getElementById("gallerySelectionCount");
 const sortBtnEl = document.getElementById("gallerySortBtn");
 const sortMenuEl = document.getElementById("gallerySortMenu");
 const sortAlphabeticalEl = document.getElementById("gallerySortAlphabetical");
@@ -584,6 +586,84 @@ let galleryDropIndicatorEl = null;
 let galleryDropTarget = null;
 let activeGalleryDragId = null;
 let gallerySuppressClickUntil = 0;
+let galleryDragScroll = null;
+
+function stopGalleryDragAutoScroll() {
+  if (galleryDragScroll?.frame != null) window.cancelAnimationFrame(galleryDragScroll.frame);
+  galleryDragScroll = null;
+}
+
+function galleryDragScrollTarget() {
+  const root = document.scrollingElement || document.documentElement;
+  for (let el = itemsGridEl.parentElement; el && el !== root && el !== document.body; el = el.parentElement) {
+    if (/(auto|scroll)/.test(window.getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight) return el;
+  }
+  return root;
+}
+
+function galleryDragScrollArea(target) {
+  const viewport = window.visualViewport;
+  const top = viewport?.offsetTop || 0;
+  const height = viewport?.height || window.innerHeight || 0;
+  const width = viewport?.width || window.innerWidth || 0;
+  const header = document.querySelector?.(".gallery-header")?.getBoundingClientRect();
+  const grid = itemsGridEl.getBoundingClientRect();
+  const root = document.scrollingElement || document.documentElement;
+  const rect = target === root ? { top, bottom: top + height } : target.getBoundingClientRect();
+  return { top: Math.max(top, rect.top, header?.bottom || 0), bottom: Math.min(top + height, rect.bottom),
+    left: Math.max(viewport?.offsetLeft || 0, grid.left), right: Math.min((viewport?.offsetLeft || 0) + width, grid.right) };
+}
+
+function trackGalleryDragAutoScroll(nodeId, x, y, mobile) {
+  if (!nodeId || activeGalleryDragId !== nodeId || selectMode || galleryOrderSaving ||
+      !canWriteHere() || galleryOrderState.mode !== "custom" || !galleryOrderState.available ||
+      !(window.visualViewport?.height || window.innerHeight)) {
+    stopGalleryDragAutoScroll();
+    return;
+  }
+  if (!galleryDragScroll || galleryDragScroll.nodeId !== nodeId) {
+    stopGalleryDragAutoScroll();
+    galleryDragScroll = { nodeId, folderId: currentFolderId(), target: galleryDragScrollTarget(), frame: null, lastTime: null };
+  }
+  Object.assign(galleryDragScroll, { x, y, mobile });
+  if (galleryDragScroll.frame == null) galleryDragScroll.frame = window.requestAnimationFrame(tickGalleryDragAutoScroll);
+}
+
+function tickGalleryDragAutoScroll(time) {
+  const state = galleryDragScroll;
+  if (!state) return;
+  state.frame = null;
+  if (activeGalleryDragId !== state.nodeId || state.folderId !== currentFolderId() ||
+      selectMode || galleryOrderSaving || !canWriteHere() || galleryOrderState.mode !== "custom") {
+    stopGalleryDragAutoScroll();
+    clearGalleryDropIndicator();
+    return;
+  }
+  const area = galleryDragScrollArea(state.target);
+  if (state.x < area.left || state.x > area.right || state.y < area.top || state.y > area.bottom || area.bottom <= area.top) {
+    stopGalleryDragAutoScroll();
+    return;
+  }
+  const edge = Math.min(100, (area.bottom - area.top) / 3);
+  const up = Math.max(0, (area.top + edge - state.y) / edge);
+  const down = Math.max(0, (state.y - area.bottom + edge) / edge);
+  const speed = 1200 * (down * down - up * up);
+  const dt = state.lastTime == null ? 16 : Math.min(48, Math.max(1, time - state.lastTime));
+  state.lastTime = time;
+  const before = state.target.scrollTop;
+  const limit = Math.max(0, state.target.scrollHeight - state.target.clientHeight);
+  const grid = itemsGridEl.getBoundingClientRect();
+  // Stop at the first/last image, not in the page's blank outer padding.
+  const low = Math.min(before, Math.max(0, before + grid.top - state.y));
+  const high = Math.max(before, Math.min(limit, before + grid.bottom - state.y));
+  state.target.scrollTop = Math.max(low, Math.min(high, before + speed * dt / 1000));
+  if (state.mobile && mobileDragState?.nodeId === state.nodeId) updateMobileDrag(state.x, state.y, false);
+  else updateGalleryDropIndicator(state.nodeId, state.x, state.y);
+  // No background loop in the centre or at an already reached boundary.
+  if (galleryDragScroll === state && speed && state.target.scrollTop !== before) {
+    state.frame = window.requestAnimationFrame(tickGalleryDragAutoScroll);
+  } else if (galleryDragScroll === state) state.lastTime = null;
+}
 
 function clearGalleryDropIndicator() {
   galleryDropIndicatorEl?.remove();
@@ -595,6 +675,10 @@ function resolveGalleryDrop(nodeId, x, y) {
   if (!canWriteHere() || selectMode || galleryOrderSaving || !galleryOrderState.available ||
       galleryOrderState.mode !== "custom" || !currentItems.some((i) => i.id === nodeId)) return null;
   const bounds = itemsGridEl.getBoundingClientRect();
+  const viewTop = window.visualViewport?.offsetTop || 0;
+  const viewBottom = viewTop + (window.visualViewport?.height || window.innerHeight || Infinity);
+  const headerBottom = document.querySelector?.(".gallery-header")?.getBoundingClientRect().bottom || 0;
+  if (y < Math.max(viewTop, headerBottom) || y > viewBottom) return null;
   if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return null;
   const cards = Array.from(itemsGridEl.querySelectorAll(".gallery-item-card"));
   const itemsById = new Map(currentItems.map((item) => [item.id, item]));
@@ -653,6 +737,7 @@ function commitGalleryDrop(nodeId) {
 
 itemsGridEl.addEventListener("dragover", (event) => {
   if (!event.dataTransfer.types.includes(DRAG_MIME) || !activeGalleryDragId) return;
+  trackGalleryDragAutoScroll(activeGalleryDragId, event.clientX, event.clientY, false);
   const target = updateGalleryDropIndicator(activeGalleryDragId, event.clientX, event.clientY);
   if (target) {
     event.preventDefault();
@@ -667,6 +752,7 @@ itemsGridEl.addEventListener("drop", (event) => {
   if (!event.dataTransfer.types.includes(DRAG_MIME)) return;
   event.preventDefault();
   event.stopPropagation();
+  stopGalleryDragAutoScroll();
   const nodeId = event.dataTransfer.getData(DRAG_MIME);
   if (nodeId === activeGalleryDragId) {
     updateGalleryDropIndicator(nodeId, event.clientX, event.clientY);
@@ -674,6 +760,22 @@ itemsGridEl.addEventListener("drop", (event) => {
   } else clearGalleryDropIndicator();
   activeGalleryDragId = null;
   gallerySuppressClickUntil = Date.now() + 500;
+});
+document.addEventListener("dragover", (event) => {
+  if (activeGalleryDragId && event.dataTransfer?.types.includes(DRAG_MIME)) {
+    trackGalleryDragAutoScroll(activeGalleryDragId, event.clientX, event.clientY, false);
+  }
+});
+document.addEventListener("drop", () => {
+  stopGalleryDragAutoScroll();
+  clearGalleryDropIndicator();
+  activeGalleryDragId = null;
+  document.querySelectorAll(".dragging").forEach((card) => card.classList.remove("dragging"));
+});
+window.addEventListener("blur", () => {
+  cancelMobileDrag();
+  activeGalleryDragId = null;
+  document.querySelectorAll(".dragging").forEach((card) => card.classList.remove("dragging"));
 });
 
 async function moveNodeToFolder(nodeId, targetFolderId) {
@@ -716,8 +818,9 @@ function startMobileDrag(nodeId, sourceCard, x, y) {
   mobileDragState = { nodeId, ghost };
 }
 
-function updateMobileDrag(x, y) {
+function updateMobileDrag(x, y, trackScroll = true) {
   if (!mobileDragState) return;
+  if (trackScroll) trackGalleryDragAutoScroll(mobileDragState.nodeId, x, y, true);
 
   mobileDragState.ghost.style.left = `${x}px`;
   mobileDragState.ghost.style.top = `${y}px`;
@@ -738,6 +841,7 @@ function updateMobileDrag(x, y) {
 }
 
 function endMobileDrag(x, y) {
+  stopGalleryDragAutoScroll();
   if (!mobileDragState) return;
 
   const { nodeId, ghost } = mobileDragState;
@@ -766,6 +870,7 @@ function endMobileDrag(x, y) {
 }
 
 function cancelMobileDrag() {
+  stopGalleryDragAutoScroll();
   clearGalleryDropIndicator();
   if (!mobileDragState) return;
 
@@ -783,7 +888,7 @@ function cancelMobileDrag() {
 
 // بيربط كارت بلمسة طويلة (قايمة إجراءات) وسحب (نقل) وضغطة عادية (تاب)،
 // مع تفادي تكرار حدث الـ click الاصطناعي اللي المتصفح بيولده بعد اللمس
-function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
+function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableId }) {
   let startX = 0;
   let startY = 0;
   let longPressTimer = null;
@@ -799,11 +904,13 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
   let startScrollY = 0;
   let suppressClickUntil = 0;
   let nativeDragNodes = [];
+  let holdSelectionUndo = null;
+  let lastInputWasTouch = false;
 
   // Preserve the browsing tap tolerance; Custom mode cancels its drag timer
   // sooner (10px) so an ordinary scroll never becomes a delayed drag.
   const TAP_MOVE_THRESHOLD = 24;
-  const canReorderTouch = () => draggableId && canWriteHere() && !selectMode &&
+  const canReorderTouch = () => draggableId && canWriteHere() && (!selectMode || onHoldSelect) &&
     !galleryOrderSaving && galleryOrderState.available && galleryOrderState.mode === "custom" &&
     currentItems.some((item) => item.id === draggableId);
 
@@ -817,10 +924,14 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
   const restoreNativeDrag = () => {
     for (const { node, draggable } of nativeDragNodes) node.draggable = draggable;
     nativeDragNodes = [];
+    if (onHoldSelect) card.draggable = canWriteHere() && !selectMode;
   };
 
   const cancelTouch = () => {
     clearLongPressTimer();
+    window.removeEventListener("blur", cancelTouch);
+    holdSelectionUndo?.();
+    holdSelectionUndo = null;
     restoreNativeDrag();
     if (dragging) cancelMobileDrag();
     dragging = false;
@@ -835,6 +946,7 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
     if (event.target?.closest("button, a, input, select, textarea")) return;
 
     const t = event.touches[0];
+    lastInputWasTouch = true;
     clearLongPressTimer();
     startX = lastX = t.clientX;
     startY = lastY = t.clientY;
@@ -842,9 +954,10 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
     startScrollY = window.scrollY;
     touchId = t.identifier;
     touchActive = true;
+    window.addEventListener("blur", cancelTouch);
     customTouch = Boolean(canReorderTouch());
     restoreNativeDrag();
-    if (customTouch) {
+    if (customTouch || onHoldSelect) {
       nativeDragNodes = [card, ...card.querySelectorAll("img")].map((node) => ({ node, draggable: node.draggable }));
       for (const { node } of nativeDragNodes) node.draggable = false;
     }
@@ -855,19 +968,22 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
       longPressTimer = null;
       if (!touchActive || moved) return;
       if (card.isConnected === false) { cancelTouch(); return; }
-      if (customTouch && (!canReorderTouch() || window.scrollX !== startScrollX || window.scrollY !== startScrollY)) {
+      if ((customTouch && !canReorderTouch()) ||
+          ((customTouch || onHoldSelect) && (window.scrollX !== startScrollX || window.scrollY !== startScrollY))) {
         cancelTouch();
         return;
       }
       longPressFired = true;
-      if (customTouch) {
+      if (onHoldSelect) {
+        holdSelectionUndo = onHoldSelect();
+      } else if (customTouch) {
         dragging = true;
         suppressClickUntil = Date.now() + 800;
         startMobileDrag(draggableId, card, lastX, lastY);
         updateMobileDrag(lastX, lastY);
       }
       if (navigator.vibrate) navigator.vibrate(15);
-    }, customTouch ? 400 : 500);
+    }, customTouch || onHoldSelect ? 400 : 500);
   }, { passive: true });
 
   card.addEventListener("touchmove", (event) => {
@@ -882,14 +998,25 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
       // قبل ما الضغطة الطويلة تحصل، أي تحريك واضح يبقى سكرول عادي للصفحة —
       // نلغي مؤقت الضغطة الطويلة ونمنع onTap يشتغل بعدين في touchend،
       // ونسيب المتصفح يسكرول عادي (من غير preventDefault)
-      if (dist > (customTouch ? 10 : TAP_MOVE_THRESHOLD)) {
+      if (dist > (customTouch || onHoldSelect ? 10 : TAP_MOVE_THRESHOLD)) {
         moved = true;
         clearLongPressTimer();
       }
       return;
     }
 
-    if (!dragging && !customTouch && dist > 6 && draggableId && canWriteHere()) {
+    if (!dragging && customTouch && dist > 6) {
+      // Undo only this pending hold's checkmark before switching to a drag.
+      holdSelectionUndo?.();
+      holdSelectionUndo = null;
+      if (onHoldSelect && selectMode) exitSelectMode();
+      if (!canReorderTouch()) { cancelTouch(); return; }
+      dragging = true;
+      startMobileDrag(draggableId, card, t.clientX, t.clientY);
+    } else if (!dragging && onHoldSelect && dist > 10) {
+      cancelTouch();
+      return;
+    } else if (!dragging && !customTouch && !onHoldSelect && dist > 6 && draggableId && canWriteHere()) {
       dragging = true;
       startMobileDrag(draggableId, card, t.clientX, t.clientY);
     }
@@ -909,6 +1036,7 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
     if (!t || event.touches.length) { cancelTouch(); return; }
     clearLongPressTimer();
     touchActive = false;
+    window.removeEventListener("blur", cancelTouch);
     restoreNativeDrag();
     suppressClickUntil = Date.now() + 800;
 
@@ -924,6 +1052,10 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
     if (event.cancelable) event.preventDefault();
 
     if (longPressFired) {
+      if (onHoldSelect) {
+        holdSelectionUndo = null;
+        return;
+      }
       // إمساك ساكن وسايبه من غير ما يسحب = افتح القايمة لو فيه واحدة،
       // وإلا (زي وضع التحديد) يبقى نفس تأثير الضغطة العادية
       if (onLongPress) {
@@ -942,11 +1074,83 @@ function enableCardGestures(card, { onTap, onLongPress, draggableId }) {
   // Prevent the browser's native image drag from stealing a held touch. Mouse
   // drag handlers are unchanged; touch uses only the handlers above.
   card.addEventListener("dragstart", (event) => {
-    if (customTouch && (touchActive || Date.now() < suppressClickUntil)) {
+    if ((customTouch || onHoldSelect) && (touchActive || Date.now() < suppressClickUntil)) {
       event.preventDefault();
       event.stopImmediatePropagation();
+      return;
+    }
+    if (mouseActive) {
+      mouseSelectionUndo?.();
+      mouseSelectionUndo = null;
+      if (onHoldSelect && selectMode && canReorderTouch()) exitSelectMode();
+      stopMouseTracking();
+      suppressClickUntil = Date.now() + 800;
     }
   }, true);
+
+  // Mouse holds select as well. A native mouse drag cancels only the pending
+  // hold; its existing HTML Drag & Drop path remains responsible for ordering.
+  let mouseActive = false;
+  let mouseTimer = null;
+  let mouseHeld = false;
+  let mouseSelectionUndo = null;
+  let mouseX = 0;
+  let mouseY = 0;
+  const stopMouseTracking = () => {
+    clearTimeout(mouseTimer);
+    mouseTimer = null;
+    mouseActive = false;
+    window.removeEventListener("mousemove", moveMouseHold);
+    window.removeEventListener("mouseup", finishMouseHold);
+    window.removeEventListener("blur", cancelMouseHold);
+  };
+  const cancelMouseHold = () => {
+    mouseSelectionUndo?.();
+    mouseSelectionUndo = null;
+    stopMouseTracking();
+    suppressClickUntil = Date.now() + 800;
+  };
+  const moveMouseHold = (event) => {
+    if (!mouseActive || Math.hypot(event.clientX - mouseX, event.clientY - mouseY) <= 6) return;
+    clearTimeout(mouseTimer);
+    mouseTimer = null;
+    if (mouseSelectionUndo) {
+      mouseSelectionUndo();
+      mouseSelectionUndo = null;
+      if (selectMode && canReorderTouch()) exitSelectMode();
+      suppressClickUntil = Date.now() + 800;
+    }
+  };
+  const finishMouseHold = () => {
+    if (!mouseActive) return;
+    if (mouseHeld) suppressClickUntil = Date.now() + 800;
+    mouseSelectionUndo = null;
+    stopMouseTracking();
+    card.draggable = canWriteHere() && !selectMode;
+  };
+  if (onHoldSelect) card.addEventListener("mousedown", (event) => {
+    if (event.button !== 0 || touchActive || (lastInputWasTouch && Date.now() < suppressClickUntil) ||
+        event.target?.closest("button, a, input, select, textarea")) return;
+    lastInputWasTouch = false;
+    suppressClickUntil = 0;
+    stopMouseTracking();
+    mouseActive = true;
+    mouseHeld = false;
+    mouseX = event.clientX;
+    mouseY = event.clientY;
+    const canDrag = Boolean(canReorderTouch());
+    mouseTimer = setTimeout(() => {
+      mouseTimer = null;
+      if (!mouseActive || card.isConnected === false) { cancelMouseHold(); return; }
+      mouseHeld = true;
+      mouseSelectionUndo = onHoldSelect();
+      // Keep this source eligible until release or native dragstart decides.
+      if (canDrag) card.draggable = true;
+    }, 400);
+    window.addEventListener("mousemove", moveMouseHold);
+    window.addEventListener("mouseup", finishMouseHold);
+    window.addEventListener("blur", cancelMouseHold);
+  });
 
   // الديسكتوب: نفس منطق الرفع القديم، مع تجاهل الـ click الاصطناعي بعد اللمس
   card.addEventListener("click", (event) => {
@@ -1138,6 +1342,7 @@ function renderFolders(folders) {
       if (!canWriteHere() || !event.dataTransfer.types.includes(DRAG_MIME)) return;
       event.preventDefault();
       event.stopPropagation();
+      stopGalleryDragAutoScroll();
       card.classList.remove("drop-target");
 
       const draggedId = event.dataTransfer.getData(DRAG_MIME);
@@ -1169,6 +1374,7 @@ function renderItems() {
     });
 
     card.addEventListener("dragend", () => {
+      stopGalleryDragAutoScroll();
       clearGalleryDropIndicator();
       activeGalleryDragId = null;
       gallerySuppressClickUntil = Date.now() + 500;
@@ -1260,8 +1466,8 @@ function renderItems() {
           openPreview(item);
         }
       },
-      onLongPress: selectMode ? null : (x, y) => showItemActionMenu(item, x, y),
-      draggableId: selectMode ? null : item.id
+      onHoldSelect: () => beginGalleryHoldSelection(item.id),
+      draggableId: item.id
     });
 
     itemsGridEl.appendChild(card);
@@ -1338,14 +1544,45 @@ function showItemActionMenu(item, x, y) {
 }
 
 function toggleItemSelection(itemId) {
+  if (!currentItems.some((item) => item.id === itemId)) return;
   if (selectedItemIds.has(itemId)) {
     selectedItemIds.delete(itemId);
   } else {
     selectedItemIds.add(itemId);
   }
 
+  updateGallerySelectionUI();
+}
+
+function updateGallerySelectionUI() {
+  selectionBarEl.classList.toggle("hidden", !selectMode);
+  selectionCountEl.textContent = `تم تحديد ${selectedItemIds.size} صورة`;
   downloadSelectedBtnEl.textContent = `⬇ تحميل المحدد (${selectedItemIds.size})`;
-  renderItems();
+  selectModeBtnEl.classList.toggle("active", selectMode);
+  downloadFolderBtnEl.classList.toggle("hidden", selectMode);
+  downloadSelectedBtnEl.classList.toggle("hidden", !selectMode);
+  moveSelectedBtnEl.classList.toggle("hidden", !selectMode || !canWriteHere());
+  cancelSelectBtnEl.classList.toggle("hidden", !selectMode);
+  for (const card of itemsGridEl.querySelectorAll(".gallery-item-card")) {
+    card.classList.toggle("selectable", selectMode);
+    card.classList.toggle("selected", selectedItemIds.has(card.dataset.itemId));
+    card.setAttribute("aria-selected", String(selectedItemIds.has(card.dataset.itemId)));
+    card.draggable = canWriteHere() && !selectMode;
+  }
+}
+
+function beginGalleryHoldSelection(itemId) {
+  const previousMode = selectMode;
+  const previousIds = new Set(selectedItemIds);
+  selectMode = true;
+  selectedItemIds.add(itemId);
+  updateGallerySelectionUI();
+  // Only the pending gesture is reversible; already confirmed selection is kept.
+  return () => {
+    selectMode = previousMode;
+    selectedItemIds = previousIds;
+    updateGallerySelectionUI();
+  };
 }
 
 function enterSelectMode() {
@@ -1353,28 +1590,14 @@ function enterSelectMode() {
 
   selectMode = true;
   selectedItemIds.clear();
-
-  selectModeBtnEl.classList.add("active");
-  downloadFolderBtnEl.classList.add("hidden");
-  downloadSelectedBtnEl.classList.remove("hidden");
-  downloadSelectedBtnEl.textContent = "⬇ تحميل المحدد (0)";
-  moveSelectedBtnEl.classList.toggle("hidden", !canWriteHere());
-  cancelSelectBtnEl.classList.remove("hidden");
-
-  renderItems();
+  updateGallerySelectionUI();
 }
 
 function exitSelectMode() {
   selectMode = false;
   selectedItemIds.clear();
 
-  selectModeBtnEl.classList.remove("active");
-  downloadFolderBtnEl.classList.remove("hidden");
-  downloadSelectedBtnEl.classList.add("hidden");
-  moveSelectedBtnEl.classList.add("hidden");
-  cancelSelectBtnEl.classList.add("hidden");
-
-  renderItems();
+  updateGallerySelectionUI();
 }
 
 selectModeBtnEl.addEventListener("click", () => {

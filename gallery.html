@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" href="mehrab-splash-192-v5.png" />
   <meta name="theme-color" content="#54105b" />
 
-  <link rel="stylesheet" href="gallery.css?v=4" />
+  <link rel="stylesheet" href="gallery.css?v=5" />
 </head>
 <body translate="no" class="notranslate">
 
@@ -44,14 +44,17 @@
           <div id="gallerySortMenu" class="gallery-sort-menu hidden">
             <button id="gallerySortAlphabetical" type="button" aria-pressed="false">أبجدي (A–Z)</button>
             <button id="gallerySortCustom" type="button" aria-pressed="true">ترتيب مخصص (Custom)</button>
-            <span>للترتيب المخصص: اسحب الصورة، أو اضغط مطولًا ثم اسحب على الموبايل. حرّكها نحو أحد جانبي صورة أخرى، ثم أفلت عند الخط لتحديد مكانها.</span>
+            <span>اضغط مطولًا للتحديد، أو اضغط مطولًا ثم اسحب للترتيب المخصص. قرب حافة الشاشة يبدأ التمرير تلقائيًا؛ أفلت عند الخط لتحديد المكان.</span>
           </div>
         </div>
         <button id="gallerySelectModeBtn" type="button" class="gallery-toolbar-btn">تحديد</button>
         <button id="galleryDownloadFolderBtn" type="button" class="gallery-toolbar-btn">⬇ تحميل كل الملفات هنا</button>
         <button id="galleryDownloadSelectedBtn" type="button" class="gallery-toolbar-btn hidden">⬇ تحميل المحدد</button>
         <button id="galleryMoveSelectedBtn" type="button" class="gallery-toolbar-btn hidden">📁 نقل المحدد</button>
-        <button id="galleryCancelSelectBtn" type="button" class="gallery-toolbar-btn hidden">إلغاء</button>
+      </div>
+      <div id="gallerySelectionBar" class="gallery-selection-bar hidden">
+        <span id="gallerySelectionCount" role="status" aria-live="polite">تم تحديد 0 صورة</span>
+        <button id="galleryCancelSelectBtn" type="button" class="gallery-toolbar-btn">إلغاء التحديد</button>
       </div>
       <div id="galleryItemsGrid" class="gallery-items-grid"></div>
 
@@ -82,6 +85,6 @@
     </div>
   </div>
 
-  <script src="gallery.js?v=7"></script>
+  <script src="gallery.js?v=8"></script>
 </body>
 </html>
