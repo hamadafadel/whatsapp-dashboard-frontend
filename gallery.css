@@ -669,3 +669,9 @@ button {
     left: 94px;
   }
 }
+.gallery-sort-control { position: relative; }
+.gallery-sort-menu { position: absolute; top: 100%; right: 0; z-index: 25; width: min(270px, 80vw); padding: 10px; background: #fff; color: #333; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 4px 18px #0002; }
+.gallery-sort-menu button { display: block; width: 100%; padding: 10px; margin-bottom: 5px; text-align: right; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; }
+.gallery-sort-menu button[aria-pressed="true"] { background: #f3e9f5; border-color: #54105b; }
+.gallery-sort-menu button:disabled { opacity: .55; cursor: default; }
+.gallery-sort-menu span { display: block; font-size: 12px; line-height: 1.6; }

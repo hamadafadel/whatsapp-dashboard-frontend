@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" href="mehrab-splash-192-v5.png" />
   <meta name="theme-color" content="#54105b" />
 
-  <link rel="stylesheet" href="gallery.css?v=2" />
+  <link rel="stylesheet" href="gallery.css?v=3" />
 </head>
 <body translate="no" class="notranslate">
 
@@ -39,6 +39,14 @@
       <div id="galleryFoldersGrid" class="gallery-folders-grid"></div>
 
       <div id="galleryItemsToolbar" class="gallery-items-toolbar hidden">
+        <div class="gallery-sort-control">
+          <button id="gallerySortBtn" type="button" class="gallery-toolbar-btn" aria-expanded="false" aria-controls="gallerySortMenu">ترتيب</button>
+          <div id="gallerySortMenu" class="gallery-sort-menu hidden">
+            <button id="gallerySortAlphabetical" type="button" aria-pressed="false">أبجدي (A–Z)</button>
+            <button id="gallerySortCustom" type="button" aria-pressed="true">ترتيب مخصص (Custom)</button>
+            <span>للترتيب المخصص: اسحب الصورة، أو اضغط مطولًا ثم اسحب على الموبايل. الإفلات أسفل الصورة يضعها بعدها.</span>
+          </div>
+        </div>
         <button id="gallerySelectModeBtn" type="button" class="gallery-toolbar-btn">تحديد</button>
         <button id="galleryDownloadFolderBtn" type="button" class="gallery-toolbar-btn">⬇ تحميل كل الملفات هنا</button>
         <button id="galleryDownloadSelectedBtn" type="button" class="gallery-toolbar-btn hidden">⬇ تحميل المحدد</button>
@@ -74,6 +82,6 @@
     </div>
   </div>
 
-  <script src="gallery.js?v=4"></script>
+  <script src="gallery.js?v=5"></script>
 </body>
 </html>

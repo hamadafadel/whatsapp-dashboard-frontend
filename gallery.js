@@ -22,6 +22,10 @@ const downloadFolderBtnEl = document.getElementById("galleryDownloadFolderBtn");
 const downloadSelectedBtnEl = document.getElementById("galleryDownloadSelectedBtn");
 const moveSelectedBtnEl = document.getElementById("galleryMoveSelectedBtn");
 const cancelSelectBtnEl = document.getElementById("galleryCancelSelectBtn");
+const sortBtnEl = document.getElementById("gallerySortBtn");
+const sortMenuEl = document.getElementById("gallerySortMenu");
+const sortAlphabeticalEl = document.getElementById("gallerySortAlphabetical");
+const sortCustomEl = document.getElementById("gallerySortCustom");
 
 const pickerOverlayEl = document.getElementById("galleryFolderPickerOverlay");
 const pickerBackBtnEl = document.getElementById("galleryPickerBackBtn");
@@ -52,6 +56,9 @@ let previewItem = null;
 let myUploadFolderId = null;
 let galleryOwnFolderResolved = false;
 let galleryBrowseRequest = 0;
+let galleryOrderState = { mode: "custom", revision: 0, available: false };
+let galleryOrderSaving = false;
+let galleryPreviewClosing = false;
 
 // One real history entry per folder; never insert synthetic parent entries.
 function restoreGalleryNavigation() {
@@ -66,10 +73,10 @@ function restoreGalleryNavigation() {
     : [];
 }
 
-function saveGalleryNavigation(replace = false) {
+function saveGalleryNavigation(replace = false, preview = null) {
   const url = new URL(window.location.href);
   url.hash = currentFolderId() ? new URLSearchParams({ folder: currentFolderId() }).toString() : "";
-  const state = { ...window.history.state, galleryNavigation: folderStack.map((f) => ({ ...f })) };
+  const state = { ...window.history.state, galleryNavigation: folderStack.map((f) => ({ ...f })), galleryPreview: preview };
   window.history[replace ? "replaceState" : "pushState"](state, "", url);
 }
 
@@ -93,11 +100,17 @@ function goBackInGallery() {
 }
 
 window.addEventListener("popstate", () => {
+  galleryPreviewClosing = false;
+  const previousFolder = currentFolderId();
+  hideGalleryPreview();
   restoreGalleryNavigation();
-  if (authToken) loadCurrent();
+  if (authToken) {
+    if (previousFolder !== currentFolderId()) loadCurrent();
+    else restoreGalleryPreview();
+  }
 });
 restoreGalleryNavigation();
-saveGalleryNavigation(true);
+saveGalleryNavigation(true, window.history.state?.galleryPreview || null);
 
 function currentFolderId() {
   return folderStack.length ? folderStack[folderStack.length - 1].id : null;
@@ -273,6 +286,7 @@ function logout() {
   galleryBrowseRequest++;
   myUploadFolderId = null;
   galleryOwnFolderResolved = false;
+  hideGalleryPreview();
   localStorage.removeItem("dashboard_token");
   authToken = "";
   invalidateGalleryFolderCovers();
@@ -417,6 +431,10 @@ logoutBtnEl.addEventListener("click", logout);
 async function loadCurrent() {
   const request = ++galleryBrowseRequest;
   const token = authToken;
+  hideGalleryPreview();
+  sortMenuEl.classList.add("hidden");
+  sortBtnEl.setAttribute("aria-expanded", "false");
+  sortBtnEl.disabled = true;
   exitSelectMode();
 
   const folderId = currentFolderId();
@@ -462,6 +480,9 @@ async function loadCurrent() {
 
     const folders = Array.isArray(data.folders) ? data.folders : [];
     const items = Array.isArray(data.items) ? data.items : [];
+    galleryOrderState = data.orderState || { mode: "custom", revision: 0, available: false };
+    sortBtnEl.disabled = false;
+    updateGallerySortControls();
     if(folderId)cacheGalleryFolderCover(folderId,items);
 
     if (!folderStack.length) {
@@ -476,6 +497,7 @@ async function loadCurrent() {
 
     currentItems = items;
     renderItems();
+    restoreGalleryPreview();
     itemsToolbarEl.classList.toggle("hidden", !items.length);
 
     browseStatusEl.textContent =
@@ -491,34 +513,64 @@ const DRAG_MIME = "application/x-gallery-node-id";
 
 // بيحط الملف اللي بـ fileId قبل الملف targetItem مباشرة، بترتيب كسري
 // (رقم بينه وبين اللي قبله) عشان ما نحتاجش نعيد ترقيم كل الملفات
-async function reorderItemBefore(fileId, targetItem) {
-  if (!fileId || fileId === targetItem.id) return;
-
-  const idx = currentItems.findIndex((i) => i.id === targetItem.id);
-  const prevItem = idx > 0 ? currentItems[idx - 1] : null;
-
-  const targetOrder = targetItem.order ?? (idx + 1) * 1000;
-  const prevOrder = prevItem ? (prevItem.order ?? idx * 1000) : 0;
-  const newOrder = (prevOrder + targetOrder) / 2;
-
+async function saveGallerySort(mode, fileIds, restoreCustom = false) {
+  const folderId = currentFolderId();
+  if (!folderId || !canWriteHere() || galleryOrderSaving) return;
+  if (!galleryOrderState.available) {
+    alert("يلزم نشر Backend وتطبيق Migration ترتيب المعرض أولًا");
+    return;
+  }
+  galleryOrderSaving = true;
+  updateGallerySortControls();
   try {
-    const res = await fetch(`${API_BASE}/gallery/items/${encodeURIComponent(fileId)}/reorder`, {
+    const res = await fetch(`${API_BASE}/gallery/folders/${encodeURIComponent(folderId)}/order`, {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ order: newOrder })
+      body: JSON.stringify({ mode, fileIds, revision: galleryOrderState.revision,
+        folderPath: folderStack.map((f) => f.id), restoreCustom })
     });
 
     if (handleInvalidToken(res)) return;
 
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "فشل الترتيب");
+    if (!res.ok || data.success !== true) throw new Error(data.error || "فشل الترتيب");
 
     invalidateGalleryFolderCovers();
-    loadCurrent();
+    if (folderId === currentFolderId()) await loadCurrent();
   } catch (error) {
     console.error(error);
     alert(error.message || "فشل ترتيب الملف");
+  } finally {
+    galleryOrderSaving = false;
+    updateGallerySortControls();
   }
+}
+
+function updateGallerySortControls() {
+  sortBtnEl.classList.toggle("hidden", !currentFolderId());
+  sortBtnEl.title = !galleryOrderState.available ? "يلزم تطبيق Migration ونشر Backend لدعم حفظ الترتيب" :
+    !canWriteHere() ? "تعديل الترتيب متاح فقط لصاحب صلاحية الكتابة في الفولدر" : "اختيار ترتيب الصور";
+  sortAlphabeticalEl.disabled = sortCustomEl.disabled = galleryOrderSaving || !canWriteHere() || !galleryOrderState.available;
+  sortAlphabeticalEl.setAttribute("aria-pressed", String(galleryOrderState.mode === "alphabetical"));
+  sortCustomEl.setAttribute("aria-pressed", String(galleryOrderState.mode === "custom"));
+  sortBtnEl.textContent = galleryOrderState.mode === "alphabetical" ? "ترتيب: أبجدي" : "ترتيب: مخصص";
+}
+
+sortBtnEl.addEventListener("click", () => {
+  sortMenuEl.classList.toggle("hidden");
+  sortBtnEl.setAttribute("aria-expanded", String(!sortMenuEl.classList.contains("hidden")));
+});
+sortAlphabeticalEl.addEventListener("click", () => saveGallerySort("alphabetical", currentItems.map((i) => i.id)));
+sortCustomEl.addEventListener("click", () => saveGallerySort("custom", currentItems.map((i) => i.id), true));
+
+async function reorderItemBefore(fileId, targetItem, after = false) {
+  if (!fileId || fileId === targetItem.id || galleryOrderState.mode !== "custom" ||
+      !currentItems.some((i) => i.id === fileId)) return;
+  const ids = currentItems.map((i) => i.id).filter((id) => id !== fileId);
+  const index = ids.indexOf(targetItem.id);
+  if (index < 0) return;
+  ids.splice(index + (after ? 1 : 0), 0, fileId);
+  await saveGallerySort("custom", ids);
 }
 
 async function moveNodeToFolder(nodeId, targetFolderId) {
@@ -602,7 +654,7 @@ function endMobileDrag(x, y) {
     moveNodeToFolder(nodeId, target.dataset.folderId);
   } else if (target?.dataset.itemId && target.dataset.itemId !== nodeId) {
     const targetItem = currentItems.find((i) => i.id === target.dataset.itemId);
-    if (targetItem) reorderItemBefore(nodeId, targetItem);
+    if (targetItem) reorderItemBefore(nodeId, targetItem, y > target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2);
   }
 }
 
@@ -959,7 +1011,7 @@ function renderItems() {
       card.classList.remove("drop-target");
 
       const draggedId = event.dataTransfer.getData(DRAG_MIME);
-      reorderItemBefore(draggedId, item);
+      reorderItemBefore(draggedId, item, event.clientY > card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2);
     });
 
     card.addEventListener("contextmenu", (event) => {
@@ -1249,7 +1301,19 @@ downloadSelectedBtnEl.addEventListener("click", async () => {
 });
 
 // ===== معاينة ملف واحد =====
-function openPreview(item) {
+function restoreGalleryPreview() {
+  const saved = window.history.state?.galleryPreview;
+  if (!saved || saved.folderId !== currentFolderId()) return;
+  const item = currentItems.find((i) => i.id === saved.id);
+  if (item) openPreview(item, true);
+}
+
+function openPreview(item, fromHistory = false) {
+  if (galleryPreviewClosing && !fromHistory) return;
+  if (!fromHistory && previewItem?.id !== item.id) {
+    const state = { ...window.history.state, galleryPreview: { id: item.id, folderId: currentFolderId() } };
+    window.history[previewItem ? "replaceState" : "pushState"](state, "", window.location.href);
+  }
   previewItem = item;
   previewBodyEl.innerHTML = "";
 
@@ -1274,7 +1338,7 @@ function openPreview(item) {
   previewOverlayEl.classList.remove("hidden");
 }
 
-function closePreview() {
+function hideGalleryPreview() {
   previewOverlayEl.classList.add("hidden");
 
   const video = previewBodyEl.querySelector("video");
@@ -1286,6 +1350,17 @@ function closePreview() {
 
   previewBodyEl.innerHTML = "";
   previewItem = null;
+}
+
+function closePreview() {
+  if (galleryPreviewClosing) return;
+  if (window.history.state?.galleryPreview) {
+    galleryPreviewClosing = true;
+    hideGalleryPreview();
+    window.history.back();
+  } else {
+    hideGalleryPreview();
+  }
 }
 
 previewCloseBtnEl.addEventListener("click", closePreview);
