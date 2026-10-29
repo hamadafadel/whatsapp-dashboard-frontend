@@ -3577,6 +3577,7 @@ function renderCurrentUserInfo() {
 }
 
 function openConversationsMenu() {
+  if (!dashboardIgnoreRestoredPop) ensureDashboardExitGuard(true);
   renderCurrentUserInfo();
   conversationsMenuPanelEl?.classList.remove("hidden");
 }
@@ -4135,7 +4136,9 @@ let dashboardRecoveryTimer = null;
 let dashboardReconnectNeeded = false;
 let dashboardIgnoreRestoredPop = false;
 let dashboardPendingChatSession = null;
-let dashboardExitUntil = 0;
+let dashboardExitDialogPending = false;
+let dashboardExitReleased = false;
+let dashboardExitReleasePending = false;
 let dashboardExitGuardChecked = false;
 let dashboardViewSequence = 0;
 const dashboardHistoryViews = new Map();
@@ -4147,22 +4150,67 @@ function rememberDashboardView(node) {
   return key;
 }
 
-function ensureDashboardExitGuard() {
-  if (history.state?.dashboardRoot) return true;
+function ensureDashboardExitGuard(rearm = false) {
+  if (dashboardExitReleased && !rearm) return false;
+  if (rearm) dashboardExitReleased = false;
+  if (history.state?.dashboardRoot === 'guard') return true;
+  if (history.state?.dashboardRoot === 'base') {
+    history.pushState({ ...history.state, dashboardRoot: 'guard' }, '');
+    return true;
+  }
   if (dashboardExitGuardChecked) return false;
   dashboardExitGuardChecked = true;
   const standalone = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
-  // A single-entry PWA has no web API to finish its Android activity. Do not
-  // trap it behind a synthetic entry that would require a third hardware Back.
-  if (!standalone || window.innerWidth >= 1024 || history.length < 2 ||
-      !/^https?:\/\//i.test(document.referrer || '') || getCurrentUserRole() === 'gallery') return false;
+  // One bounded pair protects fresh standalone launches too. Exit releases it;
+  // JavaScript cannot promise to finish the native Android activity.
+  if (!standalone || window.innerWidth >= 1024 || getCurrentUserRole() === 'gallery') return false;
   if (appEl.classList.contains('chat-open')) return false;
   history.replaceState({ ...(history.state || {}), dashboardRoot: 'base', chatOpen: false }, '');
   history.pushState({ ...(history.state || {}), dashboardRoot: 'guard' }, '');
   return true;
 }
 
+function dashboardExitDialogOpen() {
+  const dialog = document.getElementById('dashboardExitDialog');
+  return Boolean(dialog && !dialog.classList.contains('hidden'));
+}
+
+function hideDashboardExitDialog() {
+  dashboardExitDialogPending = false;
+  document.getElementById('dashboardExitDialog')?.classList.add('hidden');
+}
+
+function showDashboardExitDialog() {
+  document.getElementById('dashboardExitDialog')?.classList.remove('hidden');
+  document.getElementById('dashboardExitCancelBtn')?.focus();
+}
+
+function releaseDashboardExitGuard() {
+  hideDashboardExitDialog();
+  // Traverse only our known guard, never guess how far real history extends.
+  // The next native Back is left to Android/browser, without logging out.
+  if (dashboardIgnoreRestoredPop || history.state?.dashboardRoot !== 'guard' ||
+      history.state?.chatOpen || mediaViewerEl || mediaGalleryEl) return;
+  dashboardExitReleased = true;
+  dashboardExitReleasePending = true;
+  showConversationVisibilityToast('اضغط رجوع في Android للخروج، أو أغلق التطبيق من التطبيقات الحديثة. لم يتم تسجيل خروجك.');
+  history.back();
+}
+
+function dashboardPanelVisible(el) {
+  if (!el || el.classList.contains('hidden') || el.hidden) return false;
+  if (el.closest?.('[hidden], .hidden')) return false;
+  // Off-screen chat controls must not consume Back ahead of the main menu.
+  if (el.getBoundingClientRect) {
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height || rect.right <= 0 || rect.left >= window.innerWidth ||
+        rect.bottom <= 0 || rect.top >= window.innerHeight) return false;
+  }
+  return true;
+}
+
 function closeDashboardTopTransient() {
+  if (dashboardExitDialogOpen()) { hideDashboardExitDialog(); return true; }
   const composerPreview = document.querySelector('.composer-image-preview-overlay');
   if (composerPreview) { composerPreview._closeDashboardPreview?.(); return true; }
   const messageMenu = document.querySelector('.message-actions-menu');
@@ -4178,7 +4226,7 @@ function closeDashboardTopTransient() {
     [conversationsMenuPanelEl, closeConversationsMenu]
   ];
   for (const [el, close] of panels) {
-    if (el && !el.classList.contains('hidden')) { close(); return true; }
+    if (dashboardPanelVisible(el)) { close(); return true; }
   }
   if (sessionsSelectMode) { exitSessionsSelectMode(); return true; }
   if (viewingHiddenConversations) { exitHiddenView(); return true; }
@@ -4186,12 +4234,27 @@ function closeDashboardTopTransient() {
 }
 
 function restoreDashboardHistory(state) {
+  if (dashboardExitReleasePending && state.dashboardRoot === 'base') {
+    dashboardExitReleasePending = false;
+    return;
+  }
   if (dashboardIgnoreRestoredPop) {
     dashboardIgnoreRestoredPop = false;
     const pendingSession = dashboardPendingChatSession;
     dashboardPendingChatSession = null;
-    if (pendingSession && pendingSession === activeSessionId && appEl.classList.contains('chat-open')) openChat();
+    if (pendingSession && pendingSession === activeSessionId && appEl.classList.contains('chat-open')) {
+      dashboardExitDialogPending = false;
+      openChat();
+    } else if (dashboardExitDialogPending) {
+      dashboardExitDialogPending = false;
+      showDashboardExitDialog();
+    }
     return;
+  }
+  // Forward from the root may restore a real chat entry. Close the dialog but
+  // honor that traversal instead of accidentally advancing one extra entry.
+  if (dashboardExitDialogOpen() && (state.chatOpen || state.mediaViewer || state.mediaGallery || state.dashboardRoot === 'guard')) {
+    hideDashboardExitDialog();
   }
   let closedMedia = false;
   if (mediaViewerEl && (!state.mediaViewer || dashboardHistoryViews.get(state.dashboardViewerKey) !== mediaViewerEl)) {
@@ -4201,7 +4264,7 @@ function restoreDashboardHistory(state) {
   // Transients without their own history entry consume Back, then restore the
   // entry just traversed. No pushState loop and no hidden conversation change.
   if (!closedMedia && closeDashboardTopTransient()) {
-    dashboardExitUntil = 0;
+    dashboardExitDialogPending = false;
     dashboardIgnoreRestoredPop = true;
     history.forward();
     return;
@@ -4238,16 +4301,12 @@ function restoreDashboardHistory(state) {
   }
   updateDashboardViewport();
   if (state.dashboardRoot === 'base' && !state.chatOpen && !state.mediaViewer && !state.mediaGallery) {
-    if (dashboardExitUntil && Date.now() <= dashboardExitUntil) {
-      dashboardExitUntil = 0;
-      history.back(); // Only a real previous history entry is used; never window.close().
-    } else {
-      dashboardExitUntil = Date.now() + 2000;
-      showConversationVisibilityToast('اضغط رجوع مرة أخرى للخروج');
+    if (!dashboardExitReleased) {
+      dashboardExitDialogPending = true;
       dashboardIgnoreRestoredPop = true;
       history.forward();
     }
-  } else dashboardExitUntil = 0;
+  } else if (state.dashboardRoot === 'guard') dashboardExitReleased = false;
 }
 
 function requestConversationMessageSync(sessionId, changed = true) {
@@ -5307,6 +5366,8 @@ function renderConversations(conversations) {
 }
 
 function openChat() {
+  // Never push while an interrupted traversal is being restored.
+  if (!dashboardIgnoreRestoredPop) ensureDashboardExitGuard(true);
   appEl.classList.add("chat-open");
   syncOrderConfirmationConversationBar();
 
@@ -5314,7 +5375,7 @@ function openChat() {
     dashboardPendingChatSession = activeSessionId;
     return;
   }
-  dashboardExitUntil = 0;
+  hideDashboardExitDialog();
 
   if (history.state?.chatOpen !== true) {
     history.pushState({ ...(history.state || {}), chatOpen: true, chatSessionId: activeSessionId }, "");
@@ -7559,6 +7620,17 @@ refreshBtnEl.addEventListener("click", async () => {
 });
 
 window.addEventListener("popstate", (event) => restoreDashboardHistory(event.state || {}));
+document.getElementById('dashboardExitCancelBtn')?.addEventListener('click', hideDashboardExitDialog);
+document.getElementById('dashboardExitConfirmBtn')?.addEventListener('click', releaseDashboardExitGuard);
+document.getElementById('dashboardExitDialog')?.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') { event.preventDefault(); hideDashboardExitDialog(); }
+  if (event.key === 'Tab') {
+    const cancel = document.getElementById('dashboardExitCancelBtn');
+    const confirm = document.getElementById('dashboardExitConfirmBtn');
+    if (event.shiftKey && document.activeElement === cancel) { event.preventDefault(); confirm?.focus(); }
+    else if (!event.shiftKey && document.activeElement === confirm) { event.preventDefault(); cancel?.focus(); }
+  }
+});
 async function loadAiStatus(sessionId) {
   if (!sessionId || !toggleAiBtnEl) return;
 

@@ -19,7 +19,9 @@ function fixture({ standalone = false, previous = true } = {}) {
   const messages = { dataset: {}, childElementCount: 0, scrollHeight: 1000, scrollTop: 900, clientHeight: 100, addEventListener(){}, querySelectorAll(){return nodes;}, querySelector(query){const m=query.match(/\[data-message-storage-id="([^"]+)"\]/);return m ? nodes.find(n=>n.dataset.messageStorageId===m[1]) || null : null;}, set innerHTML(v){nodes.length=0;this.childElementCount=0;this.html=v;}, get innerHTML(){return this.html||'';} };
   const win = { innerWidth: 390, location: new URL('https://dashboard.test/'), visualViewport: { height: 760, offsetTop: 0, scale: 1 }, matchMedia: () => ({ matches: standalone }) };
   const history = { get length(){return entries.length;}, get state(){return entries[index].state;}, pushState(v,t,url){entries.splice(index+1);entries.push({state:v,url:url||entries[index].url});index++;}, replaceState(v,t,url){entries[index]={state:v,url:url||entries[index].url};}, back(){queue.push(()=>{if(index>0){index--;navigate();}});}, forward(){queue.push(()=>{if(index<entries.length-1){index++;navigate();}});} };
-  const doc = { visibilityState: 'visible', referrer: previous ? 'https://outside.test/' : '', body: element(), querySelector(){return null;} };
+  const dialogNodes = Object.fromEntries(['dashboardExitDialog','dashboardExitCancelBtn','dashboardExitConfirmBtn'].map(id => [id, element()]));
+  for (const node of Object.values(dialogNodes)) node.focus = () => {};
+  const doc = { visibilityState: 'visible', referrer: previous ? 'https://outside.test/' : '', body: element(), querySelector(){return null;}, getElementById:id=>dialogNodes[id] || null };
   const append = raw => {const m=ctx.normalizeMessage(raw), n=element(); n.dataset={messageStorageId:String(m.id||m.storage_id||''),externalMessageId:m.external_message_id,messageSortTimestamp:String(new Date(m.timestamp).getTime())}; nodes.push(n);nodes.sort((a,b)=>Number(a.dataset.messageSortTimestamp)-Number(b.dataset.messageSortTimestamp));messages.childElementCount=nodes.length;return n;};
   const ctx = vm.createContext({ AbortController, URLSearchParams, BigInt, console: {error(){}}, Date: { now:()=>now }, window:win, history, document:doc, navigator:{}, CSS:{escape:String}, authToken:'SYNTHETIC', activeSessionId:'fb:TEST', conversationsData:[{session_id:'fb:TEST'},{session_id:'WA_TEST'}], API_BASE:'https://synthetic.test/api', appEl:app, messagesEl:messages, chatTitleEl:element(), windowExpiredBannerEl:element(), chatComposeEl:element(), sendTemplateInsteadBtnEl:element(), conversationLabelsCache:[], viewingHiddenConversations:false, sessionsSelectMode:false, savedMediaSelectMode:false, eventSource:null,
     setTimeout(f,ms){const id=++timerId;timers.set(id,{f,ms});return id;},clearTimeout:id=>timers.delete(id),
@@ -91,11 +93,62 @@ test('Back returns chat to list; Forward restores the correct session without se
 test('transient menu consumes Back without closing chat or growing history',()=>{
   const f=fixture();f.ctx.openChat();const menu=f.element();menu.classList.remove('hidden');f.ctx.emojiPickerPanelEl=menu;f.ctx.closeEmojiPicker=()=>menu.classList.add('hidden');const n=f.entries.length;f.history.back();f.flushHistory();assert(menu.classList.contains('hidden'));assert(f.app.classList.contains('chat-open'));assert.equal(f.entries.length,n);f.history.back();f.flushHistory();assert(!f.app.classList.contains('chat-open'));
 });
-test('bounded PWA root guard: first Back toast, second within 2 seconds follows real prior navigation',()=>{
-  const f=fixture({standalone:true});assert(f.ctx.ensureDashboardExitGuard());const n=f.entries.length;f.history.back();f.flushHistory();assert.deepEqual(f.toasts,['اضغط رجوع مرة أخرى للخروج']);assert.equal(f.index,2);f.advance(1500);f.history.back();f.flushHistory();assert.equal(f.win.location.origin,'https://outside.test');assert.equal(f.entries.length,n);
+test('PWA root Back opens confirmation; Back and cancel dismiss only, with bounded history',()=>{
+  const f=fixture({standalone:true});assert(f.ctx.ensureDashboardExitGuard());const n=f.entries.length;
+  for(let i=0;i<5;i++){
+    f.history.back();f.flushHistory();assert(f.ctx.dashboardExitDialogOpen());assert.equal(f.index,2);
+    f.history.back();f.flushHistory();assert(!f.ctx.dashboardExitDialogOpen());assert.equal(f.index,2);
+  }
+  f.history.back();f.flushHistory();f.ctx.hideDashboardExitDialog();assert(!f.ctx.dashboardExitDialogOpen());assert.equal(f.entries.length,n);assert.equal(f.toasts.length,0);
 });
-test('expired Back window re-arms without adding entries; direct-launch PWA is not trapped',()=>{
-  const f=fixture({standalone:true});f.ctx.ensureDashboardExitGuard();const n=f.entries.length;for(let i=0;i<5;i++){f.history.back();f.flushHistory();f.advance(2100);}assert.equal(f.toasts.length,5);assert.equal(f.entries.length,n);const direct=fixture({standalone:true,previous:false});assert.equal(direct.ctx.ensureDashboardExitGuard(),false);assert.equal(direct.entries.length,1);assert(!/window\.close\s*\(/.test(source.replace(/\/\/.*$/gm,'')));
+test('fresh single-entry PWA handles Admin Back before confirmation; exit releases native navigation without logout',()=>{
+  const f=fixture({standalone:true,previous:false});assert(f.ctx.ensureDashboardExitGuard());assert.equal(f.entries.length,2);
+  const menu=f.element();menu.classList.remove('hidden');f.ctx.conversationsMenuPanelEl=menu;f.ctx.closeConversationsMenu=()=>menu.classList.add('hidden');
+  f.history.back();f.flushHistory();assert(menu.classList.contains('hidden'));assert(!f.ctx.dashboardExitDialogOpen());assert.equal(f.index,1);
+  f.history.back();f.flushHistory();assert(f.ctx.dashboardExitDialogOpen());f.ctx.releaseDashboardExitGuard();f.flushHistory();assert(!f.ctx.dashboardExitDialogOpen());assert.equal(f.index,0);assert.equal(f.ctx.authToken,'SYNTHETIC');assert.equal(f.ctx.ensureDashboardExitGuard(),false);assert.equal(f.queue.length,0);
+  f.history.forward();f.flushHistory();assert.equal(f.index,1);f.history.back();f.flushHistory();assert(f.ctx.dashboardExitDialogOpen());
+  assert(!/window\.close\s*\(/.test(source.replace(/\/\/.*$/gm,'')));assert(!/history\.go\(/.test(part('function ensureDashboardExitGuard', 'function requestConversationMessageSync')));
+});
+
+test('exit releases exactly our own guard before real prior navigation and never requests logout',()=>{
+  const f=fixture({standalone:true});f.ctx.ensureDashboardExitGuard();const n=f.entries.length;
+  f.history.back();f.flushHistory();f.ctx.releaseDashboardExitGuard();f.flushHistory();assert.equal(f.index,1);assert.equal(f.ctx.authToken,'SYNTHETIC');
+  f.history.back();f.flushHistory();assert.equal(f.win.location.origin,'https://outside.test');assert.equal(f.entries.length,n);assert.equal(f.requests.length,0);
+});
+
+test('exit confirmation does not discard Forward chat entries',()=>{
+  const f=fixture({standalone:true,previous:false});f.ctx.ensureDashboardExitGuard();f.ctx.openChat();f.history.back();f.flushHistory();const n=f.entries.length;
+  f.history.back();f.flushHistory();assert(f.ctx.dashboardExitDialogOpen());f.ctx.hideDashboardExitDialog();f.history.forward();f.flushHistory();assert(f.app.classList.contains('chat-open'));assert.equal(f.history.state.chatSessionId,'fb:TEST');assert.equal(f.entries.length,n);
+});
+
+test('Forward while exit confirmation is open closes dialog and restores chat without skipping an entry',()=>{
+  const f=fixture({standalone:true,previous:false});f.ctx.ensureDashboardExitGuard();f.ctx.openChat();f.history.back();f.flushHistory();f.history.back();f.flushHistory();assert(f.ctx.dashboardExitDialogOpen());
+  f.history.forward();f.flushHistory();assert(!f.ctx.dashboardExitDialogOpen());assert(f.app.classList.contains('chat-open'));assert.equal(f.index,2);assert.equal(f.queue.length,0);
+});
+
+test('visible main menu takes Back instead of an offscreen chat menu',()=>{
+  const f=fixture({standalone:true,previous:false});f.ctx.ensureDashboardExitGuard();const menu=f.element(),offscreen=f.element();menu.classList.remove('hidden');offscreen.classList.remove('hidden');offscreen.getBoundingClientRect=()=>({width:100,height:30,left:500,right:600,top:0,bottom:30});
+  f.ctx.chatConversationMenuEl=offscreen;f.ctx.conversationsMenuPanelEl=menu;f.ctx.closeConversationsMenu=()=>menu.classList.add('hidden');
+  f.history.back();f.flushHistory();assert(menu.classList.contains('hidden'));assert(!offscreen.classList.contains('hidden'));assert(!f.ctx.dashboardExitDialogOpen());assert(!f.app.classList.contains('chat-open'));
+});
+
+test('viewer closes before menus; menu then closes before underlying chat',()=>{
+  const f=fixture({standalone:true});f.ctx.ensureDashboardExitGuard();f.ctx.openChat();const menu=f.element(),node=f.element();menu.classList.remove('hidden');f.ctx.conversationsMenuPanelEl=menu;f.ctx.closeConversationsMenu=()=>menu.classList.add('hidden');f.ctx.savedNode=node;
+  const key=f.ctx.rememberDashboardView(node);f.run('mediaViewerEl = savedNode');f.history.pushState({...f.history.state,mediaViewer:true,dashboardViewerKey:key},'');
+  f.history.back();f.flushHistory();assert.equal(f.run('mediaViewerEl'),null);assert(!menu.classList.contains('hidden'));assert(f.app.classList.contains('chat-open'));
+  f.history.back();f.flushHistory();assert(menu.classList.contains('hidden'));assert(f.app.classList.contains('chat-open'));assert(!f.ctx.dashboardExitDialogOpen());
+});
+
+test('resuming navigation after exit consent re-arms one guard without accumulating entries',()=>{
+  const f=fixture({standalone:true,previous:false});f.ctx.ensureDashboardExitGuard();f.history.back();f.flushHistory();f.ctx.releaseDashboardExitGuard();f.flushHistory();
+  assert.equal(f.index,0);f.ctx.openChat();assert.equal(f.entries.length,3);f.history.back();f.flushHistory();f.history.back();f.flushHistory();assert(f.ctx.dashboardExitDialogOpen());assert.equal(f.entries.length,3);
+});
+
+test('dialog markup uses explicit PWA limitation and cancel/exit handlers without logout',()=>{
+  const html=fs.readFileSync(require('node:path').join(__dirname,'../index.html'),'utf8');
+  for(const text of ['الخروج من التطبيق','هل تريد الخروج من تطبيق المحراب؟','dashboardExitCancelBtn','dashboardExitConfirmBtn','لا يمكن إغلاق تطبيق PWA برمجيًا بشكل مضمون']) assert(html.includes(text));
+  assert(source.includes("addEventListener('click', hideDashboardExitDialog)"));assert(source.includes("addEventListener('click', releaseDashboardExitGuard)"));
+  assert(!part('function releaseDashboardExitGuard()', 'function dashboardPanelVisible(').includes('logout'));
 });
 test('viewer Back/Forward restores the same in-memory view instead of a wrong image',()=>{
   const f=fixture();f.ctx.openChat();const node=f.element();f.ctx.savedNode=node;const key=f.ctx.rememberDashboardView(node);f.run('mediaViewerEl = savedNode');f.history.pushState({...f.history.state,mediaViewer:true,dashboardViewerKey:key},'');f.history.back();f.flushHistory();assert.equal(f.run('mediaViewerEl'),null);assert(f.app.classList.contains('chat-open'));f.history.forward();f.flushHistory();assert.equal(f.run('mediaViewerEl'),node);

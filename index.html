@@ -18,7 +18,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <link rel="stylesheet" href="app.css?v=65" />
+  <link rel="stylesheet" href="app.css?v=66" />
   <script
     type="module"
     src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.26.0/index.js"
@@ -476,7 +476,18 @@
     
   </div>
 
-  <script src="app.js?v=81"></script>
+  <div id="dashboardExitDialog" class="dashboard-exit-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="dashboardExitTitle" aria-describedby="dashboardExitMessage dashboardExitHint" dir="rtl">
+    <section class="dashboard-exit-sheet">
+      <h2 id="dashboardExitTitle">الخروج من التطبيق</h2>
+      <p id="dashboardExitMessage">هل تريد الخروج من تطبيق المحراب؟</p>
+      <p id="dashboardExitHint">لا يمكن إغلاق تطبيق PWA برمجيًا بشكل مضمون. «خروج» يتيح الرجوع الطبيعي؛ اضغط رجوع في Android بعده، أو أغلق التطبيق من التطبيقات الحديثة. سيظل حسابك مسجّلًا.</p>
+      <div class="dashboard-exit-actions">
+        <button id="dashboardExitCancelBtn" type="button">إلغاء</button>
+        <button id="dashboardExitConfirmBtn" type="button">خروج</button>
+      </div>
+    </section>
+  </div>
+  <script src="app.js?v=82"></script>
 
   <script>
   if ("serviceWorker" in navigator) {
