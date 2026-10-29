@@ -36,6 +36,14 @@ input {
   background: #111b21;
 }
 
+@media (max-width: 1023px) {
+  /* Android keyboards may shrink only VisualViewport, not the layout viewport. */
+  .mobile-app {
+    height: var(--dashboard-visible-height, 100dvh);
+    top: var(--dashboard-visible-top, 0px);
+  }
+}
+
 .sessions-screen,
 .chat-screen {
   position: absolute;
@@ -265,6 +273,7 @@ input {
 
 .messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px 10px;
   display: flex;

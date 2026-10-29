@@ -4069,6 +4069,7 @@ saveLabelFormBtnEl?.addEventListener("click", async (event) => {
 let currentAiEnabled = true;
 
 let conversationsData = [];
+let conversationsRequestToken = 0;
 let activeSessionId = null;
 let conversationSearchSessionIds = null;
 let conversationSearchTimer = null;
@@ -4124,11 +4125,285 @@ let oldestLoadedMessageId = null;
 let oldestLoadedMessageTimestamp = null;
 let hasMoreMessages = false;
 let isLoadingOlderMessages = false;
+let loadingMessageSession = null;
+const messageSyncVersions = new Map();
+const messageSyncJobs = new Map();
+const messageSyncAnchors = new Map();
+const messageSyncFailures = new Map();
+let messageSyncTimer = null;
+let dashboardRecoveryTimer = null;
+let dashboardReconnectNeeded = false;
+let dashboardIgnoreRestoredPop = false;
+let dashboardPendingChatSession = null;
+let dashboardExitUntil = 0;
+let dashboardExitGuardChecked = false;
+let dashboardViewSequence = 0;
+const dashboardHistoryViews = new Map();
+
+function rememberDashboardView(node) {
+  const key = String(++dashboardViewSequence);
+  dashboardHistoryViews.set(key, node);
+  while (dashboardHistoryViews.size > 20) dashboardHistoryViews.delete(dashboardHistoryViews.keys().next().value);
+  return key;
+}
+
+function ensureDashboardExitGuard() {
+  if (history.state?.dashboardRoot) return true;
+  if (dashboardExitGuardChecked) return false;
+  dashboardExitGuardChecked = true;
+  const standalone = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+  // A single-entry PWA has no web API to finish its Android activity. Do not
+  // trap it behind a synthetic entry that would require a third hardware Back.
+  if (!standalone || window.innerWidth >= 1024 || history.length < 2 ||
+      !/^https?:\/\//i.test(document.referrer || '') || getCurrentUserRole() === 'gallery') return false;
+  if (appEl.classList.contains('chat-open')) return false;
+  history.replaceState({ ...(history.state || {}), dashboardRoot: 'base', chatOpen: false }, '');
+  history.pushState({ ...(history.state || {}), dashboardRoot: 'guard' }, '');
+  return true;
+}
+
+function closeDashboardTopTransient() {
+  const composerPreview = document.querySelector('.composer-image-preview-overlay');
+  if (composerPreview) { composerPreview._closeDashboardPreview?.(); return true; }
+  const messageMenu = document.querySelector('.message-actions-menu');
+  if (messageMenu) { messageMenu.remove(); return true; }
+  const panels = [
+    [savedMediaPreviewOverlayEl, closeSavedMediaPreview],
+    [orderConfirmationOverlayEl, closeOrderConfirmationModal], [metaOrderOverlayEl, closeMetaOrderModal],
+    [savedReplyFormEl, closeSavedReplyForm], [labelFormEl, closeLabelForm], [addFolderFormEl, closeFolderForm],
+    [labelsOverlayEl, closeLabelsOverlay], [savedRepliesOverlayEl, closeSavedReplies],
+    [savedMediaOverlayEl, () => savedMediaSelectMode ? exitSavedMediaSelectMode() : closeSavedMedia()],
+    [emojiPickerPanelEl, closeEmojiPicker], [templatesPanelEl, closeQuickActions], [quickActionsPanelEl, closeQuickActions],
+    [chatConversationMenuEl, () => chatConversationMenuEl.classList.add('hidden')],
+    [conversationsMenuPanelEl, closeConversationsMenu]
+  ];
+  for (const [el, close] of panels) {
+    if (el && !el.classList.contains('hidden')) { close(); return true; }
+  }
+  if (sessionsSelectMode) { exitSessionsSelectMode(); return true; }
+  if (viewingHiddenConversations) { exitHiddenView(); return true; }
+  return false;
+}
+
+function restoreDashboardHistory(state) {
+  if (dashboardIgnoreRestoredPop) {
+    dashboardIgnoreRestoredPop = false;
+    const pendingSession = dashboardPendingChatSession;
+    dashboardPendingChatSession = null;
+    if (pendingSession && pendingSession === activeSessionId && appEl.classList.contains('chat-open')) openChat();
+    return;
+  }
+  let closedMedia = false;
+  if (mediaViewerEl && (!state.mediaViewer || dashboardHistoryViews.get(state.dashboardViewerKey) !== mediaViewerEl)) {
+    closeMediaViewer(false); closedMedia = true;
+  }
+  if (mediaGalleryEl && !state.mediaGallery) { closeMediaGallery(false); closedMedia = true; }
+  // Transients without their own history entry consume Back, then restore the
+  // entry just traversed. No pushState loop and no hidden conversation change.
+  if (!closedMedia && closeDashboardTopTransient()) {
+    dashboardExitUntil = 0;
+    dashboardIgnoreRestoredPop = true;
+    history.forward();
+    return;
+  }
+  if (state.chatOpen === true) {
+    const sid = state.chatSessionId || activeSessionId;
+    const conv = conversationsData.find(item => item.session_id === sid);
+    if (sid && (conv || sid === activeSessionId)) {
+      if (sid !== activeSessionId) {
+        activeSessionId = sid;
+        conversationLabelsCache = conv?.labels || [];
+        renderChatLabelsRow();
+        syncSessionProgressVisibility();
+        loadMessages(sid);
+      }
+      appEl.classList.add('chat-open');
+      syncOrderConfirmationConversationBar();
+      loadAiStatus(sid);
+      requestConversationMessageSync(sid);
+    } else closeChat();
+  } else closeChat();
+  if (state.mediaGallery && !mediaGalleryEl) {
+    const node = dashboardHistoryViews.get(state.dashboardGalleryKey);
+    if (node) {
+      document.body.appendChild(node); mediaGalleryEl = node;
+      document.body.classList.add('media-gallery-open');
+      const sentinel = node.querySelector('.media-gallery-sentinel');
+      if (sentinel) node._mediaObserver?.observe(sentinel);
+    }
+  }
+  if (state.mediaViewer && !mediaViewerEl) {
+    const node = dashboardHistoryViews.get(state.dashboardViewerKey);
+    if (node) { document.body.appendChild(node); mediaViewerEl = node; document.body.classList.add('media-viewer-open'); }
+  }
+  updateDashboardViewport();
+  if (state.dashboardRoot === 'base' && !state.chatOpen && !state.mediaViewer && !state.mediaGallery) {
+    if (dashboardExitUntil && Date.now() <= dashboardExitUntil) {
+      dashboardExitUntil = 0;
+      history.back(); // Only a real previous history entry is used; never window.close().
+    } else {
+      dashboardExitUntil = Date.now() + 2000;
+      showConversationVisibilityToast('اضغط رجوع مرة أخرى للخروج');
+      dashboardIgnoreRestoredPop = true;
+      history.forward();
+    }
+  } else dashboardExitUntil = 0;
+}
+
+function requestConversationMessageSync(sessionId, changed = true) {
+  const sid = String(sessionId || "").trim();
+  if (!sid || sid !== String(activeSessionId || "").trim() || !authToken) return;
+  if (document.visibilityState === 'hidden') return;
+  if (changed) messageSyncFailures.delete(sid);
+  if (changed) messageSyncVersions.set(sid, (messageSyncVersions.get(sid) || 0) + 1);
+  clearTimeout(messageSyncTimer);
+  messageSyncTimer = setTimeout(() => {
+    if (sid !== activeSessionId || loadingMessageSession === sid || messageSyncJobs.has(sid)) return;
+    const requestedVersion = messageSyncVersions.get(sid) || 0;
+    const requestedToken = messagesRequestToken;
+    let failed = false;
+    const job = reconcileConversationMessages(sid).catch(() => {
+      failed = true;
+      // Preserve the visible conversation on transport errors; retry only while active.
+      const failures = (messageSyncFailures.get(sid) || 0) + 1;
+      messageSyncFailures.set(sid, failures);
+      if (sid === activeSessionId && authToken && failures <= 3 && document.visibilityState !== 'hidden') {
+        clearTimeout(messageSyncTimer);
+        messageSyncTimer = setTimeout(() => requestConversationMessageSync(sid, false), Math.min(10000, 1000 * 2 ** failures));
+      }
+    }).finally(() => {
+      messageSyncJobs.delete(sid);
+      if (!failed && sid === activeSessionId && authToken &&
+          (requestedVersion !== (messageSyncVersions.get(sid) || 0) || requestedToken !== messagesRequestToken)) {
+        requestConversationMessageSync(sid, false);
+      }
+    });
+    messageSyncJobs.set(sid, job);
+  }, 120);
+}
+
+async function readConversationMessagePage(url, headers) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url, { cache: 'no-store', headers, signal: controller.signal });
+    const data = response.ok ? await response.json() : null;
+    return { response, data };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function reconcileConversationMessages(sid) {
+  if (sid !== activeSessionId || !authToken) return;
+  const owner = authToken;
+  if (messagesEl.dataset.loadedSessionId !== sid) {
+    await loadMessages(sid);
+    if (sid === activeSessionId && owner === authToken && messagesEl.dataset.loadedSessionId !== sid) {
+      throw new Error('Initial conversation synchronization unavailable');
+    }
+    return;
+  }
+  const token = messagesRequestToken;
+  const version = messageSyncVersions.get(sid) || 0;
+  const existing = [...messagesEl.querySelectorAll('.message-wrap')];
+  const anchor = messageSyncAnchors.get(sid) || { id: existing.find(el => el.dataset.messageStorageId)?.dataset.messageStorageId || '' };
+  let latestAnchor = null;
+  let beforeId = null, beforeTimestamp = null;
+  const cursors = new Set();
+  for (let page = 0; page < 100; page++) {
+    const query = new URLSearchParams({ limit: '100' });
+    if (beforeId) query.set('beforeId', beforeId);
+    if (beforeTimestamp) query.set('beforeTimestamp', beforeTimestamp);
+    const { response, data } = await readConversationMessagePage(
+      `${API_BASE}/messages/${encodeURIComponent(sid)}?${query}`,
+      getAuthHeaders(getOrderConfirmationMessageHeaders(sid))
+    );
+    if (sid !== activeSessionId || token !== messagesRequestToken || owner !== authToken) return;
+    if (response.status === 401 || response.status === 403) return;
+    if (!response.ok) throw new Error('Message synchronization unavailable');
+    const rows = Array.isArray(data) ? data : data.messages || [];
+    if (page === 0 && !anchor.id && !anchor.mid) {
+      // Previously empty conversation: retain a valid older-page boundary
+      // when more than one window arrived while the app was suspended.
+      oldestLoadedMessageId = data.nextBeforeId || rows[0]?.id || null;
+      oldestLoadedMessageTimestamp = data.nextBeforeTimestamp || null;
+      hasMoreMessages = Boolean(data.hasMore);
+    }
+    if (page === 0 && rows.length) {
+      const last = rows[rows.length - 1], normalized = normalizeMessage(last);
+      latestAnchor = { id: String(last.id || normalized.storage_id || ''), mid: String(normalized.external_message_id || normalized.channel_message_id || normalized.wa_message_id || normalized.message_id || '') };
+    }
+    let overlap = false;
+    for (const row of rows) {
+      const message = normalizeMessage(row);
+      const mid = String(message.external_message_id || message.channel_message_id || message.wa_message_id || message.message_id || '');
+      const storageId = String(row.id || message.storage_id || '');
+      if ((storageId && storageId === anchor.id) || (mid && mid === anchor.mid)) overlap = true;
+      const rendered = (storageId && messagesEl.querySelector(`[data-message-storage-id="${CSS.escape(storageId)}"]`)) || (mid && findRenderedMessageById(mid));
+      if (rendered) {
+        if (storageId) rendered.dataset.messageStorageId = storageId;
+      } else insertMessengerRealtimeMessage(message);
+    }
+    const latestUser = Math.max(findLastUserMessageTime(rows.map(normalizeMessage)), Number(messagesEl.dataset.lastUserMessageTime || 0));
+    messagesEl.dataset.lastUserMessageTime = String(latestUser || '');
+    applyMessagingWindowState(latestUser);
+    currentLoadedMessageCount = Math.max(currentLoadedMessageCount, Number(data.total || 0));
+    renderChatMeta(sid, currentLoadedMessageCount);
+    if (overlap || !data.hasMore || (!anchor.id && !anchor.mid)) break;
+    beforeId = data.nextBeforeId;
+    beforeTimestamp = data.nextBeforeTimestamp;
+    const cursor = `${beforeId}|${beforeTimestamp}`;
+    if (!beforeId || cursors.has(cursor)) throw new Error('Message synchronization cursor did not advance');
+    cursors.add(cursor);
+    if (page === 99) {
+      // A very large gap falls back to the canonical latest window + existing
+      // older-page navigation, never leaves an unpageable hole in the DOM.
+      await reloadActiveConversationPreservingScroll(sid);
+      return;
+    }
+  }
+  if (latestAnchor) messageSyncAnchors.set(sid, latestAnchor);
+  messageSyncFailures.delete(sid);
+  if ((messageSyncVersions.get(sid) || 0) !== version) requestConversationMessageSync(sid, false);
+}
+
+function scheduleDashboardRecovery() {
+  if (document.visibilityState === 'hidden') return;
+  clearTimeout(dashboardRecoveryTimer);
+  dashboardRecoveryTimer = setTimeout(() => {
+    if (!authToken || document.visibilityState === 'hidden') return;
+    if (dashboardReconnectNeeded || !eventSource || eventSource.readyState === 2) {
+      dashboardReconnectNeeded = false;
+      connectEvents();
+    }
+    if (viewingHiddenConversations) loadHiddenConversations(); else loadConversations();
+    requestConversationMessageSync(activeSessionId);
+    updateDashboardViewport();
+    reapplyMessagingWindowCheckFromCache();
+  }, 180);
+}
+
+function updateDashboardViewport() {
+  const viewport = window.visualViewport;
+  if (!appEl || window.innerWidth >= 1024 || !viewport) {
+    appEl?.style.removeProperty('--dashboard-visible-height');
+    appEl?.style.removeProperty('--dashboard-visible-top');
+    return;
+  }
+  // Pinch zoom belongs to the media viewer; do not reflow the chat on zoom.
+  if (viewport.scale && Math.abs(viewport.scale - 1) > 0.01) return;
+  if (viewport.height > 0) {
+    appEl.style.setProperty('--dashboard-visible-height', `${Math.round(viewport.height)}px`);
+    appEl.style.setProperty('--dashboard-visible-top', `${Math.max(0, Math.round(viewport.offsetTop || 0))}px`);
+  }
+}
 const localMediaPreviewUrls = new Set();
 let mediaViewerEl = null;
 let mediaGalleryEl = null;
 
 function closeMediaViewer(useHistory = true) {
+  if (useHistory && dashboardIgnoreRestoredPop) return;
   if (!mediaViewerEl) return;
 
   if (useHistory && history.state?.mediaViewer === true) {
@@ -4142,6 +4417,7 @@ function closeMediaViewer(useHistory = true) {
 }
 
 function openMediaViewer(imageUrl, altText = "صورة") {
+  if (dashboardIgnoreRestoredPop) return;
   if (!imageUrl) return;
 
   closeMediaViewer(false);
@@ -4267,12 +4543,13 @@ function openMediaViewer(imageUrl, altText = "صورة") {
   mediaViewerEl = viewer;
 
   history.pushState(
-    { ...(history.state || {}), mediaViewer: true },
+    { ...(history.state || {}), mediaViewer: true, dashboardViewerKey: rememberDashboardView(viewer) },
     ""
   );
 }
 
 function closeMediaGallery(useHistory = true) {
+  if (useHistory && dashboardIgnoreRestoredPop) return;
   if (!mediaGalleryEl) return;
 
   if (useHistory && history.state?.mediaGallery === true) {
@@ -4320,6 +4597,7 @@ function renderContactInfoSection(fields) {
 }
 
 async function openChatMediaGallery() {
+  if (dashboardIgnoreRestoredPop) return;
   if (!activeSessionId || mediaGalleryEl) return;
 
   const gallery = document.createElement("div");
@@ -4354,7 +4632,7 @@ async function openChatMediaGallery() {
   mediaGalleryEl = gallery;
 
   history.pushState(
-    { ...(history.state || {}), mediaGallery: true },
+    { ...(history.state || {}), mediaGallery: true, dashboardGalleryKey: rememberDashboardView(gallery) },
     ""
   );
 
@@ -4622,6 +4900,8 @@ function handleInvalidToken(res) {
 }
 
 async function loadConversations() {
+  const requestToken = ++conversationsRequestToken;
+  const owner = authToken;
   // لو دي أول تحميل (القايمة لسه فاضية) بس اللي بيظهر فيها "جاري التحميل"،
   // مش أي تحديث لاحق — عشان التحديثات (بعد إرسال رسالة، أو أي حدث SSE) ما
   // تمسحش القايمة كلها وتبنيها من الأول، وده كان بيلغي فايدة إعادة استخدام
@@ -4642,10 +4922,11 @@ async function loadConversations() {
 if (!res.ok) throw new Error("Failed conversations");
 
     const conversations = await res.json();
+    if (requestToken !== conversationsRequestToken || owner !== authToken || viewingHiddenConversations) return;
     conversationsData = Array.isArray(conversations) ? conversations : [];
     applyConversationFilters();
   } catch (error) {
-    if (isFirstLoad) {
+    if (isFirstLoad && requestToken === conversationsRequestToken && owner === authToken && !viewingHiddenConversations) {
       conversationsEl.innerHTML = `<div class="error-state">فشل تحميل المحادثات</div>`;
     }
     console.error(error);
@@ -5029,9 +5310,19 @@ function openChat() {
   appEl.classList.add("chat-open");
   syncOrderConfirmationConversationBar();
 
-  if (history.state?.chatOpen !== true) {
-    history.pushState({ chatOpen: true }, "");
+  if (dashboardIgnoreRestoredPop) {
+    dashboardPendingChatSession = activeSessionId;
+    return;
   }
+  dashboardExitUntil = 0;
+
+  if (history.state?.chatOpen !== true) {
+    history.pushState({ ...(history.state || {}), chatOpen: true, chatSessionId: activeSessionId }, "");
+  } else {
+    history.replaceState({ ...(history.state || {}), chatSessionId: activeSessionId }, "");
+  }
+  requestConversationMessageSync(activeSessionId);
+  updateDashboardViewport();
 }
 
 function closeChat() {
@@ -5105,7 +5396,7 @@ function applyMessagingWindowState(lastUserTime) {
 function checkMessagingWindow(messages) {
   if (!windowExpiredBannerEl) return;
 
-  const lastUserTime = findLastUserMessageTime(messages);
+  const lastUserTime = Math.max(findLastUserMessageTime(messages), Number(messagesEl.dataset.lastUserMessageTime || 0));
   messagesEl.dataset.lastUserMessageTime = String(lastUserTime || "");
   applyMessagingWindowState(lastUserTime);
 }
@@ -5137,8 +5428,13 @@ async function loadMessages(sessionId) {
   // ما ينفعش تتكتب فوق المحادثة الجديدة. الـ token ده بيتأكد إن آخر
   // استدعاء بس هو اللي يرسم النتيجة، حتى لو الردود رجعت بترتيب مقلوب.
   const requestToken = ++messagesRequestToken;
+  const messageOwner = authToken;
+  const syncVersion = messageSyncVersions.get(sessionId) || 0;
+  loadingMessageSession = sessionId;
+  messageSyncAnchors.delete(sessionId);
 
   delete messagesEl.dataset.loadedSessionId;
+  delete messagesEl.dataset.lastUserMessageTime;
   chatTitleEl.textContent = conv?.customer_name || "عميل";
   renderChatMeta(sessionId, 0);
   oldestLoadedMessageId = null;
@@ -5153,19 +5449,14 @@ async function loadMessages(sessionId) {
   messagesEl.innerHTML = `<div class="loading-state">جاري تحميل الرسائل...</div>`;
 
   try {
-    const res = await fetch(
+    const { response: res, data } = await readConversationMessagePage(
       `${API_BASE}/messages/${encodeURIComponent(sessionId)}?limit=50`,
-      {
-        cache: "no-store",
-        headers: getAuthHeaders(getOrderConfirmationMessageHeaders(sessionId))
-      }
+      getAuthHeaders(getOrderConfirmationMessageHeaders(sessionId))
     );
 
     if (!res.ok) throw new Error("Failed messages");
 
-    const data = await res.json();
-
-    if (requestToken !== messagesRequestToken || sessionId !== activeSessionId) {
+    if (requestToken !== messagesRequestToken || sessionId !== activeSessionId || messageOwner !== authToken) {
       return;
     }
 
@@ -5186,14 +5477,21 @@ async function loadMessages(sessionId) {
     }
 
     messages.forEach((msg) => appendMessageToUI(msg));
+    const lastMessage = messages[messages.length - 1], normalizedLast = normalizeMessage(lastMessage);
+    messageSyncAnchors.set(sessionId, { id: String(lastMessage.id || normalizedLast.storage_id || ''), mid: String(normalizedLast.external_message_id || normalizedLast.channel_message_id || normalizedLast.wa_message_id || normalizedLast.message_id || '') });
     scrollMessagesToBottom();
   } catch (error) {
-    if (requestToken !== messagesRequestToken || sessionId !== activeSessionId) {
+    if (requestToken !== messagesRequestToken || sessionId !== activeSessionId || messageOwner !== authToken) {
       return;
     }
 
     messagesEl.innerHTML = `<div class="error-state">فشل تحميل الرسائل</div>`;
     console.error(error);
+  } finally {
+    if (requestToken === messagesRequestToken) {
+      loadingMessageSession = null;
+      if ((messageSyncVersions.get(sessionId) || 0) !== syncVersion) requestConversationMessageSync(sessionId, false);
+    }
   }
 }
 
@@ -5219,19 +5517,14 @@ async function loadOlderMessages() {
     const beforeTimestampQuery = oldestLoadedMessageTimestamp
       ? `&beforeTimestamp=${encodeURIComponent(oldestLoadedMessageTimestamp)}` 
       : "";
-    const res = await fetch(
+    const { response: res, data } = await readConversationMessagePage(
       `${API_BASE}/messages/${encodeURIComponent(targetSessionId)}` +
       `?limit=100&beforeId=${encodeURIComponent(oldestLoadedMessageId)}` +
       beforeTimestampQuery,
-      {
-        cache: "no-store",
-        headers: getAuthHeaders(getOrderConfirmationMessageHeaders(targetSessionId))
-      }
+      getAuthHeaders(getOrderConfirmationMessageHeaders(targetSessionId))
     );
 
     if (!res.ok) throw new Error("Failed older messages");
-
-    const data = await res.json();
 
     if (
       requestToken !== messagesRequestToken ||
@@ -5267,7 +5560,7 @@ async function loadOlderMessages() {
     setTimeout(() => loader.remove(), 1800);
     console.error(error);
   } finally {
-    isLoadingOlderMessages = false;
+    if (requestToken === messagesRequestToken && targetSessionId === activeSessionId) isLoadingOlderMessages = false;
   }
 }
 
@@ -6803,6 +7096,7 @@ function updateRenderedReaction(messageId, emojiValue) {
 
 function connectEvents() {
   if (!authToken) return;
+  ensureDashboardExitGuard();
 
   if (eventSource) {
     eventSource.close();
@@ -6811,8 +7105,13 @@ function connectEvents() {
   eventSource = new EventSource(
     `${API_BASE}/events?token=${encodeURIComponent(authToken)}`
   );
+  const connectedSource = eventSource, connectedOwner = authToken;
+  eventSource.onopen = () => {
+    if (connectedSource === eventSource && connectedOwner === authToken) scheduleDashboardRecovery();
+  };
 
   eventSource.onmessage = async function (event) {
+    if (connectedSource !== eventSource || connectedOwner !== authToken) return;
     let data = {};
 
     try {
@@ -6823,6 +7122,21 @@ function connectEvents() {
 
     const currentSession = String(activeSessionId || "").trim();
     const eventSession = String(data.sessionId || "").trim();
+    if (currentSession && currentSession === eventSession &&
+        (data.messageType === 'user' || data.messageType === 'human')) {
+      const userTime = new Date(data.timestamp || data.created_at || 0).getTime();
+      if (Number.isFinite(userTime) && userTime > 0) {
+        messagesEl.dataset.lastUserMessageTime = String(Math.max(userTime, Number(messagesEl.dataset.lastUserMessageTime || 0)));
+      }
+    }
+    if (currentSession && currentSession === eventSession &&
+        ['new_message', 'user_message', 'refresh_messages', 'conversations_changed'].includes(data.type)) {
+      requestConversationMessageSync(eventSession);
+      if (loadingMessageSession === eventSession && ['new_message', 'user_message'].includes(data.type)) {
+        updateConversationPreview();
+        return;
+      }
+    }
 
     if (currentSession === eventSession) {
       const conv = conversationsData.find(c => c.session_id === currentSession);
@@ -6883,6 +7197,7 @@ function connectEvents() {
     }
 
     if (data.type === "conversations_changed") {
+      requestConversationMessageSync(activeSessionId);
       if (viewingHiddenConversations) {
         loadHiddenConversations();
       } else {
@@ -6895,9 +7210,7 @@ function connectEvents() {
     if (data.type === "user_message") {
       if (currentSession === eventSession) {
         removeAiTypingIndicator();
-        if (getChannelFromSessionId(eventSession) !== "messenger") {
-          loadMessages(currentSession);
-        }
+        requestConversationMessageSync(currentSession);
       }
 
       updateConversationPreview();
@@ -7084,37 +7397,9 @@ if (data.type === "reaction") {
 
 
 function appendRealtimeMessage(messageObj) {
-  removeAiTypingIndicator();
-
-  appendMessageToUI({
-    type: messageObj.type,
-    channel: messageObj.channel || "whatsapp",
-    content: messageObj.content || "",
-    message_kind: messageObj.message_kind || messageObj.messageKind || "text",
-    media: messageObj.media || messageObj.mediaUrl || messageObj.media_url || null,
-    interactive: messageObj.interactive || null,
-    whatsapp_payload: messageObj.whatsapp_payload || null,
-
-    wa_message_id:
-      messageObj.wa_message_id ||
-      messageObj.message_id ||
-      messageObj.whatsapp_message_id ||
-      messageObj.whatsapp_message?.id ||
-      "",
-
-    whatsapp_message: messageObj.whatsapp_message || null,
-    reply_to: messageObj.reply_to || null,
-    timestamp:
-      messageObj.timestamp ||
-      messageObj.created_at ||
-      new Date().toISOString(),
-    message: messageObj
-  });
-
-  currentLoadedMessageCount += getMessageDisplayCount(messageObj);
-  if (activeSessionId) {
-    renderChatMeta(activeSessionId, currentLoadedMessageCount);
-  }
+  // The same MID-aware, timestamp-ordered DOM insertion used for Messenger.
+  // Only SSE rendering changes; sending and canonical storage are untouched.
+  return insertMessengerRealtimeMessage({ ...messageObj, channel: messageObj.channel || 'whatsapp' });
 }
 
 function showAiTypingIndicator() {
@@ -7273,19 +7558,7 @@ refreshBtnEl.addEventListener("click", async () => {
   }
 });
 
-window.addEventListener("popstate", () => {
-  if (mediaViewerEl) {
-    closeMediaViewer(false);
-    return;
-  }
-
-  if (mediaGalleryEl) {
-    closeMediaGallery(false);
-    return;
-  }
-
-  if (appEl.classList.contains("chat-open")) closeChat();
-});
+window.addEventListener("popstate", (event) => restoreDashboardHistory(event.state || {}));
 async function loadAiStatus(sessionId) {
   if (!sessionId || !toggleAiBtnEl) return;
 
@@ -8287,6 +8560,7 @@ function openComposerImagePreview(images) {
     objectUrls.forEach((url) => URL.revokeObjectURL(url));
     overlay.remove();
   };
+  overlay._closeDashboardPreview = closePreview;
 
   closeButton.addEventListener("click", closePreview);
   cancelButton.addEventListener("click", closePreview);
@@ -8508,6 +8782,17 @@ async function startAudioRecording() {
           mimeType
         })
       : new MediaRecorder(recordingStream);
+    mediaRecorder.addEventListener('error', (event) => {
+      // An errored recording must never leave a hidden composer or be sent.
+      event.currentTarget.recordingCancelled = true;
+      if (event.currentTarget !== mediaRecorder) return;
+      isRecordingAudio = false;
+      stopRecordingStream();
+      resetRecordingUi();
+      messageInputEl.disabled = false;
+      sendBtnEl.disabled = false;
+      attachBtnEl.disabled = false;
+    });
 
     audioChunks = [];
 
@@ -8603,6 +8888,8 @@ attachBtnEl.disabled = true;
     alert("تعذر الوصول إلى الميكروفون");
 
     stopRecordingStream();
+    isRecordingAudio = false;
+    resetRecordingUi();
   }
 }
 
@@ -8842,11 +9129,25 @@ function scheduleVoiceComposerRestore() {
 
 window.addEventListener("pageshow", scheduleVoiceComposerRestore);
 window.addEventListener("focus", scheduleVoiceComposerRestore);
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) dashboardReconnectNeeded = true;
+  scheduleDashboardRecovery();
+});
+window.addEventListener('focus', scheduleDashboardRecovery);
+window.addEventListener('online', () => {
+  dashboardReconnectNeeded = true;
+  scheduleDashboardRecovery();
+});
+window.addEventListener('resize', updateDashboardViewport);
+window.visualViewport?.addEventListener('resize', updateDashboardViewport);
+window.visualViewport?.addEventListener('scroll', updateDashboardViewport);
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     scheduleVoiceComposerRestore();
-  }
+    scheduleDashboardRecovery();
+  } else dashboardReconnectNeeded = true;
 });
 
 scheduleVoiceComposerRestore();
+updateDashboardViewport();
