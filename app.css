@@ -5301,3 +5301,16 @@ body.labels-open {
 .dashboard-exit-actions button { flex: 1; padding: 12px; border: 1px solid #91a4b5; border-radius: 10px; background: #263747; color: white; cursor: pointer; font: inherit; }
 .dashboard-exit-actions button:focus-visible { outline: 3px solid #70ceac; outline-offset: 3px; }
 #dashboardExitConfirmBtn { background: #8f3035; }
+/* Native APK owns text editing only after a successful v1 binding. PWA is unchanged. */
+html[data-native-composer="1"] .chat-compose #messageInput {
+  display: none !important;
+}
+.native-composer-connection { position:fixed; inset: max(8px,env(safe-area-inset-top)) 12px auto;
+  z-index:11000; padding:10px; border:1px solid #aa7857; border-radius:10px;
+  background:#fff3df; color:#442e36; box-shadow:0 3px 14px #0003; font-size:14px; }
+.native-composer-connection[hidden] { display:none; }
+.native-composer-connection button { margin:6px; padding:8px; }
+html[data-native-composer-state="disconnected"] .chat-compose :is(#sendBtn,#attachBtn,#savedRepliesBtn,#emojiBtn),
+html[data-native-composer-state="connecting"][data-native-composer="1"] .chat-compose :is(#sendBtn,#attachBtn,#savedRepliesBtn,#emojiBtn) {
+  pointer-events:none; opacity:.55;
+}

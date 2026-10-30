@@ -39,6 +39,19 @@ const bulkLabelPickerListEl = document.getElementById("bulkLabelPickerList");
 const bulkLabelPickerCancelBtnEl = document.getElementById("bulkLabelPickerCancelBtn");
 const labelFilterRowEl = document.getElementById("labelFilterRow");
 const messageInputEl = document.getElementById("messageInput");
+let dashboardNativeComposer = null;
+const nativeComposerTextAdmissions = new Set();
+function focusDashboardComposer() {
+  if (dashboardNativeComposer) dashboardNativeComposer.focus().catch(()=>dashboardNativeComposer.error());
+  else messageInputEl?.focus();
+}
+function syncDashboardNativeComposer() {
+  if (dashboardNativeComposer) {
+    const preview=document.querySelector('.composer-image-preview-overlay');
+    if(preview?.dataset.composerSession && preview.dataset.composerSession!==activeSessionId) preview._closeDashboardPreview?.();
+    dashboardNativeComposer.sync().catch(()=>{});
+  }
+}
 const sendBtnEl = document.getElementById("sendBtn");
 const backBtnEl = document.getElementById("backBtn");
 const refreshBtnEl = document.getElementById("refreshBtn");
@@ -554,6 +567,10 @@ emojiPickerPanelEl?.addEventListener("click", (event) => {
 emojiPickerEl?.addEventListener("emoji-click", (event) => {
   const emoji = event.detail?.unicode || "";
   if (!emoji || !messageInputEl) return;
+  if (dashboardNativeComposer) {
+    dashboardNativeComposer.insert(emoji).catch(()=>dashboardNativeComposer.error());
+    return;
+  }
 
   const start = messageInputEl.selectionStart ?? messageInputEl.value.length;
   const end = messageInputEl.selectionEnd ?? start;
@@ -1075,8 +1092,13 @@ async function deleteSavedReply(id) {
   }
 }
 
-function insertSavedReplyText(text) {
+async function insertSavedReplyText(text) {
   if (!messageInputEl || !text) return;
+  if (dashboardNativeComposer) {
+    try { await dashboardNativeComposer.insert(text); closeSavedReplies(); }
+    catch (_) { dashboardNativeComposer.error(); }
+    return;
+  }
 
   const start = messageInputEl.selectionStart ?? messageInputEl.value.length;
   const end = messageInputEl.selectionEnd ?? start;
@@ -3894,7 +3916,7 @@ function renderHiddenConversations(conversations) {
       }
 
       loadAiStatus(conv.session_id);
-      setTimeout(() => messageInputEl.focus(), 250);
+      setTimeout(focusDashboardComposer, 250);
     });
 
     conversationsEl.appendChild(item);
@@ -5269,7 +5291,7 @@ function createConversationItem(conv) {
     }
 
     loadAiStatus(currentConv.session_id);
-    setTimeout(() => messageInputEl.focus(), 250);
+    setTimeout(focusDashboardComposer, 250);
   });
 
   updateConversationItem(item, conv);
@@ -5369,6 +5391,7 @@ function openChat() {
   // Never push while an interrupted traversal is being restored.
   if (!dashboardIgnoreRestoredPop) ensureDashboardExitGuard(true);
   appEl.classList.add("chat-open");
+  if (typeof syncDashboardNativeComposer === 'function') syncDashboardNativeComposer();
   syncOrderConfirmationConversationBar();
 
   if (dashboardIgnoreRestoredPop) {
@@ -5388,6 +5411,7 @@ function openChat() {
 
 function closeChat() {
   appEl.classList.remove("chat-open");
+  if (typeof syncDashboardNativeComposer === 'function') syncDashboardNativeComposer();
   orderConfirmationConversationBarEl?.classList.add("hidden");
   removeAiTypingIndicator();
   document.querySelector(".message-actions-menu")?.remove();
@@ -6779,7 +6803,17 @@ function markOptimisticMessageFailed(content, optimisticWrap = null) {
 }
 
 async function sendMessageFromDashboard() {
-  const message = messageInputEl.value.trim();
+  const targetSessionId = activeSessionId;
+  const messageOwner = authToken;
+  const replyTo = selectedReplyMessage;
+  const native = dashboardNativeComposer;
+  if (native && nativeComposerTextAdmissions.has(targetSessionId)) return;
+  if (native) nativeComposerTextAdmissions.add(targetSessionId);
+  try {
+  const nativeSnapshot = native ? await native.capture(targetSessionId) : null;
+  if (native && (targetSessionId !== activeSessionId || messageOwner !== authToken ||
+      messageInputEl.disabled || sendBtnEl.disabled)) return;
+  const message = (nativeSnapshot ? nativeSnapshot.text : messageInputEl.value).trim();
 
   if (!activeSessionId) return alert("اختر محادثة أولًا");
   if (!message) return;
@@ -6793,12 +6827,10 @@ async function sendMessageFromDashboard() {
     return;
   }
 
-  const replyTo = selectedReplyMessage;
-  const targetSessionId = activeSessionId;
-
-  messageInputEl.value = "";
+  if (nativeSnapshot && !native.claim(nativeSnapshot)) { native.error(); return; }
+  if (!nativeSnapshot) messageInputEl.value = "";
   resizeMessageInput();
-  clearSelectedReply();
+  if (selectedReplyMessage === replyTo) clearSelectedReply();
 
   // Instagram is rendered from the saved MID-bearing realtime event only.
   const optimisticWrap = getChannelFromSessionId(targetSessionId) === "instagram" ? null : appendOptimisticTextMessage(message, replyTo);
@@ -6830,6 +6862,9 @@ async function sendMessageFromDashboard() {
     if (getChannelFromSessionId(targetSessionId) === "instagram") { alert(error.message); return; }
     markOptimisticMessageFailed(message, optimisticWrap);
   });
+  if (nativeSnapshot) await native.consume(nativeSnapshot);
+  } catch (_) { if (native) native.error(); else throw _; }
+  finally { if (native) nativeComposerTextAdmissions.delete(targetSessionId); }
 }
 
 async function sendReactionFromDashboard(messageId, emoji) {
@@ -8046,7 +8081,7 @@ function selectReplyMessage(messageObj, messageType) {
   };
 
   renderReplyBar();
-  messageInputEl.focus();
+  focusDashboardComposer();
 }
 
 function clearSelectedReply() {
@@ -8498,16 +8533,28 @@ async function queueComposerMediaFiles(inputFiles, options = {}) {
       return;
     }
 
-    const caption = options.caption !== undefined
+    const native = dashboardNativeComposer;
+    const owner = authToken;
+    let nativeSnapshot = null;
+    if (native && options.caption === undefined) {
+      try { nativeSnapshot = await native.capture(targetSessionId); }
+      catch (_) { native.error(); return; }
+      if (owner !== authToken || targetSessionId !== activeSessionId || messageInputEl.disabled || attachBtnEl.disabled) return;
+    }
+    let caption = options.caption !== undefined
       ? String(options.caption || "").trim()
-      : messageInputEl.value.trim();
+      : (nativeSnapshot ? nativeSnapshot.text : messageInputEl.value).trim();
+    if (nativeSnapshot) {
+      try { if (!native.claim(nativeSnapshot)) { caption = ""; nativeSnapshot = null; } }
+      catch (_) { native.error(); return; }
+    }
     const uploads = files.map((file) => ({
       file,
       pending: appendPendingMedia(file, caption, targetSessionId)
     }));
 
     if (options.clearComposer !== false && activeSessionId === targetSessionId) {
-      messageInputEl.value = "";
+      if (!native) messageInputEl.value = "";
       resizeMessageInput();
     }
 
@@ -8540,12 +8587,16 @@ async function queueComposerMediaFiles(inputFiles, options = {}) {
       }
 
       queueState.suppressMediaEventsUntil = Date.now() + 5000;
-      if (activeSessionId === targetSessionId) messageInputEl.focus();
+      if (activeSessionId === targetSessionId) focusDashboardComposer();
       return results;
     }).catch((error) => {
       getSessionSendQueue(targetSessionId).suppressMediaEventsUntil = Date.now() + 5000;
       console.error(error);
     });
+    if (nativeSnapshot && options.clearComposer !== false) {
+      try { await native.consume(nativeSnapshot); } catch (_) { native.error(); }
+    }
+    return true; // Local handoff only, not confirmation of delivery.
 }
 
 if (mediaInputEl) {
@@ -8576,16 +8627,28 @@ function hasComposerDraggedImage(dataTransfer) {
   return getComposerDroppedImages(dataTransfer).length > 0;
 }
 
-function openComposerImagePreview(images) {
+async function openComposerImagePreview(images) {
   if (!images.length || !activeSessionId) return;
+  if (dashboardNativeComposer && images.length > 15) { alert("الحد الأقصى 15 ملف مرة واحدة"); return; }
 
-  document.querySelector(".composer-image-preview-overlay")?.remove();
+  const previousPreview = document.querySelector(".composer-image-preview-overlay");
+  if (previousPreview?._closeDashboardPreview) previousPreview._closeDashboardPreview();
+  else previousPreview?.remove();
   const previewSessionId = activeSessionId;
-  const initialCaption = messageInputEl.value;
+  const native = dashboardNativeComposer;
+  const previewOwner = authToken;
+  let sourceSnapshot = null;
+  if (native) {
+    try { sourceSnapshot = await native.capture(previewSessionId); }
+    catch (_) { native.error(); return; }
+    if (previewOwner !== authToken || previewSessionId !== activeSessionId) return;
+  }
+  const initialCaption = sourceSnapshot ? sourceSnapshot.text : messageInputEl.value;
   const objectUrls = images.map((file) => URL.createObjectURL(file));
 
   const overlay = document.createElement("div");
   overlay.className = "composer-image-preview-overlay";
+  overlay.dataset.composerSession = previewSessionId;
   const dialog = document.createElement("div");
   dialog.className = "composer-image-preview-dialog";
 
@@ -8612,6 +8675,7 @@ function openComposerImagePreview(images) {
   captionInput.rows = 2;
   captionInput.placeholder = "اكتب تعليقًا على الصورة...";
   captionInput.value = initialCaption;
+  if (native) captionInput.hidden = true;
 
   const actions = document.createElement("div");
   actions.className = "composer-image-preview-actions";
@@ -8627,10 +8691,13 @@ function openComposerImagePreview(images) {
   dialog.append(header, grid, captionInput, actions);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
-
+  let previewClosed = false;
   const closePreview = () => {
+    if (previewClosed) return;
+    previewClosed = true;
     objectUrls.forEach((url) => URL.revokeObjectURL(url));
     overlay.remove();
+    if (native) native.closeCaption().catch(()=>native.error());
   };
   overlay._closeDashboardPreview = closePreview;
 
@@ -8639,27 +8706,50 @@ function openComposerImagePreview(images) {
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) closePreview();
   });
-  sendButton.addEventListener("click", () => {
-    const caption = captionInput.value;
+  if (native) {
+    try { await native.openCaption(previewSessionId, initialCaption); }
+    catch (_) {
+      if(native.state!=='disconnected'){closePreview();native.error();return;}
+      native.error(); // Keep the preview/native caption for explicit reconnection, never discard it.
+    }
+    if (previewClosed) return;
+  }
+  sendButton.addEventListener("click", async () => {
+    if (sendButton.disabled) return;
     sendButton.disabled = true;
+    let caption = captionInput.value;
+    if (native) {
+      try {
+        const snapshot = await native.capture(previewSessionId);
+        if (previewOwner !== authToken || previewSessionId !== activeSessionId) { sendButton.disabled=false; return; }
+        caption = snapshot.text;
+      } catch (_) { native.error(); sendButton.disabled=false; return; }
+    }
     closePreview();
 
     if (
       activeSessionId === previewSessionId &&
-      messageInputEl.value === initialCaption
+      !native && messageInputEl.value === initialCaption
     ) {
       messageInputEl.value = "";
       resizeMessageInput();
     }
 
-    queueComposerMediaFiles(images, {
+    let sourceClaimed = false;
+    if (sourceSnapshot) {
+      try { sourceClaimed = native.claim(sourceSnapshot); }
+      catch (_) { native.error(); return; }
+    }
+    const admitted = await queueComposerMediaFiles(images, {
       sessionId: previewSessionId,
       caption,
       clearComposer: false
     });
+    if (admitted && sourceClaimed) native.consume(sourceSnapshot).catch(()=>native.error());
   });
 
-  setTimeout(() => captionInput.focus(), 0);
+  if (native) native.focus().catch(()=>native.error());
+  else setTimeout(() => captionInput.focus(), 0);
 }
 
 messageInputEl?.addEventListener("paste", (event) => {
@@ -9223,3 +9313,54 @@ document.addEventListener("visibilitychange", () => {
 
 scheduleVoiceComposerRestore();
 updateDashboardViewport();
+
+// Opt-in only when BOTH the frontend contract and the native v1 host exist.
+// Old APKs and PWA never enter this branch and retain their normal textarea.
+if (window.AlMehrabNativeComposer?.release === 'native-composer-v2' && window.AlMehrabComposerHost) {
+  const panel=document.getElementById('nativeComposerConnection');
+  const connectionText=document.getElementById('nativeComposerConnectionText');
+  const retry=document.getElementById('nativeComposerReconnect');
+  let candidate=null;
+  const showState=state=>{
+    document.documentElement.dataset.nativeComposerState=state;
+    if(state==='fallback'&&dashboardNativeComposer===candidate)dashboardNativeComposer=null;
+    if(panel)panel.hidden=state!=='disconnected'&&state!=='connecting';
+    if(connectionText)connectionText.textContent=state==='connecting'
+      ? 'جارٍ إعادة الاتصال بمحرر الكتابة… لن تتم إعادة أي عملية تلقائيًا.'
+      : 'انقطع الاتصال بمحرر الكتابة. توقف الإرسال والإدراج مؤقتًا؛ لا تُعد عملية غير مؤكدة قبل مراجعة النص والطابور.';
+    if(retry)retry.disabled=state==='connecting';
+  };
+  candidate = window.AlMehrabNativeComposer.create({
+    host: window.AlMehrabComposerHost, input: messageInputEl,
+    context: () => {
+      const account = authToken ? String(decodeAuthToken()?.username || "") : "";
+      const loginOpen = loginScreenEl && !loginScreenEl.classList.contains("hidden");
+      const visible = Boolean(account && activeSessionId && !loginOpen && !appEl?.classList.contains('hidden') &&
+        (window.innerWidth >= 1024 || appEl?.classList.contains('chat-open')) &&
+        !chatComposeEl?.closest('.hidden') && messageInputEl.style.display !== "none" &&
+        !isRecordingAudio && document.visibilityState !== 'hidden');
+      return { account, session: account ? String(activeSessionId || "") : "", visible,
+        enabled: Boolean(visible && !messageInputEl.disabled && !sendBtnEl.disabled &&
+          !chatComposeEl?.classList.contains('window-expired')) };
+    },
+    notify: text => alert(text), onState: showState
+  });
+  dashboardNativeComposer=candidate;
+  const sync = () => {if(dashboardNativeComposer===candidate)candidate.sync().catch(()=>candidate.error());};
+  let observing=false;
+  const observe=()=>{
+    if(observing)return;
+    observing=true;
+    new MutationObserver(sync).observe(document.body, {subtree:true, attributes:true, attributeFilter:['class','style','disabled','hidden']});
+    window.addEventListener('resize',sync);
+    window.addEventListener('pageshow',event=>{
+      if(event.persisted&&candidate.state==='ready') candidate.reconnect().catch(()=>candidate.error());
+      else sync();
+    });
+    document.addEventListener('visibilitychange',sync);
+  };
+  if(retry)retry.addEventListener('click',()=>{
+    if(dashboardNativeComposer===candidate)candidate.reconnect().then(observe).catch(()=>candidate.error());
+  });
+  candidate.start().then(observe).catch(()=>candidate.error());
+}
