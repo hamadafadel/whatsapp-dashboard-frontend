@@ -1083,13 +1083,15 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
 
     // اتحرك أكتر من عتبة الرعشة الطبيعية من غير ما نوصل لمرحلة السحب = سكرول حقيقي، مش تاب
     if (moved) return;
+    if (longPressFired && onHoldSelect) {
+      // Commit/haptic in the trusted release before cancelling its browser
+      // default. Always consume the compatibility click, even if a callback fails.
+      try { onHoldSelect(); } finally { if (event.cancelable) event.preventDefault(); }
+      return;
+    }
     if (event.cancelable) event.preventDefault();
 
     if (longPressFired) {
-      if (onHoldSelect) {
-        onHoldSelect();
-        return;
-      }
       // إمساك ساكن وسايبه من غير ما يسحب = افتح القايمة لو فيه واحدة،
       // وإلا (زي وضع التحديد) يبقى نفس تأثير الضغطة العادية
       if (onLongPress) {
@@ -1644,11 +1646,37 @@ function updateGallerySelectionUI() {
   }
 }
 
+const galleryHapticTrace = [];
+function recordGalleryHaptic(route, status, accepted = null, reason = null) {
+  // Bounded, non-personal diagnostics. API acceptance is NOT hardware success.
+  const reasons = ["dispatched", "not_attached", "not_visible", "view_disabled", "view_or_system_rejected", "policy_rejected", "dispatch_error", "ack_timeout"];
+  galleryHapticTrace.push(Object.freeze({ route, status, accepted, reason: reasons.includes(reason) ? reason : null,
+    active: navigator.userActivation?.isActive === true,
+    activated: navigator.userActivation?.hasBeenActive === true }));
+  if (galleryHapticTrace.length > 32) galleryHapticTrace.shift();
+}
+function getGalleryHapticDiagnostics() { return galleryHapticTrace.slice(); }
+
 function gallerySelectionHaptic() {
   try {
-    if (window.AlMehrabAndroidAdapter?.selectionHaptic?.() === true) return;
-    navigator.vibrate?.(15);
-  } catch (_) { /* Unsupported/disabled haptics must never affect selection. */ }
+    const native = window.AlMehrabAndroidAdapter;
+    if (typeof native?.selectionHaptic === "function") {
+      recordGalleryHaptic("native", "requested");
+      if (native.selectionHaptic((result) => {
+        const status = ["accepted", "rejected", "unknown"].includes(result?.status) ? result.status : "unknown";
+        recordGalleryHaptic("native", status, status === "unknown" ? null : status === "accepted", result?.code);
+      }) === true) return;
+      recordGalleryHaptic("native", "not_posted", false);
+    }
+  } catch (_) { recordGalleryHaptic("native", "unknown"); return; }
+  try {
+    if (typeof navigator.vibrate !== "function") { recordGalleryHaptic("web", "unsupported", false); return; }
+    // Same direct API and 15ms pulse as the pre-70b2b495 implementation. No
+    // timeout, Promise, or retry: only the already-confirmed selection requests it.
+    const accepted = navigator.vibrate(15);
+    recordGalleryHaptic("web", accepted === true ? "accepted" : accepted === false ? "rejected" : "unknown",
+      typeof accepted === "boolean" ? accepted : null);
+  } catch (_) { recordGalleryHaptic("web", "error", false); }
 }
 
 function beginGalleryHoldSelection(itemId) {
@@ -1656,9 +1684,9 @@ function beginGalleryHoldSelection(itemId) {
   const previousIds = new Set(selectedItemIds);
   selectMode = true;
   selectedItemIds.add(itemId);
+  if (!previousIds.has(itemId)) gallerySelectionHaptic();
   updateGallerySelectionUI();
   syncGallerySelectionHistory();
-  if (!previousIds.has(itemId)) gallerySelectionHaptic();
 }
 
 function enterSelectMode() {
