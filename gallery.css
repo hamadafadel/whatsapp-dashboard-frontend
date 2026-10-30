@@ -275,6 +275,11 @@ button {
   cursor: pointer;
 }
 
+.gallery-item-card.gallery-hold-ready {
+  outline: 2px solid #b68c66;
+  outline-offset: -3px;
+}
+
 .gallery-item-card img,
 .gallery-item-card .gallery-item-video-placeholder {
   width: 100%;

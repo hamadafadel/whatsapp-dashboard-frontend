@@ -917,13 +917,19 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
   let startScrollY = 0;
   let suppressClickUntil = 0;
   let nativeDragNodes = [];
-  let holdSelectionUndo = null;
   let lastInputWasTouch = false;
+  let touchStartedAt = 0;
+  let touchEventStartedAt = null;
+  let holdX = 0;
+  let holdY = 0;
+  // Touch dispatches onTap itself. Keep compatibility clicks consumed until a
+  // genuine new mouse gesture, not just an arbitrary 800ms delay.
+  let consumeClick = false;
 
   // Preserve the browsing tap tolerance; Custom mode cancels its drag timer
   // sooner (10px) so an ordinary scroll never becomes a delayed drag.
   const TAP_MOVE_THRESHOLD = 24;
-  const canReorderTouch = () => draggableId && canWriteHere() && (!selectMode || onHoldSelect) &&
+  const canReorderTouch = () => draggableId && canWriteHere() && !selectMode &&
     !galleryOrderSaving && galleryOrderState.available && galleryOrderState.mode === "custom" &&
     currentItems.some((item) => item.id === draggableId);
 
@@ -943,14 +949,37 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
   const cancelTouch = () => {
     clearLongPressTimer();
     window.removeEventListener("blur", cancelTouch);
-    holdSelectionUndo?.();
-    holdSelectionUndo = null;
+    window.removeEventListener("scroll", cancelOnScroll, true);
+    card.classList.remove("gallery-hold-ready");
     restoreNativeDrag();
     if (dragging) cancelMobileDrag();
     dragging = false;
     touchActive = false;
     moved = true;
     suppressClickUntil = Date.now() + 800;
+    consumeClick = true;
+  };
+
+  const cancelOnScroll = (event) => {
+    if (!touchActive || dragging) return;
+    if (!event?.target || event.target === window || event.target === document || event.target.contains?.(card)) cancelTouch();
+  };
+  const armTouchHold = (event) => {
+    const elapsed = Math.max(Date.now() - touchStartedAt,
+      touchEventStartedAt != null && Number.isFinite(event?.timeStamp) ? event.timeStamp - touchEventStartedAt : 0);
+    if (!touchActive || moved || longPressFired || elapsed < GALLERY_LONG_PRESS_MS) return;
+    if (card.isConnected === false || (customTouch && !canReorderTouch()) ||
+        window.scrollX !== startScrollX || window.scrollY !== startScrollY) { cancelTouch(); return; }
+    longPressFired = true;
+    holdX = lastX; holdY = lastY;
+    // Do not mutate selection/history or vibrate provisionally: this hold may
+    // still become a drag. A stationary release commits the selection once.
+    if (onHoldSelect) card.classList.add("gallery-hold-ready");
+    else if (customTouch) {
+      dragging = true;
+      startMobileDrag(draggableId, card, lastX, lastY);
+      updateMobileDrag(lastX, lastY);
+    }
   };
 
   card.addEventListener("touchstart", (event) => {
@@ -960,6 +989,9 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
 
     const t = event.touches[0];
     lastInputWasTouch = true;
+    consumeClick = true;
+    touchStartedAt = Date.now();
+    touchEventStartedAt = Number.isFinite(event.timeStamp) ? event.timeStamp : null;
     clearLongPressTimer();
     startX = lastX = t.clientX;
     startY = lastY = t.clientY;
@@ -968,6 +1000,7 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
     touchId = t.identifier;
     touchActive = true;
     window.addEventListener("blur", cancelTouch);
+    window.addEventListener("scroll", cancelOnScroll, true);
     customTouch = Boolean(canReorderTouch());
     restoreNativeDrag();
     if (customTouch || onHoldSelect) {
@@ -979,23 +1012,7 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
     moved = false;
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
-      if (!touchActive || moved) return;
-      if (card.isConnected === false) { cancelTouch(); return; }
-      if ((customTouch && !canReorderTouch()) ||
-          ((customTouch || onHoldSelect) && (window.scrollX !== startScrollX || window.scrollY !== startScrollY))) {
-        cancelTouch();
-        return;
-      }
-      longPressFired = true;
-      if (onHoldSelect) {
-        holdSelectionUndo = onHoldSelect();
-      } else if (customTouch) {
-        dragging = true;
-        suppressClickUntil = Date.now() + 800;
-        startMobileDrag(draggableId, card, lastX, lastY);
-        updateMobileDrag(lastX, lastY);
-      }
-      if (navigator.vibrate) navigator.vibrate(15);
+      armTouchHold();
     }, GALLERY_LONG_PRESS_MS);
   }, { passive: true });
 
@@ -1003,9 +1020,11 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
     if (!touchActive) return;
     if (event.touches.length !== 1 || event.touches[0].identifier !== touchId) { cancelTouch(); return; }
     const t = event.touches[0];
+    armTouchHold(event);
     lastX = t.clientX;
     lastY = t.clientY;
     const dist = Math.hypot(t.clientX - startX, t.clientY - startY);
+    // Timer callbacks can be delayed by rendering. Elapsed time is authoritative.
 
     if (!longPressFired) {
       // قبل ما الضغطة الطويلة تحصل، أي تحريك واضح يبقى سكرول عادي للصفحة —
@@ -1018,12 +1037,9 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
       return;
     }
 
-    if (!dragging && customTouch && dist > 6) {
-      // Undo only this pending hold's checkmark before switching to a drag.
-      holdSelectionUndo?.();
-      holdSelectionUndo = null;
-      if (onHoldSelect && selectMode) exitSelectMode();
+    if (!dragging && customTouch && Math.hypot(t.clientX - holdX, t.clientY - holdY) > 6) {
       if (!canReorderTouch()) { cancelTouch(); return; }
+      card.classList.remove("gallery-hold-ready");
       dragging = true;
       startMobileDrag(draggableId, card, t.clientX, t.clientY);
     } else if (!dragging && onHoldSelect && dist > 10) {
@@ -1047,9 +1063,14 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
     if (card.isConnected === false) { cancelTouch(); return; }
     const t = Array.from(event.changedTouches).find((touch) => touch.identifier === touchId);
     if (!t || event.touches.length) { cancelTouch(); return; }
+    // A held release must not become a tap when the event loop delayed its timer.
+    armTouchHold(event);
+    if (!touchActive) return;
     clearLongPressTimer();
     touchActive = false;
     window.removeEventListener("blur", cancelTouch);
+    window.removeEventListener("scroll", cancelOnScroll, true);
+    card.classList.remove("gallery-hold-ready");
     restoreNativeDrag();
     suppressClickUntil = Date.now() + 800;
 
@@ -1066,7 +1087,7 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
 
     if (longPressFired) {
       if (onHoldSelect) {
-        holdSelectionUndo = null;
+        onHoldSelect();
         return;
       }
       // إمساك ساكن وسايبه من غير ما يسحب = افتح القايمة لو فيه واحدة،
@@ -1093,12 +1114,11 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
       return;
     }
     if (mouseActive) {
-      mouseSelectionUndo?.();
-      mouseSelectionUndo = null;
-      if (onHoldSelect && selectMode && canReorderTouch()) exitSelectMode();
       stopMouseTracking();
       suppressClickUntil = Date.now() + 800;
     }
+    consumeClick = true;
+    card.classList.remove("gallery-hold-ready");
   }, true);
 
   // Mouse holds select as well. A native mouse drag cancels only the pending
@@ -1106,57 +1126,66 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
   let mouseActive = false;
   let mouseTimer = null;
   let mouseHeld = false;
-  let mouseSelectionUndo = null;
   let mouseX = 0;
   let mouseY = 0;
+  let mouseStartedAt = 0;
+  let mouseEventStartedAt = null;
+  let mouseMoved = false;
   const stopMouseTracking = () => {
     clearTimeout(mouseTimer);
     mouseTimer = null;
     mouseActive = false;
+    card.classList.remove("gallery-hold-ready");
     window.removeEventListener("mousemove", moveMouseHold);
     window.removeEventListener("mouseup", finishMouseHold);
     window.removeEventListener("blur", cancelMouseHold);
   };
   const cancelMouseHold = () => {
-    mouseSelectionUndo?.();
-    mouseSelectionUndo = null;
     stopMouseTracking();
     suppressClickUntil = Date.now() + 800;
+    consumeClick = true;
   };
   const moveMouseHold = (event) => {
     if (!mouseActive || Math.hypot(event.clientX - mouseX, event.clientY - mouseY) <= 6) return;
+    mouseMoved = true;
+    card.classList.remove("gallery-hold-ready");
     clearTimeout(mouseTimer);
     mouseTimer = null;
-    if (mouseSelectionUndo) {
-      mouseSelectionUndo();
-      mouseSelectionUndo = null;
-      if (selectMode && canReorderTouch()) exitSelectMode();
-      suppressClickUntil = Date.now() + 800;
-    }
   };
-  const finishMouseHold = () => {
+  const finishMouseHold = (event) => {
     if (!mouseActive) return;
-    if (mouseHeld) suppressClickUntil = Date.now() + 800;
-    mouseSelectionUndo = null;
+    const elapsed = Math.max(Date.now() - mouseStartedAt,
+      mouseEventStartedAt != null && Number.isFinite(event?.timeStamp) ? event.timeStamp - mouseEventStartedAt : 0);
+    if (!mouseMoved && card.isConnected !== false && elapsed >= GALLERY_LONG_PRESS_MS) {
+      mouseHeld = true;
+      onHoldSelect();
+    }
+    if (mouseHeld || mouseMoved) { suppressClickUntil = Date.now() + 800; consumeClick = true; }
     stopMouseTracking();
     card.draggable = canWriteHere() && !selectMode;
   };
-  if (onHoldSelect) card.addEventListener("mousedown", (event) => {
-    if (event.button !== 0 || touchActive || (lastInputWasTouch && Date.now() < suppressClickUntil) ||
+  card.addEventListener("mousedown", (event) => {
+    if (event.button !== 0 || event.sourceCapabilities?.firesTouchEvents || touchActive ||
+        (event.sourceCapabilities == null && lastInputWasTouch && Date.now() < suppressClickUntil) ||
         event.target?.closest("button, a, input, select, textarea")) return;
     lastInputWasTouch = false;
+    consumeClick = false;
     suppressClickUntil = 0;
+    gallerySuppressClickUntil = 0;
+    if (!onHoldSelect) return;
     stopMouseTracking();
     mouseActive = true;
     mouseHeld = false;
+    mouseMoved = false;
+    mouseStartedAt = Date.now();
+    mouseEventStartedAt = Number.isFinite(event.timeStamp) ? event.timeStamp : null;
     mouseX = event.clientX;
     mouseY = event.clientY;
     const canDrag = Boolean(canReorderTouch());
     mouseTimer = setTimeout(() => {
       mouseTimer = null;
       if (!mouseActive || card.isConnected === false) { cancelMouseHold(); return; }
-      mouseHeld = true;
-      mouseSelectionUndo = onHoldSelect();
+      card.classList.add("gallery-hold-ready");
       // Keep this source eligible until release or native dragstart decides.
       if (canDrag) card.draggable = true;
     }, GALLERY_LONG_PRESS_MS);
@@ -1167,7 +1196,7 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
 
   // الديسكتوب: نفس منطق الرفع القديم، مع تجاهل الـ click الاصطناعي بعد اللمس
   card.addEventListener("click", (event) => {
-    if (touchActive || dragging || Date.now() < suppressClickUntil) {
+    if (touchActive || dragging || consumeClick || Date.now() < suppressClickUntil) {
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -1563,6 +1592,7 @@ function toggleItemSelection(itemId) {
     selectedItemIds.delete(itemId);
   } else {
     selectedItemIds.add(itemId);
+    gallerySelectionHaptic();
   }
 
   updateGallerySelectionUI();
@@ -1614,21 +1644,21 @@ function updateGallerySelectionUI() {
   }
 }
 
+function gallerySelectionHaptic() {
+  try {
+    if (window.AlMehrabAndroidAdapter?.selectionHaptic?.() === true) return;
+    navigator.vibrate?.(15);
+  } catch (_) { /* Unsupported/disabled haptics must never affect selection. */ }
+}
+
 function beginGalleryHoldSelection(itemId) {
-  if (gallerySelectionClosing) return () => {};
-  const previousMode = selectMode;
+  if (gallerySelectionClosing) return;
   const previousIds = new Set(selectedItemIds);
   selectMode = true;
   selectedItemIds.add(itemId);
   updateGallerySelectionUI();
   syncGallerySelectionHistory();
-  // Only the pending gesture is reversible; already confirmed selection is kept.
-  return () => {
-    selectMode = previousMode;
-    selectedItemIds = previousIds;
-    updateGallerySelectionUI();
-    syncGallerySelectionHistory();
-  };
+  if (!previousIds.has(itemId)) gallerySelectionHaptic();
 }
 
 function enterSelectMode() {
