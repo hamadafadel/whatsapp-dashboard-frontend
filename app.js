@@ -1259,6 +1259,7 @@ async function processSessionSendQueue(sessionId) {
         }
         state.activeSends = 0;
         state.activeAdmissionGeneration = null;
+        syncServerSendQueueVisibility(sessionId);
       }
     }
   } finally {
@@ -1275,6 +1276,7 @@ function enqueueSessionSend(sessionId, type, run) {
     state.jobs.push({ type, run, resolve, reject });
   });
 
+  syncServerSendQueueVisibility(sessionId);
   processSessionSendQueue(sessionId);
   return promise;
 }
@@ -5526,10 +5528,8 @@ async function loadMessages(sessionId) {
   oldestLoadedMessageTimestamp = null;
   hasMoreMessages = false;
   isLoadingOlderMessages = false;
-  for (const url of localMediaPreviewUrls) {
-    URL.revokeObjectURL(url);
-  }
-  localMediaPreviewUrls.clear();
+  // Queue-owned upload previews release their own URLs after acceptance/failure;
+  // switching chats must not invalidate another conversation's ongoing preview.
 
   messagesEl.innerHTML = `<div class="loading-state">جاري تحميل الرسائل...</div>`;
 
@@ -5708,13 +5708,33 @@ function getMessengerMessageSourcePriority(messageObj = {}) {
   return 0;
 }
 
+// A database row ID and a channel MID are distinct identities. Never compare
+// text, timestamps, media URLs or submission order to guess message ownership.
+function findRenderedCanonicalMessage(messageObj = {}) {
+  const storageId = String(messageObj.storage_id || messageObj.storageId || messageObj.id || '').trim();
+  if (storageId) {
+    const row = messagesEl.querySelector(`[data-message-storage-id="${CSS.escape(storageId)}"]`);
+    if (row) return row;
+  }
+  for (const id of [messageObj.external_message_id, messageObj.channel_message_id,
+    messageObj.wa_message_id, messageObj.waMessageId, messageObj.message_id,
+    messageObj.messageId, messageObj.whatsapp_message?.id]) {
+    const row = id && findRenderedMessageById(id);
+    if (row) return row;
+  }
+  return null;
+}
+
 function updateRenderedMessengerMessage(messageObj) {
-  const messageId = String(
-    messageObj.external_message_id || messageObj.channel_message_id ||
-    messageObj.wa_message_id || messageObj.message_id || ""
-  ).trim();
-  const existing = messageId ? findRenderedMessageById(messageId) : null;
+  const existing = findRenderedCanonicalMessage(messageObj);
   if (!existing) return { handled: false, updated: false };
+  const storageId = String(messageObj.storage_id || messageObj.storageId || messageObj.id || '').trim();
+  if (storageId) existing.dataset.messageStorageId = storageId;
+  for (const [field, value] of [['externalMessageId', messageObj.external_message_id],
+    ['channelMessageId', messageObj.channel_message_id], ['waMessageId', messageObj.wa_message_id],
+    ['messageId', messageObj.message_id]]) {
+    if (value && !existing.dataset[field]) existing.dataset[field] = String(value);
+  }
 
   const incomingPriority = getMessengerMessageSourcePriority(messageObj);
   const existingPriority = Number(existing.dataset.canonicalSourcePriority || 0);
@@ -5736,6 +5756,9 @@ function updateRenderedMessengerMessage(messageObj) {
   }, { autoScroll: false });
 
   if (!replacement) return { handled: true, updated: false, reload: true };
+  for (const field of ['messageStorageId','externalMessageId','channelMessageId','waMessageId','messageId']) {
+    if (!replacement.dataset[field] && existing.dataset[field]) replacement.dataset[field] = existing.dataset[field];
+  }
   if (messageObj.channel === "instagram" && typeof preservedInstagramAgentReaction === "string" &&
       !Object.prototype.hasOwnProperty.call(messageObj, "agent_reaction") &&
       messageObj.reaction?.from !== "agent") {
@@ -6132,19 +6155,6 @@ function appendMessageToUI(msg, options = {}) {
   const reactionEmoji =
     messageObj.reaction?.emoji ||
     "";
-
-  // منع تكرار رسالة الـ agent بعد optimistic render
-  if (rawType === "agent" && content) {
-    const lastBubble = messagesEl.lastElementChild;
-    const lastPending = lastBubble?.dataset?.pendingAgent === "true";
-    const lastContent = lastBubble?.dataset?.pendingContent || "";
-
-    if (lastPending && lastContent === content) {
-      delete lastBubble.dataset.pendingAgent;
-      delete lastBubble.dataset.pendingContent;
-      return;
-    }
-  }
 
   let mediaUrl = "";
 
@@ -6682,126 +6692,6 @@ if (
   return wrap;
 }
 
-function appendOptimisticTextMessage(content, replyTo) {
-  const wrap = document.createElement("div");
-  wrap.className = "message-wrap agent";
-  wrap.dataset.pendingAgent = "true";
-  wrap.dataset.pendingContent = content;
-
-  const bubble = document.createElement("div");
-  bubble.className = "message agent";
-
-  const label = document.createElement("div");
-  label.className = "message-label agent";
-  label.textContent = getCurrentSenderName();
-
-  if (label.textContent.toLowerCase() === "admin") {
-    label.classList.add("sender-admin");
-  } else if (label.textContent.toLowerCase() === "agent1") {
-    label.classList.add("sender-agent1");
-  }
-
-  bubble.appendChild(label);
-
-  if (replyTo && replyTo.content) {
-    const replyBox = document.createElement("div");
-    replyBox.className = "quoted-reply-box";
-    replyBox.dataset.replyTargetId = replyTo.wa_message_id || "";
-    replyBox.style.cursor = "pointer";
-
-    const replyName = document.createElement("div");
-    replyName.className = "quoted-reply-name";
-    replyName.textContent = replyTo.type === "user" ? "العميل" : "أنت";
-
-    const replyText = document.createElement("div");
-    replyText.className = "quoted-reply-text";
-    replyText.textContent = replyTo.content || "";
-
-    const replyThumbUrl =
-      replyTo.message_kind === "image" ? replyTo.media_url || "" : "";
-
-    if (replyThumbUrl) {
-      replyBox.classList.add("has-thumb");
-
-      const textWrap = document.createElement("div");
-      textWrap.className = "quoted-reply-textwrap";
-      textWrap.appendChild(replyName);
-      textWrap.appendChild(replyText);
-
-      const thumb = document.createElement("img");
-      thumb.className = "quoted-reply-thumb";
-      thumb.src = replyThumbUrl;
-      thumb.alt = "";
-
-      replyBox.appendChild(thumb);
-      replyBox.appendChild(textWrap);
-    } else {
-      replyBox.appendChild(replyName);
-      replyBox.appendChild(replyText);
-    }
-
-    bubble.appendChild(replyBox);
-
-    replyBox.addEventListener("click", (e) => {
-      e.stopPropagation();
-
-      const targetId = replyBox.dataset.replyTargetId;
-      if (!targetId) return;
-
-      const target = messagesEl.querySelector(
-        `[data-wa-message-id="${CSS.escape(targetId)}"]`
-      );
-
-      if (!target) return;
-
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
-      target.classList.add("message-highlight");
-
-      setTimeout(() => {
-        target.classList.remove("message-highlight");
-      }, 1200);
-    });
-  }
-
-  const textEl = document.createElement("div");
-  textEl.className = "message-text";
-  textEl.innerHTML = linkifyText(content);
-  bubble.appendChild(textEl);
-
-  const timestampEl = document.createElement("div");
-  timestampEl.className = "message-timestamp";
-  timestampEl.textContent = formatMessageTimestamp(
-    new Date().toISOString()
-  );
-  bubble.appendChild(timestampEl);
-
-  wrap.appendChild(bubble);
-  messagesEl.appendChild(wrap);
-  scrollMessagesToBottom();
-  return wrap;
-}
-
-function markOptimisticMessageFailed(content, optimisticWrap = null) {
-  const lastBubble = optimisticWrap || messagesEl.lastElementChild;
-
-  if (
-    lastBubble?.dataset?.pendingAgent === "true" &&
-    lastBubble.dataset.pendingContent === content
-  ) {
-    delete lastBubble.dataset.pendingAgent;
-    delete lastBubble.dataset.pendingContent;
-    lastBubble.classList.add("message-send-failed");
-
-    const bubble = lastBubble.querySelector(".message");
-    if (bubble && !bubble.querySelector(".message-send-failed-note")) {
-      const note = document.createElement("div");
-      note.className = "message-send-failed-note";
-      note.textContent = "⚠ فشل الإرسال";
-      bubble.appendChild(note);
-    }
-  }
-}
-
 async function sendMessageFromDashboard() {
   const targetSessionId = activeSessionId;
   const messageOwner = authToken;
@@ -6832,10 +6722,11 @@ async function sendMessageFromDashboard() {
   resizeMessageInput();
   if (selectedReplyMessage === replyTo) clearSelectedReply();
 
-  // Instagram is rendered from the saved MID-bearing realtime event only.
-  const optimisticWrap = getChannelFromSessionId(targetSessionId) === "instagram" ? null : appendOptimisticTextMessage(message, replyTo);
+  // Submission progress belongs to the existing send queue. Only saved rows /
+  // identified realtime messages become chat bubbles, on every channel.
 
-  enqueueSessionSend(targetSessionId, "text", async () => {
+  let admissionSucceeded = false;
+  const admission = enqueueSessionSend(targetSessionId, "text", async () => {
     const res = await fetchSendSubmission(`${API_BASE}/send-message`, {
       method: "POST",
       headers: getAuthHeaders({ "Content-Type": "application/json" }),
@@ -6856,13 +6747,17 @@ async function sendMessageFromDashboard() {
       await reloadActiveConversationPreservingScroll(targetSessionId);
     }
     loadConversations();
-  }).catch((error) => {
+  }).then((result) => { admissionSucceeded = true; return result; }).catch((error) => {
     console.error(error);
     alert("خطأ في الإرسال");
     if (getChannelFromSessionId(targetSessionId) === "instagram") { alert(error.message); return; }
-    markOptimisticMessageFailed(message, optimisticWrap);
   });
-  if (nativeSnapshot) await native.consume(nativeSnapshot);
+  // Native keeps ownership of the draft until the existing send queue accepts it.
+  // A failed/uncertain admission must not erase text, and is never retried here.
+  if (nativeSnapshot) {
+    await admission;
+    if (admissionSucceeded) await native.consume(nativeSnapshot);
+  }
   } catch (_) { if (native) native.error(); else throw _; }
   finally { if (native) nativeComposerTextAdmissions.delete(targetSessionId); }
 }
@@ -7073,7 +6968,7 @@ function insertMessengerRealtimeMessage(messageObj) {
     messageObj.message_id ||
     ""
   ).trim();
-  if (messageId) {
+  if (messageId || messageObj.storage_id || messageObj.storageId || messageObj.id) {
     const updateResult = updateRenderedMessengerMessage(messageObj);
     if (updateResult.reload) {
       reloadActiveConversationPreservingScroll(activeSessionId).catch(console.error);
@@ -7081,11 +6976,10 @@ function insertMessengerRealtimeMessage(messageObj) {
     if (updateResult.handled) return updateResult.updated;
   }
 
-  if (messageObj.type === "agent" && messageObj.content) {
-    const pending = [...messagesEl.querySelectorAll('[data-pending-agent="true"]')].find(
-      (node) => node.dataset.pendingContent === String(messageObj.content)
-    );
-    if (pending) pending.remove();
+  // Legacy events without any stable identity are invalidations, not new rows.
+  if (!messageId && !messageObj.storage_id && !messageObj.storageId && !messageObj.id) {
+    requestConversationMessageSync(activeSessionId);
+    return false;
   }
 
   messagesEl.querySelector(".empty-state")?.remove();
@@ -7345,10 +7239,6 @@ function connectEvents() {
       return;
     }
 
-    const realtimeMessageKind = String(
-      data.messageKind || data.message_kind || ""
-    ).toLowerCase();
-
 if (data.type === "reaction") {
       if (currentSession !== eventSession) return;
 
@@ -7378,6 +7268,15 @@ if (data.type === "reaction") {
     }
     
     if (data.type === "new_message") {
+      const identified = data.storage_id || data.storageId || data.external_message_id ||
+        data.channel_message_id || data.messageId || data.message_id || data.wa_message_id ||
+        data.waMessageId || data.whatsapp_message_id || data.whatsapp_message?.id;
+      if (!identified) {
+        // The canonical catch-up above is already scheduled. Rendering this event
+        // as a separate anonymous bubble would duplicate the saved database row.
+        updateConversationPreview();
+        return;
+      }
       if (
         data.content === "__image__" &&
         (data.channel || getChannelFromSessionId(eventSession)) !== "messenger"
@@ -7416,20 +7315,6 @@ if (data.type === "reaction") {
           return;
         }
 
-        if (
-          data.messageType === "agent" &&
-          ["image", "video"].includes(realtimeMessageKind)
-        ) {
-          const optimisticMedia = [...messagesEl.querySelectorAll(
-            `[data-local-media-session="${CSS.escape(eventSession)}"][data-local-media-kind="${CSS.escape(realtimeMessageKind)}"]`
-          )].find((element) => element.dataset.reconciled !== "true");
-
-          if (optimisticMedia) {
-            optimisticMedia.dataset.reconciled = "true";
-            optimisticMedia.remove();
-          }
-        }
-
         const realtimeTimestamp =
           data.timestamp ||
           data.created_at ||
@@ -7456,6 +7341,7 @@ if (data.type === "reaction") {
             data.messageId ||
             data.message_id ||
             data.wa_message_id ||
+            data.waMessageId ||
             data.whatsapp_message_id ||
             data.whatsapp_message?.id ||
             "",
@@ -8387,7 +8273,7 @@ function appendPendingMedia(file, caption = "", sessionId = "") {
   const messageKind = file.type.startsWith("video/") ? "video" : "image";
 
   const wrap = document.createElement("div");
-  wrap.className = "message-wrap agent";
+  wrap.className = "outgoing-upload-preview";
   wrap.dataset.pendingUpload = "true";
   wrap.dataset.localMediaSession = String(sessionId || "");
   wrap.dataset.localMediaKind = messageKind;
@@ -8447,35 +8333,25 @@ function appendPendingMedia(file, caption = "", sessionId = "") {
   }
 
   wrap.appendChild(bubble);
-  messagesEl.appendChild(wrap);
-  scrollMessagesToBottom();
-
+  // A file preview is upload progress, not a saved message. Keep it in the
+  // conversation-scoped queue panel, never in the canonical message timeline.
+  serverSendQueueView(sessionId).content.appendChild(wrap);
+  let released = false;
+  const release = () => { if (released) return; released = true; wrap.remove(); URL.revokeObjectURL(url); localMediaPreviewUrls.delete(url); };
   return {
     queued() {
-      overlay.textContent = "في طابور السيرفر؛ لم يُرسل بعد";
+      release();
     },
     progress(percent) {
       overlay.textContent = `جاري الإرسال... ${percent}%`;
     },
     done() {
-      overlay.textContent = "تم الإرسال";
-      setTimeout(() => {
-        overlay.remove();
-        wrap.dataset.pendingUpload = "false";
-
-        if (!bubble.querySelector(".message-timestamp")) {
-          const timestamp = document.createElement("div");
-          timestamp.className = "message-timestamp";
-          timestamp.textContent = formatMessageTimestamp(
-            new Date().toISOString()
-          );
-          bubble.appendChild(timestamp);
-        }
-      }, 700);
+      release();
+      if (activeSessionId === sessionId) requestConversationMessageSync(sessionId);
     },
     fail(message = "فشل الإرسال") {
-      overlay.textContent = message;
-      overlay.classList.add("failed");
+      release();
+      serverSendQueueView(sessionId).label.textContent = message;
     }
   };
 }
@@ -8558,7 +8434,7 @@ async function queueComposerMediaFiles(inputFiles, options = {}) {
       resizeMessageInput();
     }
 
-    enqueueSessionSend(targetSessionId, "media", async () => {
+    const admission = enqueueSessionSend(targetSessionId, "media", async () => {
       const queueState = getSessionSendQueue(targetSessionId);
       queueState.suppressMediaEventsUntil = Date.now() + 60000;
 
@@ -8593,10 +8469,13 @@ async function queueComposerMediaFiles(inputFiles, options = {}) {
       getSessionSendQueue(targetSessionId).suppressMediaEventsUntil = Date.now() + 5000;
       console.error(error);
     });
-    if (nativeSnapshot && options.clearComposer !== false) {
+    const admittedResults = native ? await admission : null;
+    const admitted = !native || (Array.isArray(admittedResults) && admittedResults.length === uploads.length &&
+      admittedResults.every((result) => result.status === "fulfilled"));
+    if (admitted && nativeSnapshot && options.clearComposer !== false) {
       try { await native.consume(nativeSnapshot); } catch (_) { native.error(); }
     }
-    return true; // Local handoff only, not confirmation of delivery.
+    return admitted; // Queue acceptance only, never confirmation of remote delivery.
 }
 
 if (mediaInputEl) {
@@ -9086,11 +8965,11 @@ function stopRecordingStream() {
   recordingStream = null;
 }
 
-// فقاعة مؤقتة بتظهر فورًا لما نضغط إرسال على رسالة صوتية، وبتفضل لحد ما
-// الرفع يخلص — بديل عن شريط التسجيل اللي كان بيفضل شغال غلط أثناء الرفع
+// Upload status belongs to the queue panel, not to the saved-message timeline.
 function appendPendingAudioBubble() {
+  const sessionId = activeSessionId;
   const wrap = document.createElement("div");
-  wrap.className = "message-wrap agent";
+  wrap.className = "outgoing-upload-preview";
   wrap.dataset.pendingUpload = "true";
 
   const bubble = document.createElement("div");
@@ -9121,22 +9000,22 @@ function appendPendingAudioBubble() {
 
   bubble.appendChild(audioWrap);
   wrap.appendChild(bubble);
-  messagesEl.appendChild(wrap);
-  scrollMessagesToBottom();
+  serverSendQueueView(sessionId).content.appendChild(wrap);
 
   return {
     queued() {
-      overlay.textContent = "في طابور السيرفر؛ لم يُرسل بعد";
+      wrap.remove();
     },
     progress(percent) {
       overlay.textContent = `جاري الإرسال... ${percent}%`;
     },
     done() {
       wrap.remove();
+      if (activeSessionId === sessionId) requestConversationMessageSync(sessionId);
     },
     fail(message = "فشل الإرسال") {
-      overlay.textContent = message;
-      overlay.classList.add("failed");
+      wrap.remove();
+      serverSendQueueView(sessionId).label.textContent = message;
     }
   };
 }
