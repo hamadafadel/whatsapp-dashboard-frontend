@@ -964,7 +964,7 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
     if (!touchActive || dragging) return;
     if (!event?.target || event.target === window || event.target === document || event.target.contains?.(card)) cancelTouch();
   };
-  const armTouchHold = (event) => {
+  const armTouchHold = (event, fromHoldTimer = false) => {
     const elapsed = Math.max(Date.now() - touchStartedAt,
       touchEventStartedAt != null && Number.isFinite(event?.timeStamp) ? event.timeStamp - touchEventStartedAt : 0);
     if (!touchActive || moved || longPressFired || elapsed < GALLERY_LONG_PRESS_MS) return;
@@ -972,9 +972,12 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
         window.scrollX !== startScrollX || window.scrollY !== startScrollY) { cancelTouch(); return; }
     longPressFired = true;
     holdX = lastX; holdY = lastY;
-    // Do not mutate selection/history or vibrate provisionally: this hold may
-    // still become a drag. A stationary release commits the selection once.
-    if (onHoldSelect) card.classList.add("gallery-hold-ready");
+    // Restore the Samsung-tested hold-time pulse, without committing selection.
+    // This recognition pulse may precede a drag; release must never pulse again.
+    if (onHoldSelect) {
+      card.classList.add("gallery-hold-ready");
+      if (fromHoldTimer && !gallerySelectionClosing && !selectedItemIds.has(draggableId)) gallerySelectionHaptic();
+    }
     else if (customTouch) {
       dragging = true;
       startMobileDrag(draggableId, card, lastX, lastY);
@@ -1012,7 +1015,7 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
     moved = false;
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
-      armTouchHold();
+      armTouchHold(undefined, true);
     }, GALLERY_LONG_PRESS_MS);
   }, { passive: true });
 
@@ -1084,9 +1087,9 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
     // اتحرك أكتر من عتبة الرعشة الطبيعية من غير ما نوصل لمرحلة السحب = سكرول حقيقي، مش تاب
     if (moved) return;
     if (longPressFired && onHoldSelect) {
-      // Commit/haptic in the trusted release before cancelling its browser
-      // default. Always consume the compatibility click, even if a callback fails.
-      try { onHoldSelect(); } finally { if (event.cancelable) event.preventDefault(); }
+      // Selection still commits on release, but the hold timer owns its pulse.
+      // A delayed/missed timer must not create a late release-time vibration.
+      try { onHoldSelect({ haptic: false }); } finally { if (event.cancelable) event.preventDefault(); }
       return;
     }
     if (event.cancelable) event.preventDefault();
@@ -1510,7 +1513,7 @@ function renderItems() {
           openPreview(item);
         }
       },
-      onHoldSelect: () => beginGalleryHoldSelection(item.id),
+      onHoldSelect: (options) => beginGalleryHoldSelection(item.id, options),
       draggableId: item.id
     });
 
@@ -1672,19 +1675,19 @@ function gallerySelectionHaptic() {
   try {
     if (typeof navigator.vibrate !== "function") { recordGalleryHaptic("web", "unsupported", false); return; }
     // Same direct API and 15ms pulse as the pre-70b2b495 implementation. No
-    // timeout, Promise, or retry: only the already-confirmed selection requests it.
+    // timeout, Promise, or retry: called at hold recognition or a new selection.
     const accepted = navigator.vibrate(15);
     recordGalleryHaptic("web", accepted === true ? "accepted" : accepted === false ? "rejected" : "unknown",
       typeof accepted === "boolean" ? accepted : null);
   } catch (_) { recordGalleryHaptic("web", "error", false); }
 }
 
-function beginGalleryHoldSelection(itemId) {
+function beginGalleryHoldSelection(itemId, { haptic = true } = {}) {
   if (gallerySelectionClosing) return;
   const previousIds = new Set(selectedItemIds);
   selectMode = true;
   selectedItemIds.add(itemId);
-  if (!previousIds.has(itemId)) gallerySelectionHaptic();
+  if (haptic && !previousIds.has(itemId)) gallerySelectionHaptic();
   updateGallerySelectionUI();
   syncGallerySelectionHistory();
 }
