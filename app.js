@@ -8199,10 +8199,23 @@ if (appEl && window.innerWidth > 1024) {
   appEl.classList.remove("chat-open");
 }
 
-if (attachBtnEl && mediaInputEl) {
-  attachBtnEl.addEventListener("click", () => {
-    mediaInputEl.click();
-  });
+let composerPickerContext = null;
+if (mediaInputEl) mediaInputEl.addEventListener("click", (event) => {
+  if (!activeSessionId || !authToken || attachBtnEl?.disabled || isRecordingAudio ||
+      chatComposeEl?.classList.contains("window-expired") ||
+      (dashboardNativeComposer && dashboardNativeComposer.state !== "ready")) {
+    composerPickerContext = null;
+    event.preventDefault();
+    return;
+  }
+  composerPickerContext = { sessionId: activeSessionId, owner: authToken };
+});
+
+function composerAttachmentKind(file) {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  if (/\.(pdf|txt|csv|docx?|xlsx?|pptx?)$/i.test(file.name)) return "file";
+  return null;
 }
 async function normalizeImageFile(file) {
   if (!file.type.startsWith("image/")) return file;
@@ -8236,7 +8249,7 @@ async function normalizeImageFile(file) {
         resolve(
           new File(
             [blob],
-            file.name.replace(/\.(jpg|jpeg|png|webp)$/i, ".jpg"),
+            (file.name.replace(/\.[^.]+$/, "") || "image") + ".jpg",
             { type: "image/jpeg" }
           )
         );
@@ -8268,9 +8281,9 @@ function getCurrentSenderName() {
 }
 
 function appendPendingMedia(file, caption = "", sessionId = "") {
+  const messageKind = composerAttachmentKind(file);
   const url = URL.createObjectURL(file);
   localMediaPreviewUrls.add(url);
-  const messageKind = file.type.startsWith("video/") ? "video" : "image";
 
   const wrap = document.createElement("div");
   wrap.className = "outgoing-upload-preview";
@@ -8308,7 +8321,7 @@ function appendPendingMedia(file, caption = "", sessionId = "") {
     img.style.width = "100%";
     img.style.borderRadius = "8px";
     mediaWrap.appendChild(img);
-  } else {
+  } else if (messageKind === "video") {
     const video = document.createElement("video");
     video.src = url;
     video.controls = true;
@@ -8316,6 +8329,10 @@ function appendPendingMedia(file, caption = "", sessionId = "") {
     video.style.width = "100%";
     video.style.borderRadius = "8px";
     mediaWrap.appendChild(video);
+  } else {
+    const name = document.createElement("span");
+    name.textContent = file.name;
+    mediaWrap.appendChild(name);
   }
 
   const overlay = document.createElement("div");
@@ -8368,12 +8385,17 @@ async function uploadMediaFile(
     originalFile.type.startsWith("video/") &&
     originalFile.size > maxVideoSize
   ) {
-    pending.fail("الفيديو أكبر من 15 ميجا");
-    throw new Error(`Video too large: ${originalFile.name}`);
+    throw new Error("الفيديو أكبر من 15 ميجا");
   }
 
-  const file = await normalizeImageFile(originalFile);
-  const messageKind = file.type.startsWith("video/") ? "video" : "image";
+  const messageKind = composerAttachmentKind(originalFile);
+  if (!messageKind) throw Error("نوع المرفق غير مدعوم");
+  if (!originalFile.size) throw Error("الملف فارغ أو غير قابل للقراءة");
+  if (messageKind === "file" && getChannelFromSessionId(targetSessionId) === "instagram")
+    throw Error("إرسال المستندات غير مدعوم عبر Instagram");
+  let file;
+  try { file = await normalizeImageFile(originalFile); }
+  catch (_) { throw Error("تعذر قراءة الصورة. جرّب نسخة JPG أو PNG قابلة للفتح."); }
   const formData = new FormData();
 
   formData.append("file", file);
@@ -8386,8 +8408,9 @@ async function uploadMediaFile(
 
   {
     const response=await fetchSendSubmission(`${API_BASE}/send-media`,{method:"POST",headers:getAuthHeaders(),body:formData});
-    const data=await response.json();
-    if(!response.ok||!observeServerSendQueue(data,targetSessionId,pending))throw Error(data.error||"لم يتم قبول الملف في الطابور");
+    const data=await response.json().catch(()=>({}));
+    if(data.notAccepted===true)throw Error("تم الإلغاء قبل قبول المرفق");
+    if(!response.ok||!observeServerSendQueue(data,targetSessionId,pending))throw Error(data.error||`لم يتم قبول الملف في الطابور (HTTP ${response.status})`);
     if(instagramMediaReply&&selectedReplyMessage===instagramMediaReply)clearSelectedReply();
     return data;
   }
@@ -8413,9 +8436,31 @@ async function queueComposerMediaFiles(inputFiles, options = {}) {
     const owner = authToken;
     let nativeSnapshot = null;
     if (native && options.caption === undefined) {
-      try { nativeSnapshot = await native.capture(targetSessionId); }
-      catch (_) { native.error(); return; }
-      if (owner !== authToken || targetSessionId !== activeSessionId || messageInputEl.disabled || attachBtnEl.disabled) return;
+      try {
+        for (let attempt = 0; ; attempt++) {
+          try { nativeSnapshot = await native.capture(targetSessionId); break; }
+          catch (error) {
+            // Returning from the system picker can precede native dock layout.
+            // Retry only an explicitly rejected read, never an upload or unknown RPC.
+            if (!options.fromPicker ||
+                !["NATIVE_COMPOSER_REJECTED", "COMPOSER_CONTEXT_CHANGED"].includes(error.message) ||
+                native.state !== "ready" || attempt >= 4) throw error;
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (owner !== authToken || targetSessionId !== activeSessionId) {
+              alert("لم يبدأ رفع المرفق لأن المحادثة تغيّرت.");
+              return false;
+            }
+          }
+        }
+      } catch (_) {
+        alert("لم يبدأ رفع المرفق: تعذر قراءة تعليق المحرر. انتظر عودة المحادثة ثم اختر الملف مجددًا.");
+        return false;
+      }
+      if (owner !== authToken || targetSessionId !== activeSessionId || messageInputEl.disabled || attachBtnEl.disabled ||
+          (options.fromPicker && (isRecordingAudio || chatComposeEl?.classList.contains("window-expired")))) {
+        if (options.fromPicker) alert("لم يبدأ رفع المرفق لأن المحادثة أو حالة الإرسال تغيّرت.");
+        return false;
+      }
     }
     let caption = options.caption !== undefined
       ? String(options.caption || "").trim()
@@ -8442,7 +8487,7 @@ async function queueComposerMediaFiles(inputFiles, options = {}) {
       // Admission is sequential; after acceptance execution belongs exclusively to Backend.
       for(const {file,pending} of uploads) {
         try {results.push({status:"fulfilled",value:await uploadMediaFile(file,caption,pending,targetSessionId)});}
-        catch(reason){results.push({status:"rejected",reason});}
+        catch(reason){pending.fail?.(reason?.message || "تعذر رفع المرفق");results.push({status:"rejected",reason});}
       }
 
       const failedCount = results.filter(
@@ -8459,7 +8504,8 @@ async function queueComposerMediaFiles(inputFiles, options = {}) {
       }
 
       if (failedCount) {
-        alert(`فشل إرسال ${failedCount} ملف`);
+        const detail = results.find(result => result.status === "rejected")?.reason?.message;
+        alert(`تعذر تجهيز أو رفع ${failedCount} مرفق${detail ? ": " + detail : ""}`);
       }
 
       queueState.suppressMediaEventsUntil = Date.now() + 5000;
@@ -8467,7 +8513,8 @@ async function queueComposerMediaFiles(inputFiles, options = {}) {
       return results;
     }).catch((error) => {
       getSessionSendQueue(targetSessionId).suppressMediaEventsUntil = Date.now() + 5000;
-      console.error(error);
+      uploads.forEach(({pending})=>pending.fail?.("تعذر تجهيز مهمة رفع المرفقات"));
+      alert("تعذر تجهيز مهمة رفع المرفقات. راجع حالة الطابور قبل المحاولة مرة أخرى.");
     });
     const admittedResults = native ? await admission : null;
     const admitted = !native || (Array.isArray(admittedResults) && admittedResults.length === uploads.length &&
@@ -8479,10 +8526,20 @@ async function queueComposerMediaFiles(inputFiles, options = {}) {
 }
 
 if (mediaInputEl) {
+  mediaInputEl.addEventListener("cancel", () => { composerPickerContext = null; });
   mediaInputEl.addEventListener("change", () => {
+    const context = composerPickerContext;
+    composerPickerContext = null;
     const files = Array.from(mediaInputEl.files || []);
     mediaInputEl.value = "";
-    queueComposerMediaFiles(files);
+    if (!files.length) return;
+    if (!context || context.owner !== authToken || context.sessionId !== activeSessionId ||
+        isRecordingAudio || attachBtnEl?.disabled || chatComposeEl?.classList.contains("window-expired")) {
+      alert("لم يُرفع المرفق لأن المحادثة أو حالة الإرسال تغيّرت.");
+      return;
+    }
+    queueComposerMediaFiles(files, {sessionId: context.sessionId, fromPicker: true})
+      .catch(() => alert("تعذر تجهيز المرفق قبل الرفع."));
   });
 }
 
