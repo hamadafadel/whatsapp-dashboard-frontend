@@ -1826,22 +1826,7 @@ body,
   height: 36px !important;
   font-size: 0 !important;
   color: var(--mehrab-purple) !important;
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
 }
-
-#attachBtn > #mediaInput {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: inherit;
-}
-#attachBtn:focus-within { outline: 2px solid var(--mehrab-purple); }
 
 .chat-compose #attachBtn::before {
   content: "";
@@ -5325,7 +5310,7 @@ html[data-native-composer="1"] .chat-compose #messageInput {
   background:#fff3df; color:#442e36; box-shadow:0 3px 14px #0003; font-size:14px; }
 .native-composer-connection[hidden] { display:none; }
 .native-composer-connection button { margin:6px; padding:8px; }
-html[data-native-composer-state="disconnected"] .chat-compose :is(#sendBtn,#attachBtn,#savedRepliesBtn,#emojiBtn),
-html[data-native-composer-state="connecting"][data-native-composer="1"] .chat-compose :is(#sendBtn,#attachBtn,#savedRepliesBtn,#emojiBtn) {
+html[data-native-composer-state="disconnected"] .chat-compose :is(#sendBtn,#savedRepliesBtn,#emojiBtn),
+html[data-native-composer-state="connecting"][data-native-composer="1"] .chat-compose :is(#sendBtn,#savedRepliesBtn,#emojiBtn) {
   pointer-events:none; opacity:.55;
 }

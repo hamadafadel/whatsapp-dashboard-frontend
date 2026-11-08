@@ -18,7 +18,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <link rel="stylesheet" href="app.css?v=69" />
+  <link rel="stylesheet" href="app.css?v=70" />
   <script
     type="module"
     src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.26.0/index.js"
@@ -170,9 +170,8 @@
     aria-label="اختيار إيموجي"
   >☺</button>
 
-  <label id="attachBtn" aria-label="إرفاق ملفات">
-    <input id="mediaInput" type="file" accept="image/*,video/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx" aria-label="إرفاق ملفات" multiple />
-  </label>
+  <button id="attachBtn" type="button" aria-label="إرفاق ملفات">📎</button>
+  <input id="mediaInput" type="file" accept="image/*,video/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx" multiple hidden />
 
   <textarea
   id="messageInput"
@@ -487,7 +486,7 @@
     <button id="nativeComposerReconnect" type="button">إعادة الاتصال بمحرر الكتابة</button>
   </aside>
   <script src="native-composer.js?v=2"></script>
-  <script src="app.js?v=87"></script>
+  <script src="app.js?v=88"></script>
 
   <script>
   if ("serviceWorker" in navigator) {

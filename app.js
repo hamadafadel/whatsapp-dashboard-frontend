@@ -8200,15 +8200,19 @@ if (appEl && window.innerWidth > 1024) {
 }
 
 let composerPickerContext = null;
-if (mediaInputEl) mediaInputEl.addEventListener("click", (event) => {
-  if (!activeSessionId || !authToken || attachBtnEl?.disabled || isRecordingAudio ||
-      chatComposeEl?.classList.contains("window-expired") ||
-      (dashboardNativeComposer && dashboardNativeComposer.state !== "ready")) {
-    composerPickerContext = null;
-    event.preventDefault();
+if (attachBtnEl && mediaInputEl) attachBtnEl.addEventListener("click", () => {
+  composerPickerContext = null;
+  if (!activeSessionId || !authToken) {
+    alert("افتح محادثة وسجّل الدخول قبل اختيار المرفق.");
+    return;
+  }
+  if (attachBtnEl.disabled || isRecordingAudio || chatComposeEl?.classList.contains("window-expired")) {
+    alert("اختيار المرفقات غير متاح في حالة المحادثة الحالية.");
     return;
   }
   composerPickerContext = { sessionId: activeSessionId, owner: authToken };
+  // The picker must open in this user gesture; the native caption read happens only after selection.
+  mediaInputEl.click();
 });
 
 function composerAttachmentKind(file) {
