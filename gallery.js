@@ -44,6 +44,7 @@ const newFolderFabEl = document.getElementById("galleryNewFolderFab");
 const previewOverlayEl = document.getElementById("galleryPreviewOverlay");
 const previewCloseBtnEl = document.getElementById("galleryPreviewCloseBtn");
 const previewBodyEl = document.getElementById("galleryPreviewBody");
+const previewNameEl = document.getElementById("galleryPreviewName");
 const previewDownloadBtnEl = document.getElementById("galleryPreviewDownloadBtn");
 
 let authToken = localStorage.getItem("dashboard_token") || "";
@@ -1410,6 +1411,9 @@ function renderItems() {
     card.classList.toggle("selected", selectedItemIds.has(item.id));
     card.draggable = canWriteHere() && !selectMode;
     card.dataset.itemId = item.id;
+    const thumbnail = document.createElement("div");
+    thumbnail.className = "gallery-item-thumbnail";
+    card.appendChild(thumbnail);
 
     card.addEventListener("dragstart", (event) => {
       event.stopPropagation();
@@ -1441,17 +1445,17 @@ function renderItems() {
         img.src = item.thumbnailUrl;
         img.loading = "lazy";
         img.alt = item.name || "";
-        card.appendChild(img);
+        thumbnail.appendChild(img);
 
         const badge = document.createElement("div");
         badge.className = "gallery-item-video-badge";
         badge.textContent = "▶";
-        card.appendChild(badge);
+        thumbnail.appendChild(badge);
       } else {
         const placeholder = document.createElement("div");
         placeholder.className = "gallery-item-video-placeholder";
         placeholder.textContent = "🎬";
-        card.appendChild(placeholder);
+        thumbnail.appendChild(placeholder);
       }
     } else {
       const fullUrl = `${API_BASE}/gallery/items/${encodeURIComponent(item.id)}/download?token=${encodeURIComponent(authToken)}`;
@@ -1467,13 +1471,13 @@ function renderItems() {
         if (img.src !== fullUrl) img.src = fullUrl;
       }, { once: true });
 
-      card.appendChild(img);
+      thumbnail.appendChild(img);
     }
 
     const check = document.createElement("div");
     check.className = "gallery-item-check";
     check.textContent = "✓";
-    card.appendChild(check);
+    thumbnail.appendChild(check);
 
     if (isMyOwnFolder(currentFolderId()) && !selectMode) {
       const deleteBtn = document.createElement("button");
@@ -1502,8 +1506,15 @@ function renderItems() {
           alert(error.message || "فشل حذف الملف");
         }
       });
-      card.appendChild(deleteBtn);
+      thumbnail.appendChild(deleteBtn);
     }
+
+    const name = document.createElement("div");
+    name.className = "gallery-item-name";
+    name.dir = "auto";
+    name.textContent = item.name || "";
+    name.title = name.textContent;
+    card.appendChild(name);
 
     enableCardGestures(card, {
       onTap: () => {
@@ -1810,6 +1821,8 @@ function openPreview(item, fromHistory = false) {
   }
   previewItem = item;
   previewBodyEl.innerHTML = "";
+  previewNameEl.textContent = item.name || "";
+  previewNameEl.hidden = !previewNameEl.textContent;
 
   const isVideo =
     item.isVideo || String(item.mimeType || "").startsWith("video/");
@@ -1843,6 +1856,8 @@ function hideGalleryPreview() {
   }
 
   previewBodyEl.innerHTML = "";
+  previewNameEl.textContent = "";
+  previewNameEl.hidden = true;
   previewItem = null;
 }
 

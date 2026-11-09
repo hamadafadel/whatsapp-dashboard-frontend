@@ -268,11 +268,34 @@ button {
 
 .gallery-item-card {
   position: relative;
-  aspect-ratio: 1 / 1;
+  min-width: 0;
   border-radius: 10px;
   overflow: hidden;
-  background: #e8e1d8;
+  background: #fffaf5;
   cursor: pointer;
+}
+
+.gallery-item-thumbnail {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: #e8e1d8;
+}
+
+.gallery-item-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  box-sizing: content-box;
+  block-size: 2.8em;
+  padding: 5px 8px;
+  color: #382a35;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .gallery-item-card.gallery-hold-ready {
@@ -454,6 +477,7 @@ button {
 .gallery-preview-body {
   max-width: 100%;
   max-height: 78vh;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -463,10 +487,25 @@ button {
 .gallery-preview-body video {
   max-width: 100%;
   max-height: 78vh;
+  flex-shrink: 1;
+  min-height: 0;
+  object-fit: contain;
   border-radius: 8px;
 }
 
+.gallery-preview-name {
+  flex: 0 0 auto;
+  max-width: 100%;
+  max-height: 20vh;
+  margin-top: 8px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  color: #fffaf5;
+  text-align: center;
+}
+
 .gallery-preview-download {
+  flex-shrink: 0;
   margin-top: 16px;
   border: 0;
   border-radius: 12px;
