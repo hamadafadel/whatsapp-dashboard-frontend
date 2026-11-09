@@ -28,6 +28,7 @@ const sortBtnEl = document.getElementById("gallerySortBtn");
 const sortMenuEl = document.getElementById("gallerySortMenu");
 const sortAlphabeticalEl = document.getElementById("gallerySortAlphabetical");
 const sortCustomEl = document.getElementById("gallerySortCustom");
+const sortRelatedEl = document.getElementById("gallerySortRelated");
 
 const pickerOverlayEl = document.getElementById("galleryFolderPickerOverlay");
 const pickerBackBtnEl = document.getElementById("galleryPickerBackBtn");
@@ -60,6 +61,7 @@ let myUploadFolderId = null;
 let galleryOwnFolderResolved = false;
 let galleryBrowseRequest = 0;
 let galleryOrderState = { mode: "custom", revision: 0, available: false };
+const relatedGalleryFolders = new Set();
 let galleryOrderSaving = false;
 let galleryPreviewClosing = false;
 let gallerySelectionClosing = null;
@@ -298,6 +300,7 @@ function showApp() {
 }
 
 function logout() {
+  relatedGalleryFolders.clear();
   cancelMobileDrag();
   clearGalleryDropIndicator();
   activeGalleryDragId = null;
@@ -568,25 +571,90 @@ async function saveGallerySort(mode, fileIds, restoreCustom = false) {
   }
 }
 
+const galleryNaturalNames = new Intl.Collator(["ar", "en"], { numeric: true, sensitivity: "base" });
+
+function sortRelatedGalleryItems(items) {
+  const entries = items.map((item) => {
+    const name = String(item.name || "").normalize("NFC").trim();
+    const extension = /\.([a-z0-9]+)$/i.exec(name);
+    const stem = (extension?.index > 0 ? name.slice(0, extension.index) : name).trim().toLowerCase();
+    const ext = extension?.[1].toLowerCase() || "";
+    const mime = String(item.mimeType || "").toLowerCase();
+    const rank = item.isVideo || mime.startsWith("video/") || /^(mp4|mov|webm|mkv|avi|m4v|3gp|mpeg|mpg|wmv)$/.test(ext) ? 0 :
+      mime.startsWith("text/") || /^(txt|md|rtf|csv|tsv|srt|vtt)$/.test(ext) ? 1 :
+      mime.startsWith("image/") || /^(jpg|jpeg|png|webp|gif|bmp|svg|avif|heic|tiff?)$/.test(ext) ? 2 : 3;
+    return { item, name, stem, rank };
+  });
+  const stemCounts = new Map();
+  const videoStems = new Set();
+  for (const { stem, rank } of entries) {
+    stemCounts.set(stem, (stemCounts.get(stem) || 0) + 1);
+    if (rank === 0) videoStems.add(stem);
+  }
+  const groups = new Map();
+  for (const entry of entries) {
+    const base = entry.rank === 1 ? entry.stem.replace(/\s+post$/, "") : entry.stem;
+    // Exact matches win. Only a standalone trailing "Post" on text can
+    // fall back to an exact video stem, never a prefix or fuzzy match.
+    const key = base !== entry.stem && stemCounts.get(entry.stem) === 1 && videoStems.has(base)
+      ? base : entry.stem;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(entry);
+  }
+  return [...groups.keys()].sort((a, b) => galleryNaturalNames.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0))
+    .flatMap((key) => groups.get(key)
+      .sort((a, b) => a.rank - b.rank || galleryNaturalNames.compare(a.name, b.name))
+      .map(({ item }) => item));
+}
+
+function isGalleryRelatedView() {
+  return relatedGalleryFolders.has(currentFolderId());
+}
+
+function isGalleryCustomView() {
+  return !isGalleryRelatedView() && galleryOrderState.mode === "custom";
+}
+
+function setGalleryRelatedView(enabled) {
+  if (enabled) relatedGalleryFolders.add(currentFolderId());
+  else relatedGalleryFolders.delete(currentFolderId());
+  sortMenuEl.classList.add("hidden");
+  sortBtnEl.setAttribute("aria-expanded", "false");
+  updateGallerySortControls();
+  renderItems();
+}
+
 function updateGallerySortControls() {
-  sortBtnEl.classList.toggle("hidden", !currentFolderId());
-  sortBtnEl.title = !galleryOrderState.available ? "يلزم تطبيق Migration ونشر Backend لدعم حفظ الترتيب" :
-    !canWriteHere() ? "تعديل الترتيب متاح فقط لصاحب صلاحية الكتابة في الفولدر" : "اختيار ترتيب الصور";
-  sortAlphabeticalEl.disabled = sortCustomEl.disabled = galleryOrderSaving || !canWriteHere() || !galleryOrderState.available;
-  sortAlphabeticalEl.setAttribute("aria-pressed", String(galleryOrderState.mode === "alphabetical"));
-  sortCustomEl.setAttribute("aria-pressed", String(galleryOrderState.mode === "custom"));
-  sortBtnEl.textContent = galleryOrderState.mode === "alphabetical" ? "ترتيب: أبجدي" : "ترتيب: مخصص";
+  const related = isGalleryRelatedView();
+  sortBtnEl.title = "اختيار ترتيب الملفات";
+  sortAlphabeticalEl.disabled = sortCustomEl.disabled =
+    !currentFolderId() || galleryOrderSaving || !canWriteHere() || !galleryOrderState.available;
+  sortRelatedEl.disabled = galleryOrderSaving;
+  sortAlphabeticalEl.setAttribute("aria-pressed", String(!related && galleryOrderState.mode === "alphabetical"));
+  sortCustomEl.setAttribute("aria-pressed", String(!related && galleryOrderState.mode === "custom"));
+  sortRelatedEl.setAttribute("aria-pressed", String(related));
+  sortBtnEl.textContent = related ? "ترتيب: الملفات المرتبطة" :
+    galleryOrderState.mode === "alphabetical" ? "ترتيب: أبجدي" : "ترتيب: مخصص";
 }
 
 sortBtnEl.addEventListener("click", () => {
   sortMenuEl.classList.toggle("hidden");
   sortBtnEl.setAttribute("aria-expanded", String(!sortMenuEl.classList.contains("hidden")));
 });
-sortAlphabeticalEl.addEventListener("click", () => saveGallerySort("alphabetical", currentItems.map((i) => i.id)));
-sortCustomEl.addEventListener("click", () => saveGallerySort("custom", currentItems.map((i) => i.id), true));
+function chooseSavedGallerySort(mode) {
+  if (isGalleryRelatedView()) {
+    setGalleryRelatedView(false);
+    if (galleryOrderState.mode === mode) return;
+  }
+  return saveGallerySort(mode, currentItems.map((i) => i.id), mode === "custom");
+}
+
+sortAlphabeticalEl.addEventListener("click", () => chooseSavedGallerySort("alphabetical"));
+sortCustomEl.addEventListener("click", () => chooseSavedGallerySort("custom"));
+sortRelatedEl.addEventListener("click", () => setGalleryRelatedView(!isGalleryRelatedView()));
 
 async function reorderItemBefore(fileId, targetItem, after = false) {
-  if (!fileId || fileId === targetItem.id || galleryOrderState.mode !== "custom" ||
+  if (!fileId || fileId === targetItem.id || !isGalleryCustomView() ||
       !currentItems.some((i) => i.id === fileId)) return;
   const ids = currentItems.map((i) => i.id).filter((id) => id !== fileId);
   const index = ids.indexOf(targetItem.id);
@@ -630,7 +698,7 @@ function galleryDragScrollArea(target) {
 
 function trackGalleryDragAutoScroll(nodeId, x, y, mobile) {
   if (!nodeId || activeGalleryDragId !== nodeId || selectMode || galleryOrderSaving ||
-      !canWriteHere() || galleryOrderState.mode !== "custom" || !galleryOrderState.available ||
+      !canWriteHere() || !isGalleryCustomView() || !galleryOrderState.available ||
       !(window.visualViewport?.height || window.innerHeight)) {
     stopGalleryDragAutoScroll();
     return;
@@ -648,7 +716,7 @@ function tickGalleryDragAutoScroll(time) {
   if (!state) return;
   state.frame = null;
   if (activeGalleryDragId !== state.nodeId || state.folderId !== currentFolderId() ||
-      selectMode || galleryOrderSaving || !canWriteHere() || galleryOrderState.mode !== "custom") {
+      selectMode || galleryOrderSaving || !canWriteHere() || !isGalleryCustomView()) {
     stopGalleryDragAutoScroll();
     clearGalleryDropIndicator();
     return;
@@ -687,7 +755,7 @@ function clearGalleryDropIndicator() {
 
 function resolveGalleryDrop(nodeId, x, y) {
   if (!canWriteHere() || selectMode || galleryOrderSaving || !galleryOrderState.available ||
-      galleryOrderState.mode !== "custom" || !currentItems.some((i) => i.id === nodeId)) return null;
+      !isGalleryCustomView() || !currentItems.some((i) => i.id === nodeId)) return null;
   const bounds = itemsGridEl.getBoundingClientRect();
   const viewTop = window.visualViewport?.offsetTop || 0;
   const viewBottom = viewTop + (window.visualViewport?.height || window.innerHeight || Infinity);
@@ -931,7 +999,7 @@ function enableCardGestures(card, { onTap, onLongPress, onHoldSelect, draggableI
   // sooner (10px) so an ordinary scroll never becomes a delayed drag.
   const TAP_MOVE_THRESHOLD = 24;
   const canReorderTouch = () => draggableId && canWriteHere() && !selectMode &&
-    !galleryOrderSaving && galleryOrderState.available && galleryOrderState.mode === "custom" &&
+    !galleryOrderSaving && galleryOrderState.available && isGalleryCustomView() &&
     currentItems.some((item) => item.id === draggableId);
 
   const clearLongPressTimer = () => {
@@ -1404,7 +1472,8 @@ function renderFolders(folders) {
 function renderItems() {
   itemsGridEl.innerHTML = "";
 
-  currentItems.forEach((item) => {
+  const visibleItems = isGalleryRelatedView() ? sortRelatedGalleryItems(currentItems) : currentItems;
+  visibleItems.forEach((item) => {
     const card = document.createElement("div");
     card.className = "gallery-item-card";
     card.classList.toggle("selectable", selectMode);
