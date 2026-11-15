@@ -1891,11 +1891,11 @@ async function sendSavedMediaItemToCustomer(id, sessionId) {
   return data;
 }
 
-async function sendSavedMediaFolderToCustomer(id, sessionId) {
+async function sendSavedMediaFolderToCustomer(id, sessionId, itemIds) {
   const response = await fetchSendSubmission(`${API_BASE}/saved-media-folders/${id}/send`, {
     method: "POST",
     headers: getAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ sessionId })
+    body: JSON.stringify({ sessionId, itemIds })
   });
 
   if (handleInvalidToken(response)) return null;
@@ -2645,17 +2645,22 @@ async function loadSavedMediaFolders() {
 async function loadSavedMediaItems() {
   if (!savedMediaGridEl || !savedMediaCurrentFolder) return;
 
+  const folder = savedMediaCurrentFolder;
+  savedMediaItems = [];
+  sendFolderBarEl?.classList.add("hidden");
   savedMediaGridEl.innerHTML =
     '<div class="saved-media-empty">جاري التحميل...</div>';
 
   try {
     const { items, canManage } = await fetchSavedMediaItems(
-      savedMediaCurrentFolder.id
+      folder.id
     );
+    if (savedMediaCurrentFolder !== folder) return;
     savedMediaItems = items;
     savedMediaCanManage = canManage;
     renderSavedMediaItems();
   } catch (error) {
+    if (savedMediaCurrentFolder !== folder) return;
     console.error(error);
     savedMediaGridEl.innerHTML =
       '<div class="saved-media-empty">تعذر تحميل الوسائط</div>';
@@ -2958,10 +2963,12 @@ sendFolderBtnEl?.addEventListener("click", async (event) => {
   if (!savedMediaCurrentFolder || !activeSessionId) return;
   const targetSessionId = activeSessionId;
   const folderId = savedMediaCurrentFolder.id;
+  const itemIds = savedMediaItems.map((item) => item.id);
+  if (!itemIds.length) return;
 
   if (
     !confirm(
-      `إرسال كل محتوى "${savedMediaCurrentFolder.name}" (${savedMediaItems.length} عنصر) للعميل؟`
+      `إرسال كل محتوى "${savedMediaCurrentFolder.name}" (${itemIds.length} عنصر) للعميل؟`
     )
   ) {
     return;
@@ -2975,7 +2982,7 @@ sendFolderBtnEl?.addEventListener("click", async (event) => {
   sendFolderBtnEl.textContent = "إرسال كل محتوى الفولدر للعميل";
 
   enqueueSessionSend(targetSessionId, "media", async () => {
-    const start = await sendSavedMediaFolderToCustomer(folderId, targetSessionId);
+    const start = await sendSavedMediaFolderToCustomer(folderId, targetSessionId, itemIds);
     if(observeServerSendQueue(start,targetSessionId))return start;
     const result = await trackSendMediaJob(start.jobId, start.total, targetSessionId);
     if (result?.failed) {
