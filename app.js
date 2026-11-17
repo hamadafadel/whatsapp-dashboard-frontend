@@ -52,6 +52,30 @@ function syncDashboardNativeComposer() {
     dashboardNativeComposer.sync().catch(()=>{});
   }
 }
+
+function isDashboardComposerCovered() {
+  return Array.from(document.querySelectorAll(
+    "#labelsOverlay,#metaOrderOverlay,#orderConfirmationOverlay,#savedMediaOverlay," +
+    "#savedMediaPreviewOverlay,#dashboardExitDialog,.media-gallery,.media-viewer"
+  )).some(el => !el.closest(".hidden") && el.getClientRects().length > 0 &&
+    getComputedStyle(el).visibility !== "hidden");
+}
+
+function updateDashboardComposerCoverage() {
+  const compose = document.querySelector(".chat-compose");
+  if (!compose) return;
+  const covered = isDashboardComposerCovered();
+  const value = String(covered);
+  if (compose.dataset.dashboardCovered === value) return;
+  compose.dataset.dashboardCovered = value;
+  compose.inert = covered;
+  syncDashboardNativeComposer();
+}
+
+new MutationObserver(updateDashboardComposerCoverage).observe(document.body, {
+  subtree: true, childList: true, attributes: true,
+  attributeFilter: ["class", "style", "hidden"]
+});
 const sendBtnEl = document.getElementById("sendBtn");
 const backBtnEl = document.getElementById("backBtn");
 const refreshBtnEl = document.getElementById("refreshBtn");
@@ -2201,6 +2225,60 @@ async function reorderSavedMediaItem(draggedId, targetItem, insertAfter) {
 
 // ===== سحب على الموبايل (اللمس مش بيدعم HTML5 drag/drop الأصلي) =====
 let savedMediaMobileDragState = null;
+let savedMediaDragScroll = null;
+
+function stopSavedMediaDragScroll() {
+  if (savedMediaDragScroll?.frame != null) cancelAnimationFrame(savedMediaDragScroll.frame);
+  savedMediaDragScroll = null;
+}
+
+function trackSavedMediaDragScroll(x, y, mobile = false) {
+  if (!savedMediaCanManage || savedMediaSelectMode || savedMediaOverlayEl.classList.contains("hidden")) return;
+  if (!savedMediaDragScroll) savedMediaDragScroll = { frame: null, last: null };
+  Object.assign(savedMediaDragScroll, { x, y, mobile });
+  if (savedMediaDragScroll.frame == null)
+    savedMediaDragScroll.frame = requestAnimationFrame(tickSavedMediaDragScroll);
+}
+
+function tickSavedMediaDragScroll(time) {
+  const state = savedMediaDragScroll;
+  if (!state) return;
+  state.frame = null;
+  const bounds = savedMediaGridEl.getBoundingClientRect();
+  if (!savedMediaCanManage || savedMediaSelectMode || savedMediaOverlayEl.classList.contains("hidden") ||
+      state.x < bounds.left || state.x > bounds.right || state.y < bounds.top || state.y > bounds.bottom) {
+    stopSavedMediaDragScroll(); return;
+  }
+  const edge = Math.min(70, bounds.height / 3);
+  const up = Math.max(0, (bounds.top + edge - state.y) / edge);
+  const down = Math.max(0, (state.y - bounds.bottom + edge) / edge);
+  const dt = state.last == null ? 16 : Math.min(48, time - state.last);
+  state.last = time;
+  const before = savedMediaGridEl.scrollTop;
+  savedMediaGridEl.scrollTop += 400 * (down * down - up * up) * dt / 1000;
+  if (state.mobile) updateSavedMediaMobileDrag(state.x, state.y);
+  else {
+    savedMediaGridEl.querySelectorAll(".drop-before,.drop-after")
+      .forEach(el => el.classList.remove("drop-before", "drop-after"));
+    const target = document.elementFromPoint(state.x, state.y)?.closest(".saved-media-item-card");
+    if (target && !target.classList.contains("dragging"))
+      target.classList.add(isPointerAtCardStart(state.x, target.getBoundingClientRect()) ? "drop-before" : "drop-after");
+  }
+  if (savedMediaDragScroll === state && savedMediaGridEl.scrollTop !== before)
+    state.frame = requestAnimationFrame(tickSavedMediaDragScroll);
+}
+
+document.addEventListener("dragover", event => {
+  if (!event.dataTransfer?.types.includes(SAVED_MEDIA_DRAG_MIME)) return;
+  if (savedMediaGridEl?.contains(event.target)) trackSavedMediaDragScroll(event.clientX, event.clientY);
+  else stopSavedMediaDragScroll();
+});
+document.addEventListener("drop", stopSavedMediaDragScroll, true);
+document.addEventListener("dragend", stopSavedMediaDragScroll, true);
+window.addEventListener("blur", stopSavedMediaDragScroll);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopSavedMediaDragScroll();
+});
 
 function startSavedMediaMobileDrag(id, sourceCard, x, y) {
   const ghost = document.createElement("div");
@@ -2342,12 +2420,14 @@ function enableSavedMediaCardGestures(card, item, { onTap, onLongPress }) {
 
     if (dragging) {
       updateSavedMediaMobileDrag(t.clientX, t.clientY);
+      trackSavedMediaDragScroll(t.clientX, t.clientY, true);
     }
 
     event.preventDefault();
   }, { passive: false });
 
   card.addEventListener("touchend", (event) => {
+    stopSavedMediaDragScroll();
     if (skipGesture) {
       skipGesture = false;
       return;
@@ -2378,6 +2458,7 @@ function enableSavedMediaCardGestures(card, item, { onTap, onLongPress }) {
   });
 
   card.addEventListener("touchcancel", () => {
+    stopSavedMediaDragScroll();
     if (skipGesture) {
       skipGesture = false;
       return;
@@ -2486,6 +2567,7 @@ function enableSavedMediaCardGestures(card, item, { onTap, onLongPress }) {
 }
 
 function renderSavedMediaItems() {
+  stopSavedMediaDragScroll();
   if (!savedMediaGridEl) return;
 
   savedMediaGridEl.innerHTML = "";
@@ -2675,6 +2757,7 @@ async function loadSavedMediaItems() {
 }
 
 function showSavedMediaFoldersView() {
+  stopSavedMediaDragScroll();
   savedMediaView = "folders";
   savedMediaCurrentFolder = null;
   savedMediaBackBtnEl?.classList.add("hidden");
@@ -2729,6 +2812,8 @@ function openSavedMedia() {
 }
 
 function closeSavedMedia() {
+  stopSavedMediaDragScroll();
+  cancelSavedMediaMobileDrag();
   savedMediaOverlayEl?.classList.add("hidden");
   document.body.classList.remove("saved-media-open");
   closeFolderForm();
@@ -9283,6 +9368,7 @@ if (window.AlMehrabNativeComposer?.release === 'native-composer-v2' && window.Al
       const account = authToken ? String(decodeAuthToken()?.username || "") : "";
       const loginOpen = loginScreenEl && !loginScreenEl.classList.contains("hidden");
       const visible = Boolean(account && activeSessionId && !loginOpen && !appEl?.classList.contains('hidden') &&
+        !isDashboardComposerCovered() &&
         (window.innerWidth >= 1024 || appEl?.classList.contains('chat-open')) &&
         !chatComposeEl?.closest('.hidden') && messageInputEl.style.display !== "none" &&
         !isRecordingAudio && document.visibilityState !== 'hidden');

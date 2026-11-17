@@ -3041,9 +3041,20 @@ body.saved-media-open {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-content: start;
+  grid-auto-rows: max-content;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--mehrab-gold) transparent;
   gap: 8px;
-  padding: 12px;
+  padding: 12px 12px max(12px, env(safe-area-inset-bottom));
 }
+
+.saved-media-grid::-webkit-scrollbar { width: 6px; }
+.saved-media-grid::-webkit-scrollbar-thumb { background: var(--mehrab-gold); border-radius: 6px; }
+.saved-media-item-card { align-self: start; }
+
+/* A covered conversation is not an editable composer context (web or native). */
+.chat-compose[data-dashboard-covered="true"] { display: none !important; }
 
 .saved-media-empty {
   grid-column: 1 / -1;
@@ -4262,7 +4273,9 @@ body.labels-open {
 .meta-order-sheet {
   width: 100%;
   max-width: 430px;
-  overflow: hidden;
+  max-height: calc(100dvh - 36px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
   background: #202c33;
