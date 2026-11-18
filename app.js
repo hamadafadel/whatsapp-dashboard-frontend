@@ -4237,6 +4237,98 @@ function getActiveChannel() {
   return conversation?.channel || getChannelFromSessionId(activeSessionId);
 }
 let messagesRequestToken = 0;
+// Ephemeral data belongs to the rendered row, never localStorage or a cross-chat cache.
+const messengerReplyRows = new WeakMap();
+let messengerReplyRefreshQueued = false;
+
+function messengerReplyMid(reply) {
+  const ids = [...new Set([reply?.external_message_id, reply?.channel_message_id,
+    reply?.wa_message_id, reply?.mid].filter(id => typeof id === "string" && id))];
+  return ids.length === 1 ? ids[0] : "";
+}
+
+function resolveRenderedMessengerReply(message, sessionId) {
+  const reply = message.reply_to;
+  const mid = messengerReplyMid(reply);
+  if (!mid || message.channel !== "messenger" || sessionId !== activeSessionId ||
+      !sessionId.startsWith("fb:") || reply.unresolved === true ||
+      (reply.content && reply.message_kind)) return reply;
+  const escaped = CSS.escape(mid);
+  const nodes = messagesEl.querySelectorAll(
+    `.message-wrap[data-external-message-id="${escaped}"],.message-wrap[data-channel-message-id="${escaped}"],.message-wrap[data-wa-message-id="${escaped}"]`
+  );
+  const originals = [...nodes].map(node => messengerReplyRows.get(node)).filter(entry =>
+    entry?.sessionId === sessionId && entry.message.channel === "messenger" &&
+    messengerReplyMid(entry.message) === mid);
+  if (originals.length !== 1) return reply;
+  const original = originals[0].message;
+  if (original.is_deleted || original.deleted ||
+      messengerReplyMid(message) === mid) return reply;
+  const attachment = Array.isArray(original.attachments) ? original.attachments[0] : null;
+  let kind = original.message_kind || "text";
+  if (["text", "unknown"].includes(kind) && ["image","video","audio","file"].includes(attachment?.type))
+    kind = attachment.type;
+  return { ...reply, external_message_id: mid, wa_message_id: mid, type: original.type || "unknown",
+    message_kind: kind,
+    content: original.content || ({image:"📷 صورة",video:"🎥 فيديو",audio:"🎙️ رسالة صوتية",file:"📄 ملف",document:"📄 ملف"}[kind] || "رسالة"),
+    media_url: original.media_url || (typeof original.media === "string" ? original.media : original.media?.url) ||
+      attachment?.url || attachment?.payload?.url || attachment?.image_data?.url || attachment?.video_data?.url || "",
+    thumbnail_url: original.thumbnail_url || attachment?.thumbnail_url || attachment?.video_data?.preview_url || "" };
+}
+
+function refreshRenderedMessengerReplyPreview(wrap, canonicalMessage) {
+  let entry = messengerReplyRows.get(wrap);
+  if (canonicalMessage?.channel === "messenger" && canonicalMessage.reply_to && entry?.sessionId === activeSessionId) {
+    // A canonical GET may enrich an already-rendered SSE row; update only its quote.
+    const previous = entry.message.reply_to, incoming = canonicalMessage.reply_to;
+    const keepPreview = previous?.content && previous.message_kind && !previous.unresolved &&
+      incoming.unresolved !== true && (!incoming.content || !incoming.message_kind) &&
+      messengerReplyMid(previous) === messengerReplyMid(incoming);
+    entry = { sessionId: entry.sessionId, message: { ...entry.message, reply_to: keepPreview ? previous : incoming } };
+    messengerReplyRows.set(wrap, entry);
+  }
+  if (!entry || entry.sessionId !== activeSessionId || entry.message.channel !== "messenger" || !entry.message.reply_to) return;
+  const box = wrap.querySelector(".quoted-reply-box");
+  if (!box) return;
+  const reply = resolveRenderedMessengerReply(entry.message, entry.sessionId);
+  if (reply !== entry.message.reply_to) messengerReplyRows.set(wrap, {
+    ...entry, message: { ...entry.message, reply_to: reply }
+  });
+  const signature = JSON.stringify(reply);
+  if (box._messengerReplySignature === signature) return;
+  box._messengerReplySignature = signature;
+  box.dataset.replyTargetId = reply.unresolved ? "" : messengerReplyMid(reply);
+  box.querySelector(".quoted-reply-text").textContent = replyPreviewLabel(reply);
+  box.querySelector(".quoted-reply-name").textContent =
+    !reply.type || reply.type === "unknown" || reply.unresolved ? "رسالة سابقة" : reply.type === "user" ? "العميل" : "أنت";
+  const url = replyPreviewThumbnail(reply);
+  let thumb = box.querySelector(".quoted-reply-thumb");
+  box.classList.toggle("has-thumb", Boolean(url));
+  if (!url) { thumb?.remove(); return; }
+  if (!thumb) {
+    let text = box.querySelector(".quoted-reply-textwrap");
+    if (!text) {
+      text = document.createElement("div"); text.className = "quoted-reply-textwrap";
+      text.append(box.querySelector(".quoted-reply-name"), box.querySelector(".quoted-reply-text"));
+      box.appendChild(text);
+    }
+    thumb = document.createElement("img"); thumb.className = "quoted-reply-thumb"; thumb.alt = "";
+    box.prepend(thumb);
+  }
+  if (thumb.getAttribute("src") !== url) thumb.src = url;
+}
+
+function scheduleMessengerReplyPreviewRefresh() {
+  if (messengerReplyRefreshQueued) return;
+  messengerReplyRefreshQueued = true;
+  queueMicrotask(() => {
+    messengerReplyRefreshQueued = false;
+    messagesEl.querySelectorAll(".quoted-reply-box").forEach(box => {
+      const wrap = box.closest(".message-wrap");
+      if (wrap) refreshRenderedMessengerReplyPreview(wrap);
+    });
+  });
+}
 let currentLoadedMessageCount = 0;
 let oldestLoadedMessageId = null;
 let oldestLoadedMessageTimestamp = null;
@@ -4518,6 +4610,8 @@ async function reconcileConversationMessages(sid) {
       const rendered = (storageId && messagesEl.querySelector(`[data-message-storage-id="${CSS.escape(storageId)}"]`)) || (mid && findRenderedMessageById(mid));
       if (rendered) {
         if (storageId) rendered.dataset.messageStorageId = storageId;
+        if (message.channel === "messenger" && message.reply_to)
+          refreshRenderedMessengerReplyPreview(rendered, message);
       } else insertMessengerRealtimeMessage(message);
     }
     const latestUser = Math.max(findLastUserMessageTime(rows.map(normalizeMessage)), Number(messagesEl.dataset.lastUserMessageTime || 0));
@@ -6778,7 +6872,12 @@ if (
 }
 
   wrap.appendChild(bubble);
+  if (messageObj.channel === "messenger") messengerReplyRows.set(wrap, {
+    sessionId: String(msg?.session_id || msg?.sessionId || activeSessionId || ""),
+    message: { ...messageObj }
+  });
   messagesEl.appendChild(wrap);
+  if (messageObj.channel === "messenger") scheduleMessengerReplyPreviewRefresh();
 
   if (options.autoScroll !== false) scrollMessagesToBottom();
   return wrap;
