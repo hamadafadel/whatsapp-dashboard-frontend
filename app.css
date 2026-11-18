@@ -774,6 +774,20 @@ input {
   transform: translateX(8px);
   transition: transform 0.15s ease;
 }
+.reply-swipe-tracking { position: relative; }
+.reply-swipe-tracking::after {
+  content: "↩";
+  position: absolute;
+  inset-inline-end: 8px;
+  top: 50%;
+  border-radius: 50%;
+  padding: 4px 7px;
+  background: #202c33;
+  color: #e9edef;
+  opacity: .65;
+  pointer-events: none;
+}
+.reply-swipe-tracking.reply-swipe-ready::after { opacity: 1; color: #53bdeb; }
 .message-highlight .message {
   outline: 2px solid #53bdeb;
   box-shadow: 0 0 0 4px rgba(83,189,235,0.18);

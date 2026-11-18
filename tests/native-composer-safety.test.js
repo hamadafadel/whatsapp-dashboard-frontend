@@ -111,7 +111,7 @@ test('caption remains recoverable on bridge loss; explicit cancellation restores
 });
 test('shared release guard and runtime cache versions are coordinated',()=>{
  const html=fs.readFileSync('index.html','utf8'),css=fs.readFileSync('app.css','utf8'),sw=fs.readFileSync('service-worker.js','utf8');
- assert.match(html,/native-composer\.js\?v=2/);assert.match(html,/app\.js\?v=90/);assert.match(html,/app\.css\?v=71/);assert.ok(html.indexOf('native-composer.js?v=2')<html.indexOf('app.js?v=90'));
+ assert.match(html,/native-composer\.js\?v=2/);assert.match(html,/app\.js\?v=91/);assert.match(html,/app\.css\?v=72/);assert.ok(html.indexOf('native-composer.js?v=2')<html.indexOf('app.js?v=91'));
  assert.match(app,/release === 'native-composer-v2'/);assert.match(css,/data-native-composer-state="disconnected"/);assert.match(sw,/mehrab-dashboard-static-v7/);
 });
 test('service worker never returns a cached native composer, including on network loss',async()=>{

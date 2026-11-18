@@ -6532,31 +6532,31 @@ if (
   bubble.appendChild(audio);
 }
 
-  if (messageObj.reply_to?.content) {
+  if (messageObj.reply_to && (messageObj.reply_to.content || messageObj.reply_to.external_message_id ||
+      messageObj.reply_to.channel_message_id || messageObj.reply_to.wa_message_id)) {
     const replyBox = document.createElement("div");
     replyBox.className = "quoted-reply-box";
 
     replyBox.dataset.replyTargetId =
-      messageObj.reply_to.wa_message_id || "";
+      messageObj.reply_to.unresolved ? "" :
+        messageObj.reply_to.external_message_id || messageObj.reply_to.channel_message_id ||
+        messageObj.reply_to.wa_message_id || "";
 
     replyBox.style.cursor = "pointer";
 
     const replyName = document.createElement("div");
     replyName.className = "quoted-reply-name";
     replyName.textContent =
-      messageObj.channel === "instagram" && messageObj.reply_to.type === "unknown"
+      messageObj.reply_to.type === "unknown" || messageObj.reply_to.unresolved
         ? "رسالة سابقة"
         : messageObj.reply_to.type === "user" ? "العميل" : "أنت";
 
     const replyText = document.createElement("div");
     replyText.className = "quoted-reply-text";
     replyText.textContent =
-      messageObj.reply_to.content || "";
+      replyPreviewLabel(messageObj.reply_to);
 
-    const replyThumbUrl =
-      messageObj.reply_to.message_kind === "image"
-        ? messageObj.reply_to.media_url || ""
-        : "";
+    const replyThumbUrl = replyPreviewThumbnail(messageObj.reply_to);
 
     if (replyThumbUrl) {
       replyBox.classList.add("has-thumb");
@@ -8025,6 +8025,8 @@ function selectReplyMessage(messageObj, messageType) {
   ) return;
 
   const waMessageId =
+    messageObj.external_message_id ||
+    messageObj.channel_message_id ||
     messageObj.wa_message_id ||
     messageObj.whatsapp_message?.id ||
     messageObj.message_id ||
@@ -8055,7 +8057,8 @@ function selectReplyMessage(messageObj, messageType) {
     message_kind: messageKind,
     wa_message_id: waMessageId,
     ...(isInstagramReply ? { sessionId: activeSessionId, external_message_id: waMessageId, channel_message_id: waMessageId } : {}),
-    media_url: mediaUrl
+    media_url: mediaUrl,
+    thumbnail_url: messageObj.thumbnail_url || ""
   };
 
   renderReplyBar();
@@ -8065,6 +8068,20 @@ function selectReplyMessage(messageObj, messageType) {
 function clearSelectedReply() {
   selectedReplyMessage = null;
   renderReplyBar();
+}
+
+function replyPreviewThumbnail(reply) {
+  const value = reply?.message_kind === "image" ? reply.media_url || reply.thumbnail_url :
+    reply?.message_kind === "video" ? reply.thumbnail_url : "";
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password ? url.href : "";
+  } catch (_) { return ""; }
+}
+
+function replyPreviewLabel(reply) {
+  const text = String(reply?.content || "الرسالة الأصلية غير متاحة");
+  return reply?.message_kind === "video" && !text.startsWith("🎥") ? "🎥 " + text : text;
 }
 
 function renderReplyBar() {
@@ -8080,18 +8097,16 @@ function renderReplyBar() {
   const replyTitle =
     selectedReplyMessage.type === "user" ? "رد على العميل" : "رد على رسالتك";
 
-  const hasImageThumb =
-    selectedReplyMessage.message_kind === "image" &&
-    selectedReplyMessage.media_url;
+  const replyThumbUrl = replyPreviewThumbnail(selectedReplyMessage);
 
   replyBar.innerHTML = `
     <div class="reply-bar-content">
       <div class="reply-bar-title">${escapeHtml(replyTitle)}</div>
-      <div class="reply-bar-text">${escapeHtml(selectedReplyMessage.content || "")}</div>
+      <div class="reply-bar-text">${escapeHtml(replyPreviewLabel(selectedReplyMessage))}</div>
     </div>
     ${
-      hasImageThumb
-        ? `<img class="reply-bar-thumb" src="${escapeHtml(selectedReplyMessage.media_url)}" alt="" />`
+      replyThumbUrl
+        ? `<img class="reply-bar-thumb" src="${escapeHtml(replyThumbUrl)}" alt="" />`
         : ""
     }
     <button type="button" class="reply-bar-close">×</button>
@@ -8104,87 +8119,82 @@ function renderReplyBar() {
 }
 
 function enableReplyGesture(wrap, messageObj, messageType) {
-  if (
-    messageType !== "user" &&
-    messageType !== "agent" &&
-    messageType !== "ai"
-  ) return;
-
+  if (!["user", "agent", "ai"].includes(messageType)) return;
   wrap.style.cursor = "pointer";
-
-  let pressTimer = null;
-  let startX = 0;
-  let startY = 0;
-  let didSelect = false;
-  let touchHandled = false;
-
-  const select = () => {
-  if (didSelect) return;
-  didSelect = true;
-
-  showMessageActions(messageObj, messageType);
-
-  wrap.classList.add("reply-swipe-active");
-
-  setTimeout(() => {
-    wrap.classList.remove("reply-swipe-active");
-  }, 200);
-};
-
-  // Desktop click. على الموبايل بيتنفذ برضه لأن اللمسة بتولّد click بعدها،
-  // فبنستخدم touchHandled عشان نمنع فتح القايمة مرتين لنفس اللمسة.
-  wrap.addEventListener("click", () => {
-    if (touchHandled) {
-      touchHandled = false;
-      return;
+  let timer = null, gesture = null, touchHandled = false, suppressUntil = 0;
+  const reset = () => {
+    clearTimeout(timer); timer = null; gesture = null;
+    wrap.classList.remove("reply-swipe-tracking", "reply-swipe-ready");
+  };
+  const ignoreTarget = (target, clientY) => {
+    if (target.closest("button,a,input,textarea,select,audio,[contenteditable='true'],.quoted-reply-box")) return true;
+    const video = target.closest("video");
+    // Preserve video taps and the native transport/scrub controls at its lower edge.
+    if (video && (clientY == null || clientY >= video.getBoundingClientRect().bottom - 44)) return true;
+    for (let el = target; el && el !== wrap; el = el.parentElement) {
+      const style = getComputedStyle(el);
+      if (el.scrollWidth > el.clientWidth + 2 && /auto|scroll/.test(style.overflowX)) return true;
     }
-
-    select();
+    return false;
+  };
+  wrap.addEventListener("click", event => {
+    if (Date.now() < suppressUntil) {
+      event.preventDefault(); event.stopImmediatePropagation();
+    }
+  }, true);
+  wrap.addEventListener("click", event => {
+    if (ignoreTarget(event.target)) return;
+    if (touchHandled) { touchHandled = false; return; }
+    showMessageActions(messageObj, messageType);
   });
-
-  // Desktop right click
-  wrap.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-    select();
+  wrap.addEventListener("contextmenu", event => {
+    if (ignoreTarget(event.target)) return;
+    event.preventDefault(); showMessageActions(messageObj, messageType);
   });
-
-  // Mobile long press
-  wrap.addEventListener("touchstart", (e) => {
-    didSelect = false;
+  wrap.addEventListener("touchstart", event => {
+    reset(); suppressUntil = 0;
+    if (event.touches.length !== 1 || ignoreTarget(event.target, event.touches[0].clientY)) return;
     touchHandled = true;
-
-    const t = e.touches[0];
-    startX = t.clientX;
-    startY = t.clientY;
-
-    pressTimer = setTimeout(() => {
-      select();
+    const t = event.touches[0];
+    gesture = { x:t.clientX, y:t.clientY, session:activeSessionId, ready:false };
+    timer = setTimeout(() => {
+      if (!gesture || !wrap.isConnected || document.visibilityState === "hidden" ||
+          gesture.session !== activeSessionId) { reset(); return; }
+      suppressUntil = Date.now() + 1000;
+      gesture.longPressed = true;
+      timer = null;
+      showMessageActions(messageObj, messageType);
     }, 450);
-  }, { passive: true });
-
-  wrap.addEventListener("touchmove", (e) => {
-    const t = e.touches[0];
-    const dx = t.clientX - startX;
-    const dy = t.clientY - startY;
-
-    if (Math.abs(dx) > 45 && Math.abs(dy) < 25) {
-      clearTimeout(pressTimer);
-      select();
+  }, { passive:true });
+  wrap.addEventListener("touchmove", event => {
+    if (!gesture) return;
+    if (event.touches.length !== 1 || gesture.session !== activeSessionId) { reset(); return; }
+    const t = event.touches[0], dx = Math.abs(t.clientX - gesture.x), dy = Math.abs(t.clientY - gesture.y);
+    if (dy > 12 && dy >= dx) { suppressUntil = Date.now() + 1000; reset(); return; }
+    if (dx > 10 || dy > 10) { clearTimeout(timer); timer = null; }
+    if (dx > 12 && dx > dy * 1.5) {
+      if (gesture.longPressed) document.querySelector(".message-actions-menu")?.remove();
+      if (event.cancelable) event.preventDefault();
+      gesture.ready = dx >= 64;
+      wrap.classList.add("reply-swipe-tracking");
+      wrap.classList.toggle("reply-swipe-ready", gesture.ready);
+    } else gesture.ready = false;
+  }, { passive:false });
+  wrap.addEventListener("touchend", event => {
+    const t = event.changedTouches[0];
+    const apply = gesture && event.touches.length === 0 && gesture.session === activeSessionId &&
+      t && Math.abs(t.clientX - gesture.x) >= 64 &&
+      Math.abs(t.clientX - gesture.x) > Math.abs(t.clientY - gesture.y) * 1.5;
+    const moved = wrap.classList.contains("reply-swipe-tracking") || gesture?.longPressed;
+    reset();
+    if (apply || moved) {
+      suppressUntil = Date.now() + 1000;
+      if (event.cancelable) event.preventDefault();
     }
-
-    if (Math.abs(dy) > 30) {
-      clearTimeout(pressTimer);
-    }
-  }, { passive: true });
-
-  wrap.addEventListener("touchend", () => {
-    clearTimeout(pressTimer);
+    if (apply) selectReplyMessage(messageObj, messageType);
   });
-
-  wrap.addEventListener("touchcancel", () => {
-    clearTimeout(pressTimer);
-    touchHandled = false;
-  });
+  wrap.addEventListener("touchcancel", () => { suppressUntil = Date.now() + 1000; reset(); touchHandled = false; });
+  wrap.addEventListener("dragstart", reset);
 }
 
 if (toggleAiBtnEl) {
