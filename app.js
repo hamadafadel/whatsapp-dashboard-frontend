@@ -40,12 +40,14 @@ const bulkLabelPickerCancelBtnEl = document.getElementById("bulkLabelPickerCance
 const labelFilterRowEl = document.getElementById("labelFilterRow");
 const messageInputEl = document.getElementById("messageInput");
 let dashboardNativeComposer = null;
+let whatsappTemplateCatalog = null;
 const nativeComposerTextAdmissions = new Set();
 function focusDashboardComposer() {
   if (dashboardNativeComposer) dashboardNativeComposer.focus().catch(()=>dashboardNativeComposer.error());
   else messageInputEl?.focus();
 }
 function syncDashboardNativeComposer() {
+  whatsappTemplateCatalog?.syncContext(activeSessionId,getActiveChannel());
   if (dashboardNativeComposer) {
     const preview=document.querySelector('.composer-image-preview-overlay');
     if(preview?.dataset.composerSession && preview.dataset.composerSession!==activeSessionId) preview._closeDashboardPreview?.();
@@ -56,7 +58,7 @@ function syncDashboardNativeComposer() {
 function isDashboardComposerCovered() {
   return Array.from(document.querySelectorAll(
     "#labelsOverlay,#metaOrderOverlay,#orderConfirmationOverlay,#savedMediaOverlay," +
-    "#savedMediaPreviewOverlay,#dashboardExitDialog,.media-gallery,.media-viewer"
+    "#savedMediaPreviewOverlay,#dashboardExitDialog,#templateCatalogOverlay,.media-gallery,.media-viewer"
   )).some(el => !el.closest(".hidden") && el.getClientRects().length > 0 &&
     getComputedStyle(el).visibility !== "hidden");
 }
@@ -607,6 +609,7 @@ emojiPickerEl?.addEventListener("emoji-click", (event) => {
 document.addEventListener("click", closeEmojiPicker);
 
 function closeQuickActions() {
+  whatsappTemplateCatalog?.close();
   quickActionsPanelEl?.classList.add("hidden");
   templatesPanelEl?.classList.add("hidden");
   quickActionsBtnEl?.setAttribute("aria-expanded", "false");
@@ -817,6 +820,12 @@ quickActionsPanelEl?.querySelectorAll("[data-action-id]").forEach((button) => {
 });
 
 let templatesCache = null;
+if(window.MehrabTemplateCatalog&&document.getElementById('templateCatalogOverlay')) {
+  whatsappTemplateCatalog=window.MehrabTemplateCatalog.create({overlay:document.getElementById('templateCatalogOverlay'),
+    apiBase:API_BASE,getAuthHeaders,handleInvalidToken,
+    getGeneration:async sessionId=>(await readServerSendQueue(sessionId)).generation,
+    readQueue:readServerSendQueue,onQueued:monitorServerSendQueue});
+}
 
 async function fetchTemplates() {
   if (templatesCache) return templatesCache;
@@ -894,6 +903,13 @@ async function renderTemplatesList() {
 
       templatesListEl.appendChild(button);
     });
+    if(whatsappTemplateCatalog&&getActiveChannel()==='whatsapp') {
+      const catalogButton=document.createElement('button');
+      catalogButton.type='button';catalogButton.className='template-item-btn';
+      catalogButton.textContent='تمبليت مخصصة — كتالوج Meta';
+      catalogButton.addEventListener('click',()=>{closeQuickActions();whatsappTemplateCatalog.open(getActiveChannel(),activeSessionId);});
+      templatesListEl.appendChild(catalogButton);
+    }
   } catch (error) {
     console.error(error);
     templatesListEl.innerHTML =
@@ -4424,6 +4440,7 @@ function closeDashboardTopTransient() {
   const messageMenu = document.querySelector('.message-actions-menu');
   if (messageMenu) { messageMenu.remove(); return true; }
   const panels = [
+    [document.getElementById('templateCatalogOverlay'),()=>whatsappTemplateCatalog?.close()],
     [savedMediaPreviewOverlayEl, closeSavedMediaPreview],
     [orderConfirmationOverlayEl, closeOrderConfirmationModal], [metaOrderOverlayEl, closeMetaOrderModal],
     [savedReplyFormEl, closeSavedReplyForm], [labelFormEl, closeLabelForm], [addFolderFormEl, closeFolderForm],

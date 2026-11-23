@@ -21,7 +21,7 @@ async function fixture(run, native = false, width = 390) {
       if(new URL(r.request().url()).hostname==='example.invalid')
         return r.fulfill({body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aUVEAAAAASUVORK5CYII=','base64'),contentType:'image/png'});
       if(r.request().method()==='POST')posts.push(f);
-      if(['index.html','app.js','app.css','native-composer.js'].includes(f))
+      if(['index.html','app.js','app.css','native-composer.js','whatsapp-template-catalog.js'].includes(f))
         return r.fulfill({body:fs.readFileSync(path.join(repo,f)),contentType:f.endsWith('js')?'text/javascript':f.endsWith('css')?'text/css':'text/html'});
       return r.fulfill({json:{}});
     });

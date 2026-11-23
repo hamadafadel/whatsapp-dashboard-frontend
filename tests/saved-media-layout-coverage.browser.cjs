@@ -20,7 +20,7 @@ async function fixture(width, native, run) {
     page.on('pageerror', e => errors.push(e.message));
     await page.route('**/*', async route => {
       const req = route.request(), file = new URL(req.url()).pathname.slice(1) || 'index.html';
-      if (['index.html', 'app.js', 'app.css', 'native-composer.js'].includes(file))
+      if (['index.html', 'app.js', 'app.css', 'native-composer.js','whatsapp-template-catalog.js'].includes(file))
         return route.fulfill({ body: fs.readFileSync(repo + file), contentType:
           file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' });
       requests.push({ path: file, method: req.method(), body: req.postData() });

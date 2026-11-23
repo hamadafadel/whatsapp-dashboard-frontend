@@ -1,4 +1,4 @@
-const CACHE_NAME = "mehrab-dashboard-static-v7";
+const CACHE_NAME = "mehrab-dashboard-static-v8";
 
 const STATIC_FILES = [
   "/manifest.json",
@@ -116,6 +116,7 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith("/index.html") ||
     url.pathname.endsWith("/app.js") ||
     url.pathname.endsWith("/native-composer.js") ||
+    url.pathname.endsWith("/whatsapp-template-catalog.js") ||
     url.pathname.endsWith("/app.css") ||
     url.pathname.endsWith("/service-worker.js") ||
     url.pathname.endsWith("/gallery.html") ||

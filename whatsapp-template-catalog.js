@@ -1,0 +1,168 @@
+(function(root,factory){
+  const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.MehrabTemplateCatalog=api;
+})(typeof window!=='undefined'?window:globalThis,function(){
+  'use strict';
+  function interpolate(text,path,field,values){
+    return String(text||'').replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*|\d+)\s*\}\}/g,
+      (original,name)=>values.get(`${path}.${field}:${name}`)||original);
+  }
+  function previewLines(template,values=new Map()){
+    const lines=[];
+    function visit(c,path){
+      if(c.text)lines.push(interpolate(c.text,path,'text',values));
+      if(c.url)lines.push(interpolate(c.url,path,'url',values));
+      if(c.phone_number)lines.push(c.phone_number);
+      if(c.format&&c.format!=='TEXT')lines.push(`[${c.format}]`);
+      for(const key of ['buttons','cards','components'])(c[key]||[]).forEach((item,i)=>visit(item,`${path}.${key}[${i}]`));
+    }
+    (template.components||[]).forEach((c,i)=>visit(c,`components[${i}]`));
+    return lines.join('\n\n');
+  }
+  function create({overlay,apiBase,getAuthHeaders,handleInvalidToken,getGeneration,readQueue,onQueued=()=>{},fetchImpl=window.fetch.bind(window)}){
+    const doc=overlay.ownerDocument;
+    const list=overlay.querySelector('[data-catalog-list]');
+    const status=overlay.querySelector('[data-catalog-status]');
+    const detail=overlay.querySelector('[data-catalog-detail]');
+    const search=overlay.querySelector('[data-catalog-search]');
+    let records=[],controller=null,epoch=0,opener=null,session=null,nativeFacade=null,dynamicEnabled=false;
+    const uncertain=new Map(),busySessions=new Set();
+    const el=(tag,className,text)=>{const node=doc.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;};
+    function choose(template){
+      detail.replaceChildren();
+      detail.append(el('h3','',template.name),el('p','template-catalog-meta',`${template.language} · ${template.category} · ${template.status} · ${template.parameterFormat||'POSITIONAL'}`));
+      const values=new Map(),preview=el('div','template-catalog-preview'),targetSession=session,targetEpoch=epoch;
+      preview.dir='auto';preview.setAttribute('data-catalog-preview','');
+      const update=()=>{preview.textContent=previewLines(template,values);};
+      update();detail.append(preview);
+      const fields=template.sendSchema?.fields||(template.variables||[]).map(v=>({...v,label:`${v.componentType} — {{${v.name}}}`,required:true}));
+      for(const variable of fields){
+        const sections={HEADER:'العنوان',BODY:'نص الرسالة',FOOTER:'التذييل',URL:'رابط الزر'};
+        const label=el('label','template-catalog-variable',variable.label||`${sections[variable.componentType]||variable.path} — {{${variable.name}}}`);
+        const input=el('input');input.type='text';input.dir='auto';input.maxLength=4096;input.required=variable.required!==false;
+        input.autocomplete='off';input.setAttribute('aria-label',label.textContent);
+        input.addEventListener('input',()=>{values.set(variable.key,input.value);update();});
+        label.append(input);detail.append(label);
+      }
+      if(!(template.variables||[]).length)detail.append(el('p','template-catalog-meta','هذا القالب لا يحتاج متغيرات نصية.'));
+      for(const requirement of template.requirements||[])detail.append(el('p','template-catalog-note',`مكوّن مطلوب: ${requirement.type} — استخدم Media ID صالحًا أو رابط HTTPS متاحًا لـMeta؛ لا يُرفع ملف تلقائيًا.`));
+      if(template.warnings?.length)detail.append(el('p','template-catalog-note','القالب يحتوي على مكونات متقدمة؛ المعاينة هنا نصية فقط.'));
+      const enabled=dynamicEnabled&&template.sendSchema?.supported===true&&typeof getGeneration==='function';
+      if(!enabled)detail.append(el('p','template-catalog-note',template.sendSchema?.unsupported?.length?'هذا النوع يحتاج تكاملًا إضافيًا ولا يمكن إرساله بأمان حاليًا.':'معاينة فقط — الإرسال الديناميكي غير مفعّل.'));
+      else {
+        const send=el('button','template-catalog-item','تأكيد إرسال القالب لهذه المحادثة');send.type='button';
+        const feedback=el('p','template-catalog-note');feedback.setAttribute('role','status');
+        const check=el('button','template-catalog-item','التحقق من حالة الطلب دون إعادة الإرسال');check.type='button';
+        check.hidden=!uncertain.has(targetSession);send.disabled=uncertain.has(targetSession)||busySessions.has(targetSession);
+        const alive=()=>targetEpoch===epoch&&session===targetSession&&!overlay.classList.contains('hidden');
+        check.addEventListener('click',async()=>{
+          const op=uncertain.get(targetSession);if(!op||!readQueue)return;check.disabled=true;
+          try{const rows=(await readQueue(targetSession)).items.filter(x=>x.request_id===op.id);
+            if(!alive())return;
+            if(rows.length){
+              feedback.textContent=rows.some(x=>x.state==='unknown')?'نتيجة الإرسال غير مؤكدة في الطابور؛ راجعها ولا تُعد الإرسال.':'الطلب مسجل في الطابور؛ لا تُعد الإرسال.';
+              onQueued(targetSession);
+              if(!rows.some(x=>x.state==='unknown')){uncertain.delete(targetSession);check.hidden=true;}
+            }
+            else feedback.textContent='لم يتأكد تسجيل الطلب بعد. لا تُعد الإرسال قبل مراجعة الطابور.';
+          }catch{if(alive())feedback.textContent='تعذر التحقق. لم تتم إعادة الإرسال.';}finally{if(alive())check.disabled=false;}
+        });
+        send.addEventListener('click',async()=>{
+          if(send.disabled||uncertain.has(targetSession)||busySessions.has(targetSession)||!alive())return;
+          if([...detail.querySelectorAll('input')].some(input=>!input.reportValidity()))return;
+          send.disabled=true;busySessions.add(targetSession);
+          const id=doc.defaultView.crypto.randomUUID();let attempted=false;
+          try{
+            const generation=await getGeneration(targetSession);
+            if(!alive())return;
+            if(!Number.isSafeInteger(generation)||generation<0)throw Error('QUEUE_NOT_READY');
+            uncertain.set(targetSession,{id});attempted=true;
+            const response=await fetchImpl(`${apiBase}/whatsapp/template-send`,{method:'POST',
+              headers:getAuthHeaders({'Content-Type':'application/json','Idempotency-Key':id,'X-Send-Queue-Generation':String(generation)}),
+              body:JSON.stringify({sessionId:targetSession,templateId:template.id,language:template.language,revision:template.revision,values:Object.fromEntries(values)}),signal:AbortSignal.timeout(60000)});
+            if(response.status>=400&&response.status<500){uncertain.delete(targetSession);attempted=false;throw Error('REJECTED');}
+            const result=await response.json();
+            if(!response.ok||result.durable!==true||!result.jobId)throw Error('UNKNOWN');
+            uncertain.delete(targetSession);onQueued(targetSession);
+            if(alive())feedback.textContent='تم تسجيل الطلب في الطابور. القبول لا يعني التسليم للعميل.';
+          }catch{
+            if(alive()){
+              feedback.textContent=attempted?'تعذر تأكيد قبول الطلب. لم تتم إعادة الإرسال؛ تحقق من حالة الطابور.':'تعذر تجهيز الطلب أو رُفض التحقق من القالب والمتغيرات. حدّث الكتالوج وراجع القيم.';
+              check.hidden=!attempted;send.disabled=attempted;
+            }
+          }finally{busySessions.delete(targetSession);}
+        });
+        if(uncertain.has(targetSession))feedback.textContent='توجد عملية غير مؤكدة لهذه المحادثة؛ تحقق منها دون إعادة إرسال.';
+        detail.append(send,check,feedback);
+      }
+      detail.hidden=false;
+    }
+    function render(){
+      const q=search.value.trim().toLocaleLowerCase();
+      const matches=records.filter(t=>`${t.name} ${t.language} ${t.category}`.toLocaleLowerCase().includes(q));
+      list.replaceChildren();
+      for(const template of matches){
+        const button=el('button','template-catalog-item',`${template.name} — ${template.language} — ${template.category}`);
+        button.type='button';button.dir='auto';button.addEventListener('click',()=>choose(template));list.append(button);
+      }
+      if(!matches.length)list.append(el('p','template-catalog-meta','لا توجد قوالب مطابقة.'));
+    }
+    async function load(){
+      controller?.abort();controller=new AbortController();const current=++epoch;
+      status.textContent='جاري جلب القوالب المعتمدة من Meta…';records=[];list.replaceChildren();detail.replaceChildren();detail.hidden=true;
+      try{
+        const response=await fetchImpl(`${apiBase}/whatsapp/template-catalog`,{method:'GET',headers:getAuthHeaders(),cache:'no-store',signal:controller.signal});
+        if(current!==epoch||overlay.classList.contains('hidden'))return;
+        if(handleInvalidToken(response)){close();return;}
+        const data=await response.json();
+        if(current!==epoch||overlay.classList.contains('hidden'))return;
+        if(!response.ok)throw Error();
+        if(!Array.isArray(data.templates)||data.templates.some(t=>t.status!=='APPROVED'))throw Error();
+        dynamicEnabled=data.dynamicSendingEnabled===true;records=data.templates;render();status.textContent=`${records.length} قالب معتمد — البيانات من Meta عبر n8n`;
+      }catch(error){
+        if(current!==epoch||error.name==='AbortError')return;
+        status.textContent='تعذر تحميل الكتالوج. يمكنك إعادة المحاولة؛ التيمبليتان السريعتان ما زالتا تعملان.';
+      }
+    }
+    function close(){
+      epoch++;controller?.abort();controller=null;records=[];list.replaceChildren();detail.replaceChildren();
+      overlay.classList.add('hidden');search.value='';opener?.focus?.({preventScroll:true});opener=null;session=null;
+    }
+    async function open(channel,sessionId){
+      if(channel!=='whatsapp')return false;
+      installNativeBack();
+      session=sessionId;
+      opener=doc.activeElement;search.value='';overlay.classList.remove('hidden');
+      overlay.querySelector('[data-catalog-close]').focus({preventScroll:true});await load();return true;
+    }
+    function installNativeBack(){
+      const win=doc.defaultView,adapter=win?.AlMehrabAndroidAdapter,host=win?.AlMehrabHost;
+      if(!adapter||adapter===nativeFacade||typeof adapter.back!=='function'||typeof host?.postMessage!=='function'||
+        win.top!==win||win.location.origin!=='https://wadashboard.almehrab.org')return;
+      // Existing APK adapters are frozen and predate this modal. Preserve every
+      // method/flag; consume ONLY this new visible layer, never alter history.
+      nativeFacade=Object.freeze({...adapter,back(id){
+        if(!overlay.classList.contains('hidden')){
+          close();host.postMessage(JSON.stringify({action:'back_result',id,status:'handled'}));return true;
+        }
+        return adapter.back.call(adapter,id);
+      }});
+      win.AlMehrabAndroidAdapter=nativeFacade;
+    }
+    overlay.querySelector('[data-catalog-close]').addEventListener('click',close);
+    overlay.querySelector('[data-catalog-refresh]').addEventListener('click',load);
+    overlay.addEventListener('click',event=>{event.stopPropagation();if(event.target===overlay)close();});
+    overlay.addEventListener('keydown',event=>{
+      if(event.key==='Escape'){event.stopPropagation();close();}
+      if(event.key==='Tab'){
+        const focusable=[...overlay.querySelectorAll('button,input')].filter(node=>!node.disabled&&node.getClientRects().length);
+        const first=focusable[0],last=focusable[focusable.length-1];
+        if(event.shiftKey&&doc.activeElement===first){event.preventDefault();last.focus();}
+        else if(!event.shiftKey&&doc.activeElement===last){event.preventDefault();first.focus();}
+      }
+    });
+    search.addEventListener('input',render);
+    function syncContext(sessionId,channel){if(!overlay.classList.contains('hidden')&&(session!==sessionId||channel!=='whatsapp'))close();}
+    return {open,close,syncContext};
+  }
+  return {create,previewLines,interpolate};
+});

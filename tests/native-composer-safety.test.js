@@ -111,15 +111,15 @@ test('caption remains recoverable on bridge loss; explicit cancellation restores
 });
 test('shared release guard and runtime cache versions are coordinated',()=>{
  const html=fs.readFileSync('index.html','utf8'),css=fs.readFileSync('app.css','utf8'),sw=fs.readFileSync('service-worker.js','utf8');
- assert.match(html,/native-composer\.js\?v=2/);assert.match(html,/app\.js\?v=92/);assert.match(html,/app\.css\?v=72/);assert.ok(html.indexOf('native-composer.js?v=2')<html.indexOf('app.js?v=92'));
- assert.match(app,/release === 'native-composer-v2'/);assert.match(css,/data-native-composer-state="disconnected"/);assert.match(sw,/mehrab-dashboard-static-v7/);
+ assert.match(html,/native-composer\.js\?v=2/);assert.match(html,/app\.js\?v=93/);assert.match(html,/app\.css\?v=73/);assert.ok(html.indexOf('native-composer.js?v=2')<html.indexOf('app.js?v=93'));
+ assert.match(app,/release === 'native-composer-v2'/);assert.match(css,/data-native-composer-state="disconnected"/);assert.match(sw,/mehrab-dashboard-static-v8/);
 });
 test('service worker never returns a cached native composer, including on network loss',async()=>{
  const source=fs.readFileSync('service-worker.js','utf8');
- for(const fail of [false,true]){
+ for(const fail of [false,true])for(const file of ['native-composer.js?v=2','whatsapp-template-catalog.js?v=1','whatsapp-template-catalog.js?v=2']){
    const handlers={};let options,cacheReads=0,promise;
    const s={URL,Response,self:{addEventListener(k,f){handlers[k]=f;}},caches:{match(){cacheReads++;return Promise.resolve(new Response('OLD'));}},fetch:async(_,opts)=>{options=opts;if(fail)throw Error('offline');return new Response('NEW MODULE');}};
-   vm.runInNewContext(source,s);handlers.fetch({request:{method:'GET',url:'https://dashboard.test/native-composer.js?v=2',mode:'cors'},respondWith(p){promise=p;}});
+   vm.runInNewContext(source,s);handlers.fetch({request:{method:'GET',url:'https://dashboard.test/'+file,mode:'cors'},respondWith(p){promise=p;}});
    const response=await promise;assert.equal(options.cache,'no-store');assert.equal(cacheReads,0);assert.equal(response.status,fail?503:200);assert.equal(await response.text(),fail?'Network unavailable':'NEW MODULE');
  }
 });

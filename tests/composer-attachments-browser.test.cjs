@@ -8,14 +8,14 @@ async function fixture(run,{scripts=true,sid='fb:TEST',reject=false}={}){
  try{
   const page=await browser.newPage({viewport:{width:390,height:800},isMobile:true,hasTouch:true,serviceWorkers:'block'});
   const posts=[],errors=[],alerts=[];
-  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',async d=>{alerts.push(d.message());await d.dismiss();});
+  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',async d=>{alerts.push(d.message());await d.dismiss().catch(()=>{});});
   await page.route('**/*',r=>{
    const u=new URL(r.request().url()),f=u.pathname==='/'?'index.html':u.pathname.slice(1);
    if(f==='api/queued/send-media'){
     posts.push({headers:r.request().headers(),body:r.request().postDataBuffer().toString('latin1')});
     return r.fulfill({status:reject?413:202,json:reject?{error:'حجم المرفق مرفوض'}:{durable:true,jobId:'SYNTHETIC'}});
    }
-   if(['index.html','app.css','app.js','native-composer.js'].includes(f))return r.fulfill({
+   if(['index.html','app.css','app.js','native-composer.js','whatsapp-template-catalog.js'].includes(f))return r.fulfill({
     body:(!scripts&&f.endsWith('.js'))?'':fs.readFileSync(f),
     contentType:f.endsWith('.js')?'text/javascript':f.endsWith('.css')?'text/css':'text/html'
    });

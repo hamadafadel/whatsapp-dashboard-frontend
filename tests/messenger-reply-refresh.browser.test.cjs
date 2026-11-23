@@ -21,7 +21,7 @@ async function fixture(run){
       if(req.method()==='POST')posts.push(file);
       if(url.hostname==='example.invalid')return r.fulfill({contentType:'image/png',
         body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aUVEAAAAASUVORK5CYII=','base64')});
-      if(['index.html','app.js','app.css','native-composer.js'].includes(file))
+      if(['index.html','app.js','app.css','native-composer.js','whatsapp-template-catalog.js'].includes(file))
         return r.fulfill({body:fs.readFileSync(path.join(repo,file)),contentType:file.endsWith('js')?'text/javascript':file.endsWith('css')?'text/css':'text/html'});
       if(file.startsWith('api/messages/')){
         if(gate)await gate;
