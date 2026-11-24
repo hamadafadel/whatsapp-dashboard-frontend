@@ -5,7 +5,7 @@ test('disabled production flag is not mistaken for lost admin access and returni
  const s=await start(),browser=await chromium.launch({channel:'chrome'}),page=await browser.newPage({viewport:{width:390,height:900}});
  try{
   await page.route('**/*',route=>new URL(route.request().url()).origin===s.url?route.continue():route.abort());
-  await page.route('**/api/whatsapp/campaigns/**',route=>route.fulfill({status:403,json:{error:'CAMPAIGNS_DISABLED'}}));
+  await page.route('**/api/whatsapp/campaigns/**',route=>route.fulfill({status:503,json:{error:'CAMPAIGNS_DISABLED'}}));
   await page.goto(s.url+'/preview/conversations');await page.locator('.session-item').first().waitFor();
   await page.evaluate(()=>navigator.serviceWorker.ready);await page.reload();await page.locator('.session-item').first().waitFor();
   await page.locator('#campaignFilterButton').click();await page.getByText('ميزة الحملات غير مفعّلة بعد على الخادم. لم يتم إنشاء حملة أو إرسال رسائل.',{exact:true}).waitFor();
