@@ -1,4 +1,8 @@
-const CACHE_NAME = "mehrab-dashboard-static-v8";
+const CACHE_NAME = "mehrab-dashboard-static-v10";
+const FRONTEND_RELEASE='dashboard-campaigns-v3';
+self.addEventListener('message',event=>{
+  if(event.data?.type==='GET_FRONTEND_RELEASE')event.ports?.[0]?.postMessage({release:FRONTEND_RELEASE});
+});
 
 const STATIC_FILES = [
   "/manifest.json",
@@ -117,6 +121,10 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith("/app.js") ||
     url.pathname.endsWith("/native-composer.js") ||
     url.pathname.endsWith("/whatsapp-template-catalog.js") ||
+    url.pathname.endsWith("/templates.html") ||
+    url.pathname.endsWith("/templates.js") ||
+    url.pathname.endsWith("/campaign-conversations.js") ||
+    url.pathname.endsWith("/templates.css") ||
     url.pathname.endsWith("/app.css") ||
     url.pathname.endsWith("/service-worker.js") ||
     url.pathname.endsWith("/gallery.html") ||

@@ -1,4 +1,5 @@
 const API_BASE = "https://wadashboardapi.almehrab.org/api";
+window.MEHRAB_FRONTEND_RELEASE='dashboard-campaigns-v3';
 
 document.addEventListener(
   "gesturestart",
@@ -3239,6 +3240,8 @@ let activeUnreadFilter = validUnreadFilters.has(savedUnreadFilter)
   : "all";
 
 function renderChannelFilter() {
+  window.dashboardCampaignFilter?.restoreLink();
+  const campaignButton=document.getElementById('campaignFilterButton');if(campaignButton)campaignButton.hidden=getStoredDashboardRole()!=='admin';
   const confirmationOnly = getStoredDashboardRole() === "confirmation";
 
   if (confirmationOnly) {
@@ -3246,19 +3249,19 @@ function renderChannelFilter() {
     localStorage.setItem(CHANNEL_FILTER_STORAGE_KEY, activeChannelFilter);
   }
 
-  channelFilterBarEl?.querySelectorAll(".channel-filter-btn").forEach((button) => {
+  channelFilterBarEl?.querySelectorAll(".channel-filter-btn[data-channel]").forEach((button) => {
     button.classList.toggle(
       "hidden",
       confirmationOnly && button.dataset.channel !== "confirmation"
     );
-    const isActive = button.dataset.channel === activeChannelFilter;
+    const isActive = !window.dashboardCampaignFilter?.active() && button.dataset.channel === activeChannelFilter;
     button.classList.toggle("active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
   });
 }
 
 channelFilterBarEl?.addEventListener("click", (event) => {
-  const button = event.target.closest(".channel-filter-btn");
+  const button = event.target.closest(".channel-filter-btn[data-channel]");
   if (!button || !channelFilterBarEl.contains(button)) return;
 
   const nextFilter = String(button.dataset.channel || "all");
@@ -3602,6 +3605,7 @@ function getConversationPreviewText(conv) {
 }
 
 function applyConversationFilters() {
+  if (window.dashboardCampaignFilter?.active()) { window.dashboardCampaignFilter.refresh(); return; }
   updateUnreadFilterCount();
 
   const value = searchInputEl.value.trim().toLowerCase();
@@ -3682,11 +3686,19 @@ function applyRolePermissionsToUI() {
   viewHiddenBtnEl?.classList.toggle("hidden", role !== "admin");
   sessionsSelectionHideBtnEl?.classList.toggle("hidden", role !== "admin");
   openGalleryBtnEl?.classList.toggle("hidden", role !== "admin");
+  document.getElementById("openTemplateSendingBtn")?.classList.toggle("hidden", role !== "admin");
+  document.getElementById("openTemplateHistoryBtn")?.classList.toggle("hidden", role !== "admin");
   renderChannelFilter();
 }
 
 openGalleryBtnEl?.addEventListener("click", () => {
   window.location.href = "/gallery.html";
+});
+document.getElementById("openTemplateSendingBtn")?.addEventListener("click", () => {
+  window.location.href = "/templates.html";
+});
+document.getElementById("openTemplateHistoryBtn")?.addEventListener("click", () => {
+  window.location.href = "/templates.html#history";
 });
 
 function renderCurrentUserInfo() {
@@ -4209,6 +4221,7 @@ let conversationSearchTimer = null;
 let conversationSearchController = null;
 
 async function searchConversationHistory(query) {
+  if (window.dashboardCampaignFilter?.active()) { await window.dashboardCampaignFilter.refresh(true); return; }
   conversationSearchController?.abort();
   conversationSearchController = new AbortController();
   const controller = conversationSearchController;
@@ -4625,6 +4638,7 @@ async function reconcileConversationMessages(sid) {
       const storageId = String(row.id || message.storage_id || '');
       if ((storageId && storageId === anchor.id) || (mid && mid === anchor.mid)) overlap = true;
       const rendered = (storageId && messagesEl.querySelector(`[data-message-storage-id="${CSS.escape(storageId)}"]`)) || (mid && findRenderedMessageById(mid));
+      if (rendered) syncMessageCampaignTag(rendered,message);
       if (rendered) {
         if (storageId) rendered.dataset.messageStorageId = storageId;
         if (message.channel === "messenger" && message.reply_to)
@@ -5145,6 +5159,7 @@ function getAuthHeaders(extraHeaders = {}) {
 }
 
 function showLogin() {
+  window.dashboardCampaignFilter?.reset();
   loginScreenEl?.classList.remove("hidden");
 }
 
@@ -5186,6 +5201,7 @@ function handleInvalidToken(res) {
 }
 
 async function loadConversations() {
+  if (window.dashboardCampaignFilter?.active()) { await window.dashboardCampaignFilter.refresh(); return; }
   const requestToken = ++conversationsRequestToken;
   const owner = authToken;
   // لو دي أول تحميل (القايمة لسه فاضية) بس اللي بيظهر فيها "جاري التحميل"،
@@ -5209,6 +5225,7 @@ if (!res.ok) throw new Error("Failed conversations");
 
     const conversations = await res.json();
     if (requestToken !== conversationsRequestToken || owner !== authToken || viewingHiddenConversations) return;
+    if (window.dashboardCampaignFilter?.active()) return;
     conversationsData = Array.isArray(conversations) ? conversations : [];
     applyConversationFilters();
   } catch (error) {
@@ -6337,6 +6354,11 @@ function extractButtons(messageObj) {
   return [];
 }
 
+function syncMessageCampaignTag(wrap,message) {
+  if(message.type!=='agent'||!message.campaign_id||typeof message.campaign_title!=='string')return;
+  let tag=wrap.querySelector('.message-campaign-tag');if(!tag){tag=document.createElement('small');tag.className='message-campaign-tag';wrap.appendChild(tag);}
+  tag.textContent='حملة: '+message.campaign_title.slice(0,120);
+}
 function appendMessageToUI(msg, options = {}) {
   const messageObj = normalizeMessage(msg);
   if (messageObj.channel === "instagram" && messageObj.is_deleted === true) {
@@ -6889,6 +6911,7 @@ if (
 }
 
   wrap.appendChild(bubble);
+  syncMessageCampaignTag(wrap,messageObj);
   if (messageObj.channel === "messenger") messengerReplyRows.set(wrap, {
     sessionId: String(msg?.session_id || msg?.sessionId || activeSessionId || ""),
     message: { ...messageObj }
@@ -7529,6 +7552,7 @@ if (data.type === "reaction") {
           new Date().toISOString();
 
         const realtimeMessage = {
+          campaign_id:data.campaign_id||null,campaign_title:data.campaign_title||null,
           type: data.messageType || "ai",
           channel: realtimeChannel,
           is_deleted: realtimeChannel === "instagram" && data.is_deleted === true,
@@ -7676,6 +7700,7 @@ function linkifyText(text) {
 }
 
 searchInputEl.addEventListener("input", () => {
+  if(window.dashboardCampaignFilter?.active())return; // Campaign search is server-paginated and debounced by its controller.
   const query = searchInputEl.value.trim();
 
   clearTimeout(conversationSearchTimer);
@@ -9523,3 +9548,25 @@ if (window.AlMehrabNativeComposer?.release === 'native-composer-v2' && window.Al
   });
   candidate.start().then(observe).catch(()=>candidate.error());
 }
+
+window.dashboardCampaignFilter=window.MehrabCampaignFilter?.mount({
+  doc:document,base:API_BASE,headers:getAuthHeaders,role:getCurrentUserRole,invalid:handleInvalidToken,
+  render:rows=>{
+    conversationsEl.querySelector('.loading-state')?.remove();
+    conversationsData=rows;renderConversations(rows);
+    for(const item of conversationsEl.querySelectorAll('.session-item')){
+      item.querySelector('.campaign-response-tag')?.remove();const row=item._conv;if(!row)continue;
+      const tag=document.createElement('small');tag.className='campaign-response-tag';
+      const states={explicit:'رد باقتباس الرسالة',after_send:'رد بعد الإرسال — قرينة زمنية',ambiguous:'رد غير محسوم بين حملات',not_replied:'لم يرد'};
+      tag.textContent=(row.title||'')+' · '+(states[row.response]||'');item.appendChild(tag);
+    }
+  },onExit:()=>{renderChannelFilter();loadConversations();},
+  openSession:async session=>{
+    const r=await fetch(`${API_BASE}/messages/${encodeURIComponent(session)}?limit=1`,{headers:getAuthHeaders(),cache:'no-store'});
+    if(!r.ok)throw Error('المحادثة غير متاحة لهذا الحساب.');const d=await r.json();
+    if(!(Array.isArray(d)?d:d.messages||[]).length)throw Error('لم تُنشأ محادثة لهذا المستلم بعد.');
+    const row={session_id:session,channel:getChannelFromSessionId(session),customer_name:session,unread_count:0};
+    if(!conversationsData.some(c=>c.session_id===session))conversationsData.push(row);
+    createConversationItem(row).click();
+  }
+});

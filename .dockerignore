@@ -1,0 +1,12 @@
+.git
+node_modules
+tests
+tools
+.env
+.env.*
+.npmrc
+server.js
+Gallery Drive Bridge.json
+*.log
+*.bundle
+*.dpapi

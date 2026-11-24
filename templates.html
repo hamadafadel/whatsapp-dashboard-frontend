@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#54105b"><title>إرسال تيمبليت — المحراب</title>
+  <link rel="manifest" href="manifest.json?v=5"><link rel="stylesheet" href="templates.css?v=3">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html"><img src="mehrab-splash-192-v5.png" alt=""><span>المحراب<small>WhatsApp Templates</small></span></a>
+    <nav aria-label="التنقل"><button id="newTab" class="nav-active" type="button">إرسال تيمبليت</button><button id="historyTab" type="button">سجل الإرسال</button><button id="startAnother" type="button" hidden>عملية جديدة</button><a href="index.html">المحادثات</a></nav>
+  </header>
+  <main>
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+    <section id="wizard">
+      <div class="page-heading"><div><p class="eyebrow">تواصل منظّم، من مكان واحد</p><h1>إرسال تيمبليت</h1><p>رسالة واحدة أو مجموعة مستلمين، باستخدام قوالب Meta المعتمدة.</p></div><span class="pill">WhatsApp فقط</span></div>
+      <ol class="steps" aria-label="خطوات الإرسال"><li data-step="1" aria-current="step"><b>١</b><span>اختيار المستلمين</span></li><li data-step="2"><b>٢</b><span>القالب والمتغيرات</span></li><li data-step="3"><b>٣</b><span>المراجعة والتأكيد</span></li></ol>
+      <section id="step1" class="step-panel" aria-label="اختيار المستلمين">
+        <div class="workspace">
+          <aside class="source-card card">
+            <h2>أضف المستلمين</h2>
+            <div class="source-tabs" role="group" aria-label="مصدر المستلمين"><button type="button" data-source="manual" class="active">أرقام يدوية</button><button type="button" data-source="import">Excel / CSV</button><button type="button" data-source="labels">Labels</button></div>
+            <section id="source-manual"><label for="country">دولة الأرقام المحلية</label><select id="country"><option value="">أرقام دولية فقط</option value="EG">مصر (+20)</option><option value="SA">السعودية (+966)</option><option value="AE">الإمارات (+971)</option></select>
+              <label for="manualNumbers">رقم واحد أو عدة أرقام</label><textarea id="manualNumbers" rows="5" dir="ltr" placeholder="+20 10 0000 0000&#10;+966 50 000 0000"></textarea><p class="hint">كل رقم في سطر. الأرقام تُراجع قبل إضافتها، ولا تُرسل أي رسالة الآن.</p><button id="addManual" class="primary full" type="button">إضافة إلى المستلمين</button>
+            </section>
+            <section id="source-import" hidden><label class="file-drop" for="recipientFile"><strong>اختيار ملف Excel أو CSV</strong><span>xlsx أو CSV بترميز UTF-8 · حتى 2 MB</span><input id="recipientFile" type="file" accept=".xlsx,.csv"></label><div id="importMapping" hidden><label for="phoneColumn">عمود رقم الهاتف</label><select id="phoneColumn"></select><label for="nameColumn">عمود اسم العميل (اختياري)</label><select id="nameColumn"></select><p id="importCount" class="hint"></p><button id="addImport" class="primary full" type="button">إضافة صفوف الملف</button></div><p class="hint">لا تُعد أعمدة الملف إثباتًا للموافقة على التواصل. احفظ الأرقام الطويلة كنص.</p></section>
+            <section id="source-labels" hidden><h3>التصنيفات الحالية</h3><div id="labelsList" class="labels-list"></div><button id="addLabels" class="primary full" type="button">عرض عملاء التصنيفات</button><p class="hint">اختيار عدة Labels يجمع عملاءها دون تكرار. لن تتغير التصنيفات الأصلية.</p></section>
+          </aside>
+          <section class="card recipients-card">
+            <div class="card-heading"><div><h2>المستلمون</h2><p class="hint">اجمع المصادر، ثم اختر من تريد التواصل معه.</p></div><span id="selectedCount" class="count-pill">0 محدد</span></div>
+            <div class="list-tools"><input id="recipientSearch" type="search" placeholder="ابحث باسم العميل أو رقم الهاتف" aria-label="البحث في المستلمين"><select id="recipientView" aria-label="عرض المستلمين"><option value="all">كل المستلمين</option><option value="labels">نتائج التصنيفات الحالية</option><option value="selected">المحددون فقط</option></select></div>
+            <div class="selection-tools"><button id="selectAll" type="button">تحديد كل نتائج البحث</button><button id="selectNone" type="button">إلغاء تحديد نتائج البحث</button><span id="totalCount">الإجمالي 0</span></div>
+            <div class="table-scroll"><table><thead><tr><th><span class="sr-only">تحديد</span></th><th>العميل / رقم واتساب</th><th>المصدر</th><th>الموافقة</th><th></th></tr></thead><tbody id="recipientRows"></tbody></table><div id="emptyRecipients" class="empty"><span class="empty-symbol">＋</span><h3>ابدأ بإضافة المستلمين</h3><p>أرقام يدوية، ملف Excel، أو Labels الحالية.<br>يمكنك الجمع بينها في نفس العملية.</p></div></div>
+            <div class="selection-tools"><button id="recipientPrev" type="button">الصفحة السابقة</button><button id="recipientNext" type="button">الصفحة التالية</button><span id="recipientPage"></span></div>
+            <p id="recipientSummary" class="hint bottom-note">التحديد لا يغيّر بيانات العملاء ولا يرسل رسائل.</p>
+          </section>
+        </div>
+      </section>
+      <section id="step2" class="step-panel" hidden aria-label="القالب والمتغيرات">
+        <div class="template-layout"><section class="card"><h2>اختر قالبًا معتمدًا</h2><input id="templateSearch" type="search" placeholder="ابحث باسم القالب أو اللغة أو التصنيف" aria-label="بحث القوالب"><div id="templateList" class="template-list"></div></section><section class="card"><div id="templateMeta" class="hint">اختر قالبًا لعرض المعاينة والمتغيرات.</div><div id="templateFields"></div><label for="previewRecipient">معاينة حسب المستلم</label><select id="previewRecipient"></select><div id="templatePreview" class="message-preview" dir="auto"></div><p class="hint">متغير مشترك أو عمود من ملف Excel. القيم المفقودة أو المتعارضة تمنع المتابعة.</p></section></div>
+      </section>
+      <section id="step3" class="step-panel" hidden aria-label="المراجعة النهائية">
+        <div class="review-grid"><section class="card"><h2>راجع قبل التأكيد</h2><label for="campaignTitle">اسم عملية الإرسال</label><input id="campaignTitle" maxlength="120" placeholder="مثال: متابعة طلبات نوفمبر"><label for="sendInterval">الفاصل الأدنى بين المستلمين</label><select id="sendInterval"><option value="2000">ثانيتان</option><option value="5000">5 ثوانٍ</option><option value="10000">10 ثوانٍ</option><option value="60000">دقيقة</option></select><p class="hint">يخضع الإرسال أيضًا لحدود Meta. التكلفة غير متاحة للتقدير حاليًا؛ لا يُعرض مبلغ تخميني.</p><div id="reviewSummary"></div><p id="reviewDuration" class="hint"></p><label for="reviewPreviewRecipient">معاينة نهائية حسب المستلم</label><select id="reviewPreviewRecipient"></select><div id="reviewPreview" class="message-preview" dir="auto"></div><label class="ack"><input id="reviewAcknowledgement" type="checkbox">راجعت القائمة والمعاينة؛ سيُرسل للمؤهلين فقط وفق الموافقات المسجلة.</label></section><section class="card"><div class="card-heading"><h2>القائمة النهائية</h2><button id="revalidateReview" type="button" hidden>إعادة التحقق من القائمة</button></div><p class="hint">يمكن استبعاد مستلم قبل التأكيد. يلزم مراجعة الأعداد مجددًا بعد كل تغيير.</p><div id="reviewRows" class="review-rows"></div></section></div>
+      </section>
+      <footer class="wizard-footer"><div><strong id="footerSummary">اختر المستلمين للمتابعة</strong><small>لم يُرسل شيء بعد</small></div><div class="footer-actions"><button id="previousStep" type="button" hidden>السابق</button><button id="nextStep" class="primary" type="button">التالي: اختيار القالب ←</button><button id="prepareReview" class="primary" type="button" hidden>حفظ المراجعة النهائية</button><button id="confirmSend" class="primary" type="button" hidden disabled>تأكيد الإرسال</button></div></footer>
+    </section>
+    <section id="history" hidden><div class="page-heading"><div><p class="eyebrow">متابعة واضحة لكل عملية</p><h1>سجل الإرسال</h1><p>القبول في الطابور لا يعني التسليم. النتائج غير المؤكدة لا تُعاد تلقائيًا.</p></div><div class="footer-actions"><button id="historyBack" type="button" hidden>كل الحملات</button><button id="refreshHistory" type="button">تحديث السجل</button></div></div><div id="historyList" class="card"></div><div class="selection-tools" id="historyPagination"><button id="historyPrev" type="button">السجل السابق</button><button id="historyNext" type="button">السجل التالي</button><span id="historyPage"></span></div><div id="historyDetail"></div></section>
+  </main>
+  <dialog id="consentDialog"><form method="dialog"><h2>تسجيل حالة التواصل</h2><p id="consentPhone" dir="ltr"></p><label for="consentStatus">الحالة</label><select id="consentStatus"><option value="granted">موافقة موثقة</option><option value="withdrawn">إلغاء اشتراك / انسحاب</option></select><fieldset><legend>نطاق الموافقة</legend><label class="inline"><input type="checkbox" name="consentCategory" value="MARKETING">تسويقي</label><label class="inline"><input type="checkbox" name="consentCategory" value="UTILITY">خدمي</label><label class="inline"><input type="checkbox" name="consentCategory" value="AUTHENTICATION">مصادقة</label></fieldset><label for="consentEvidence">مرجع الموافقة أو طلب الانسحاب</label><textarea id="consentEvidence" rows="3" minlength="5" maxlength="1000" placeholder="مصدر الموافقة وتاريخها أو مرجع يمكن مراجعته"></textarea><p class="hint">لا تسجل موافقة بناءً على وجود العميل في Label أو ملف فقط.</p><div class="dialog-actions"><button value="cancel">إلغاء</button><button id="saveConsent" type="button" class="primary">حفظ الحالة</button></div></form></dialog>
+  <script src="whatsapp-template-catalog.js?v=2"></script><script src="templates.js?v=3"></script>
+</body></html>

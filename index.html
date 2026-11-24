@@ -18,7 +18,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <link rel="stylesheet" href="app.css?v=73" />
+  <link rel="stylesheet" href="app.css?v=74" />
   <script
     type="module"
     src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.26.0/index.js"
@@ -63,6 +63,8 @@
             <button id="toggleSessionSelectBtn" class="conversations-menu-item" type="button">تحديد محادثات</button>
             <button id="viewHiddenBtn" class="conversations-menu-item" type="button">المحادثات المخفية</button>
             <button id="openGalleryBtn" class="conversations-menu-item" type="button">🖼️ معرض الصور</button>
+            <button id="openTemplateSendingBtn" class="conversations-menu-item hidden" type="button">إرسال تيمبليت</button>
+            <button id="openTemplateHistoryBtn" class="conversations-menu-item hidden" type="button">سجل الإرسال</button>
 
             <div class="conversations-menu-divider"></div>
 
@@ -82,7 +84,17 @@
         <button type="button" class="channel-filter-btn" data-channel="messenger">Messenger</button>
         <button type="button" class="channel-filter-btn" data-channel="instagram">Instagram</button>
         <button type="button" class="channel-filter-btn" data-channel="confirmation">Confirmation</button>
+        <button id="campaignFilterButton" type="button" class="channel-filter-btn" aria-controls="campaignConversationPanel" aria-expanded="false" hidden>Campaigns</button>
       </div>
+      <section id="campaignConversationPanel" class="campaign-conversation-panel" hidden aria-label="فلترة محادثات الحملات">
+        <input id="campaignNameSearch" type="search" placeholder="ابحث عن حملة" aria-label="البحث في أسماء الحملات">
+        <select id="campaignChoice" aria-label="اختيار الحملة"><option value="">جميع محادثات الحملات</option></select>
+        <p id="campaignSelectedMeta" class="campaign-selected-meta" aria-live="polite"></p>
+        <button id="campaignMoreNames" type="button" hidden>المزيد من الحملات</button>
+        <select id="campaignReplyFilter" aria-label="استجابة عملاء الحملة"><option value="all">الكل</option><option value="replied">رد العميل</option><option value="not_replied">لم يرد</option><option value="unread">غير مقروء</option><option value="ambiguous">رد غير محسوم بين حملات</option></select>
+        <small>الرد دون اقتباس قرينة زمنية فقط؛ عند تداخل الحملات لا يُنسب لحملة بعينها.</small>
+        <div class="campaign-page"><button id="campaignPrevious" type="button">السابق</button><span id="campaignPageInfo" role="status"></span><button id="campaignNext" type="button">التالي</button></div>
+      </section>
 
       <div id="unreadFilterBar" class="unread-filter-bar" role="group" aria-label="فلترة المحادثات غير المقروءة">
         <button type="button" class="unread-filter-btn" data-unread="all">الكل</button>
@@ -505,7 +517,8 @@
   </aside>
   <script src="native-composer.js?v=2"></script>
   <script src="whatsapp-template-catalog.js?v=2"></script>
-  <script src="app.js?v=93"></script>
+  <script src="campaign-conversations.js?v=1"></script>
+  <script src="app.js?v=95"></script>
 
   <script>
   if ("serviceWorker" in navigator) {
@@ -549,9 +562,16 @@
           "controllerchange",
           () => {
             if (refreshing) return;
-
-            refreshing = true;
-            window.location.reload();
+            const channel=new MessageChannel();
+            const close=()=>{channel.port1.close();channel.port2.close();};
+            const timer=setTimeout(close,3000);
+            channel.port1.onmessage=event=>{
+              clearTimeout(timer);close();
+              if(typeof event.data?.release==='string' && event.data.release!==window.MEHRAB_FRONTEND_RELEASE && !refreshing){
+                refreshing=true;window.location.reload();
+              }
+            };
+            navigator.serviceWorker.controller?.postMessage({type:'GET_FRONTEND_RELEASE'},[channel.port2]);
           }
         );
       } catch (error) {

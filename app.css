@@ -5369,3 +5369,15 @@ html[data-native-composer-state="connecting"][data-native-composer="1"] .chat-co
   .template-catalog-detail { margin-top:14px; }
   .template-catalog-sheet { padding:12px; }
 }
+/* Campaign controls reuse the existing conversation list, never a second inbox. */
+.campaign-conversation-panel{padding:10px 12px;display:grid;gap:8px;background:#faf7f1;border-bottom:1px solid #ded7cf;color:#403b37;flex-shrink:0}
+.campaign-conversation-panel[hidden]{display:none!important}
+#unreadFilterBar.hidden,#labelFilterRow.hidden{display:none!important}
+.campaign-conversation-panel select,.campaign-conversation-panel input{width:100%;min-width:0;padding:8px;border:1px solid #c9c5c0;border-radius:9px;background:white;color:#29252b;font:inherit}
+.campaign-conversation-panel small{font-size:11px;line-height:1.5}
+.campaign-selected-meta{margin:0;font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.campaign-page{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:12px}
+.campaign-page button,.campaign-conversation-panel>button{border:1px solid #d5c7d7;background:white;border-radius:7px;color:#54105b;padding:5px 9px}
+.campaign-response-tag,.message-campaign-tag{display:block;max-width:100%;overflow-wrap:anywhere;color:#756377;font-size:11px;line-height:1.5;padding:3px 8px}
+.channel-filter-bar{flex-wrap:wrap;overflow:visible}.channel-filter-bar>.channel-filter-btn{flex:0 0 auto;white-space:nowrap}
+@media(max-width:600px){.campaign-conversation-panel{padding:7px 10px;gap:6px}.campaign-conversation-panel select,.campaign-conversation-panel input{font-size:13px;padding:6px}}
