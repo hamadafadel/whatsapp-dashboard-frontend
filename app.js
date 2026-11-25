@@ -1,5 +1,5 @@
 const API_BASE = "https://wadashboardapi.almehrab.org/api";
-window.MEHRAB_FRONTEND_RELEASE='dashboard-campaigns-v3';
+window.MEHRAB_FRONTEND_RELEASE='dashboard-campaigns-v4';
 
 document.addEventListener(
   "gesturestart",

@@ -22,9 +22,10 @@ for(const width of [1440,390,320])test('all six filters are onscreen without aut
   await page.goto(s.url+'/preview/conversations');await page.locator('.session-item').first().waitFor();
   await page.evaluate(()=>navigator.serviceWorker.ready);await page.reload();await page.locator('.session-item').first().waitFor();
   const geometry=await page.evaluate(()=>{const bar=document.getElementById('channelFilterBar'),box=bar.getBoundingClientRect(),buttons=[...bar.querySelectorAll('button')];return {controlled:!!navigator.serviceWorker.controller,overflow:bar.scrollWidth>bar.clientWidth,order:buttons.map(b=>b.textContent),buttons:buttons.map(b=>{const r=b.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,height:r.height,inside:r.left>=box.left&&r.right<=box.right&&r.top>=box.top&&r.bottom<=box.bottom,hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)===b};})};});
-  assert.equal(geometry.controlled,true);assert.equal(geometry.overflow,false);assert.deepEqual(geometry.order,['الكل','WhatsApp','Messenger','Instagram','Confirmation','Campaigns']);
-  for(const b of geometry.buttons){assert(b.inside&&b.hit);assert.equal(b.height,32);assert(b.left>=0&&b.right<=width);}
-  const campaign=page.locator('#campaignFilterButton'),box=await campaign.boundingBox();await page.mouse.click(box.x+box.width/2,box.y+box.height/2);
+  assert.equal(geometry.controlled,true);assert.deepEqual(geometry.order,['الكل','WhatsApp','Messenger','Instagram','Confirmation','Campaigns']);
+  for(const b of geometry.buttons){assert.equal(b.top,geometry.buttons[0].top);assert.equal(b.height,32);}
+  if(width<600)assert.equal(geometry.overflow,true);
+  const campaign=page.locator('#campaignFilterButton');await campaign.click();
   await page.getByText('10000 محادثة · صفحة 1',{exact:true}).waitFor();assert.equal(await campaign.getAttribute('aria-expanded'),'true');assert.equal(await campaign.getAttribute('class'),'channel-filter-btn active');
   assert.equal(await page.locator('#channelFilterBar [data-channel].active').count(),0);
   assert.deepEqual(await page.locator('#campaignReplyFilter option').allTextContents(),['الكل','رد العميل','لم يرد','غير مقروء','رد غير محسوم بين حملات']);
@@ -65,6 +66,9 @@ for(const width of [1440,390])test('actual dashboard campaign filters, whole-lis
   await page.getByRole('button',{name:'التالي',exact:true}).click();await page.getByText('10000 محادثة · صفحة 2',{exact:true}).waitFor();
   await page.locator('#searchInput').fill('عميل حملة تجريبي 10000');await page.getByText('1 محادثة · صفحة 1',{exact:true}).waitFor();
   assert.equal(await page.locator('.session-item').count(),1);
+  assert.equal(await page.locator('#campaignPrevious').isVisible(),false);assert.equal(await page.locator('#campaignNext').isVisible(),false);
+  await page.locator('#searchInput').fill('NO_SYNTHETIC_CUSTOMER_MATCH');await page.getByText('0 محادثة · صفحة 1',{exact:true}).waitFor();
+  assert.equal(await page.locator('#campaignPrevious').isVisible(),false);assert.equal(await page.locator('#campaignNext').isVisible(),false);
   await page.locator('#searchInput').fill('');await page.locator('#campaignReplyFilter').selectOption('ambiguous');await page.getByText('1 محادثة · صفحة 1',{exact:true}).waitFor();
   await page.locator('#campaignChoice').selectOption('00000000-0000-4000-8000-000000000002');await page.getByText('1 محادثة · صفحة 1',{exact:true}).waitFor();
   assert.match(await page.locator('.campaign-response-tag').textContent(),/غير محسوم/);

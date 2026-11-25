@@ -24,6 +24,7 @@
     const d=await get('conversation-list?'+q);if(!active||version!==epoch)return;
     render(d.rows);text('campaignPageInfo',`${d.total} محادثة · صفحة ${Math.floor(offset/50)+1}`);
     $('campaignPrevious').disabled=offset===0;$('campaignNext').disabled=offset+50>=d.total;
+    $('campaignPrevious').hidden=$('campaignNext').hidden=d.total<=50;
    }catch(e){if(version===epoch)text('campaignPageInfo',e.message);}})();
    pending=work;pendingKey=key;try{await work;}finally{if(pending===work)pending=null;}
   }

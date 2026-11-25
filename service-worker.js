@@ -1,5 +1,5 @@
-const CACHE_NAME = "mehrab-dashboard-static-v10";
-const FRONTEND_RELEASE='dashboard-campaigns-v3';
+const CACHE_NAME = "mehrab-dashboard-static-v11";
+const FRONTEND_RELEASE='dashboard-campaigns-v4';
 self.addEventListener('message',event=>{
   if(event.data?.type==='GET_FRONTEND_RELEASE')event.ports?.[0]?.postMessage({release:FRONTEND_RELEASE});
 });

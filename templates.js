@@ -2,7 +2,7 @@
   'use strict';
   function addRecipient(map,row){
     const old=map.get(row.phone);
-    if(!old){map.set(row.phone,{...row,selected:true,sources:[...new Set(row.sources||[])],labelTags:row.labelTags||[],columns:{...row.columns},conflicts:[]});return;}
+    if(!old){map.set(row.phone,{...row,selected:row.selected===true,sources:[...new Set(row.sources||[])],labelTags:row.labelTags||[],columns:{...row.columns},conflicts:[]});return;}
     old.sources=[...new Set([...old.sources,...(row.sources||[])])];
     old.labelTags=[...new Map([...(old.labelTags||[]),...(row.labelTags||[])].map(l=>[l.id,l])).values()];
     if(!old.name)old.name=row.name;
@@ -11,6 +11,9 @@
       else old.columns[k]=v;
     }
     old.permission=row.permission; // Authoritative response, never imported consent.
+    if(row.local){old.local=true;old.selected=row.selected===true||old.selected;}
+    if(row.label_ids)old.label_ids=row.label_ids;
+    if(row.directory)old.directory=true;
   }
   function filtered(map,{query='',view='all',labelPhones=new Set()}){
     query=query.trim().toLocaleLowerCase();
@@ -22,6 +25,10 @@
     let token=win.localStorage.getItem('dashboard_token')||'',step=1,source='manual',templates=[],template=null,imported=null,labels=[],labelPhones=new Set(),draft=null,lockedBody=null,requestId=null,confirmAttempted=false,consentTarget=null,loading=false,currentPage=0,historyPage=0,historyTimer=null,historyId=null,polling=false,reviewUncertain=false,historyData=null,historyEpoch=0;
     const finalExcluded=new Set();
     let historyRecipientOffset=0,historySearchTimer=null;
+    let directoryActive=false,directoryPage=[],directoryTotal=0,directoryEpoch=0,directoryTimer=null,directoryBusy=false;
+    const scope=()=>({all:$('allWhatsApp')?.checked===true,labels:[...doc.querySelectorAll('input[name=campaignLabel]:checked')].map(x=>Number(x.value))});
+    const inScope=r=>{const s=scope();return s.all||s.labels.some(id=>(r.label_ids||[]).includes(id));};
+    const directoryView=()=>directoryActive&&$('recipientView').value!=='selected';
     const el=(tag,cls,text)=>{const e=doc.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
     const setNotice=text=>{$('notice').hidden=!text;$('notice').textContent=text||'';};
     function labelChip(l){const chip=el('span','source-tag label-chip',l.name),raw=/^#[0-9a-f]{6}$/i.test(l.color||'')?l.color:'#54105b';chip.style.backgroundColor=raw;const rgb=[1,3,5].map(i=>parseInt(raw.slice(i,i+2),16));chip.style.color=(rgb[0]*.299+rgb[1]*.587+rgb[2]*.114)>155?'#202124':'#fff';return chip;}
@@ -29,19 +36,20 @@
     const errors={CAMPAIGNS_DISABLED:'الميزة غير مفعّلة بعد على الخادم.',CAMPAIGNS_NOT_INSTALLED:'جداول الحملات غير مثبتة بعد. لا توجد محاولة إرسال.',CONSENT_REQUIRED:'يلزم تسجيل موافقة موثقة',OPTED_OUT:'منسحب — مستبعد',TEMPLATE_CHANGED_REFRESH_REQUIRED:'تغيّر القالب؛ أعد تحميل الكتالوج والمراجعة.',INVALID_WHATSAPP_NUMBER:'رقم واتساب غير صالح',DUPLICATE_RECIPIENT_VALUE_CONFLICT:'قيم متعارضة لنفس الرقم. راجع البيانات.',UNKNOWN_SEND_REQUIRES_REVIEW:'توجد عملية غير مؤكدة. لا يمكن استئنافها تلقائيًا.',ADMINS_ONLY:'هذه الصفحة متاحة للأدمن فقط.',REVIEW_REQUIRED_OR_NO_ELIGIBLE_RECIPIENTS:'لا يوجد مستلم مؤهل أو المراجعة غير مكتملة.'};
     Object.assign(errors,{USER_EXCLUDED:'مستبعد من القائمة',CAMPAIGN_CANCELLED:'أُلغي المتبقي',REVIEW_STALE_REFRESH_REQUIRED:'تغيّرت المراجعة. أعد التحقق قبل التأكيد.',CONVERSATION_QUEUE_BLOCKED:'إرسال سابق غير محسوم في المحادثة',SEND_RESULT_UNKNOWN:'لم يتأكد الإرسال؛ لا يُعاد تلقائيًا',SEND_PERMISSION_REVOKED:'لم تعد صلاحية الإرسال متاحة'});
     async function api(path,{method='GET',body,headers={},signal,binary=false}={}){
-      token=win.localStorage.getItem('dashboard_token')||'';
+      token=win.localStorage.getItem('dashboard_token')||'';const owner=token;
       const response=await win.fetch(apiBase+path,{method,headers:{Authorization:'Bearer '+token,...(body&&! (body instanceof win.FormData)?{'Content-Type':'application/json'}:{}),...headers},body:body instanceof win.FormData?body:body?JSON.stringify(body):undefined,cache:'no-store',signal:signal||AbortSignal.timeout(45000)});
+      if(owner!==(win.localStorage.getItem('dashboard_token')||''))throw Error('تغيّرت جلسة الحساب. أعد فتح الصفحة.');
       if(binary&&response.ok)return response.blob();
       let data;try{data=await response.json();}catch{throw Object.assign(Error('تعذر تأكيد استجابة الخادم. لم تتم إعادة الإرسال.'),{status:response.ok?undefined:response.status});}if(!response.ok)throw Object.assign(Error(errors[data.error]||data.error||'تعذر إكمال الطلب.'),{status:response.status});return data;
     }
     function safe(fn){return async()=>{try{setNotice('');await fn();}catch(e){setNotice(e.message||'تعذر الاتصال. لم تتم إعادة أي عملية إرسال.');}};}
-    function visible(){return filtered(rows,{query:$('recipientSearch').value,view:$('recipientView').value,labelPhones});}
+    function visible(){if(directoryView())return directoryPage.map(r=>rows.get(r.phone)||r);return filtered(rows,{query:$('recipientSearch').value,view:$('recipientView').value,labelPhones});}
     function selected(){return [...rows.values()].filter(r=>r.selected);}
     const reasonText=r=>r.permission?.status==='withdrawn'?'منسحب':r.permission?.status==='granted'?'موافقة مسجلة':'موافقة غير مسجلة';
     function renderRows(){
-      const list=visible();currentPage=Math.min(currentPage,Math.max(0,Math.ceil(list.length/50)-1));$('recipientRows').replaceChildren();$('emptyRecipients').hidden=list.length>0;
-      $('recipientPrev').disabled=currentPage===0;$('recipientNext').disabled=(currentPage+1)*50>=list.length;$('recipientPage').textContent=list.length?`صفحة ${currentPage+1} من ${Math.ceil(list.length/50)}`:'';
-      for(const r of list.slice(currentPage*50,(currentPage+1)*50)){
+      const list=visible(),total=directoryView()?directoryTotal:list.length;currentPage=Math.min(currentPage,Math.max(0,Math.ceil(total/50)-1));$('recipientRows').replaceChildren();$('emptyRecipients').hidden=list.length>0;
+      $('recipientPrev').disabled=currentPage===0;$('recipientNext').disabled=(currentPage+1)*50>=total;$('recipientPrev').hidden=$('recipientNext').hidden=total<=50;$('recipientPage').textContent=total?`صفحة ${currentPage+1} من ${Math.ceil(total/50)}`:'';
+      for(const r of (directoryView()?list:list.slice(currentPage*50,(currentPage+1)*50))){
         const tr=el('tr'),td=el('td'),check=el('input');check.type='checkbox';check.checked=r.selected;check.setAttribute('aria-label',`تحديد ${r.name||r.phone}`);check.addEventListener('change',()=>{r.selected=check.checked;if($('recipientView').value==='selected')renderRows();else counts();});td.append(check);tr.append(td);
         const who=el('td');who.append(el('strong','',r.name||'بدون اسم'),el('span','phone','+'+r.phone));const mobileSource=el('small','mobile-sources');mobileSource.append(sourceChips(r));who.append(mobileSource);tr.append(who);
         const src=el('td');src.append(sourceChips(r));tr.append(src);
@@ -50,7 +58,7 @@
         const remove=el('button','row-action','استبعاد');remove.type='button';remove.setAttribute('aria-label',`استبعاد ${r.name||r.phone}`);remove.addEventListener('click',()=>{r.selected=false;renderRows();});actions.append(remove);tr.append(actions);$('recipientRows').append(tr);
       }counts();
     }
-    function counts(){const n=selected().length;$('selectedCount').textContent=`${n} محدد`;$('totalCount').textContent=`الإجمالي ${rows.size} · نتائج البحث ${visible().length}`;$('footerSummary').textContent=n?`${n} مستلم محدد · مراجعة الأهلية قبل الإرسال`:'اختر المستلمين للمتابعة';$('nextStep').disabled=n===0||loading;}
+    function counts(){const n=selected().length;$('selectedCount').textContent=`${n} محدد`;$('totalCount').textContent=`إجمالي العملاء المعروضين ${directoryView()?directoryTotal:visible().length} · المحددون ${n}`;$('footerSummary').textContent=n?`${n} مستلم محدد · مراجعة الأهلية قبل الإرسال`:'اختر المستلمين للمتابعة';$('nextStep').disabled=n===0||loading||directoryBusy;}
     function sourceMode(next){source=next;for(const s of ['manual','import','labels'])$('source-'+s).hidden=s!==next;doc.querySelectorAll('[data-source]').forEach(b=>b.classList.toggle('active',b.dataset.source===next));}
     function go(next){step=next;for(let i=1;i<=3;i++){$('step'+i).hidden=i!==step;const li=doc.querySelector(`[data-step="${i}"]`);if(i===step)li.setAttribute('aria-current','step');else li.removeAttribute('aria-current');}
       $('previousStep').hidden=step===1;$('nextStep').hidden=step===3;$('prepareReview').hidden=step!==3||Boolean(draft);$('confirmSend').hidden=step!==3||!draft;
@@ -61,17 +69,31 @@
     async function addRaw(raw,sourceNames){
       if(rows.size+raw.length>10000)throw Error('الحد الأقصى 10,000 صف قبل إزالة التكرار. قسّم الملف.');
       const result=await api('/whatsapp/campaigns/resolve',{method:'POST',body:{rows:raw.map(r=>({phone:r.phone,name:r.name||''})),country:$('country').value}});let invalid=0;
-      result.rows.forEach(r=>{const original=raw[r.inputIndex];if(!r.phone){invalid++;return;}addRecipient(rows,{phone:r.phone,name:r.name,permission:r.permission,sources:sourceNames,columns:original.columns||{}});});
+      result.rows.forEach(r=>{const original=raw[r.inputIndex];if(!r.phone){invalid++;return;}addRecipient(rows,{phone:r.phone,name:r.name,permission:r.permission,sources:sourceNames,columns:original.columns||{},local:true,selected:true});});
+      $('recipientView').value='selected';currentPage=0;
       renderRows();if(invalid)setNotice(`لم تُضف ${invalid} أرقام غير صالحة. صحّحها في المصدر قبل المحاولة مجددًا.`);
     }
-    async function loadLabels(){const d=await api('/labels');labels=d.labels;$('labelsList').replaceChildren();for(const l of labels){const label=el('label'),check=el('input');check.type='checkbox';check.value=String(l.id);check.name='campaignLabel';label.append(check,labelChip(l));$('labelsList').append(label);}}
+    async function loadLabels(){const d=await api('/labels');labels=d.labels;$('labelsList').replaceChildren();const allLabel=el('label'),all=el('input');all.type='checkbox';all.id='allWhatsApp';allLabel.append(all,el('span','','الكل — جميع عملاء WhatsApp، بما فيهم دون Label'));$('labelsList').append(allLabel);all.addEventListener('change',()=>{if(all.checked)doc.querySelectorAll('[name=campaignLabel]').forEach(x=>x.checked=false);safe(loadLabelMembers)();});for(const l of labels){const label=el('label'),check=el('input');check.type='checkbox';check.value=String(l.id);check.name='campaignLabel';check.addEventListener('change',()=>{if(check.checked)all.checked=false;safe(loadLabelMembers)();});label.append(check,labelChip(l));$('labelsList').append(label);}}
     async function loadLabelMembers(){
-      const ids=[...doc.querySelectorAll('input[name=campaignLabel]:checked')].map(x=>x.value);if(!ids.length)throw Error('اختر Label واحدة على الأقل.');
-      const names=labels.filter(l=>ids.includes(String(l.id))).map(l=>l.name),members=[];let offset=0,total=0;
-      do{const data=await api('/whatsapp/campaigns/label-recipients?labels='+ids.join(',')+'&limit=200&offset='+offset);total=data.total;if(total>10000)throw Error('التصنيفات تتجاوز 10,000 مستلم؛ اختر مجموعة أصغر.');members.push(...data.rows);offset+=data.rows.length;if(!data.rows.length)break;}while(offset<total);
-      labelPhones=new Set(members.filter(r=>r.phone).map(r=>r.phone));for(const r of members)if(r.phone)addRecipient(rows,{...r,labelTags:r.labels||[],sources:(r.labels?.map(l=>'Label: '+l.name)||names.map(x=>'Label: '+x)),columns:{}});
-      $('recipientView').value='labels';renderRows();setNotice(`عُرض ${labelPhones.size} رقم واتساب. اختياراتك السابقة محفوظة في «كل المستلمين».`);
+      directoryEpoch++;directoryBusy=false;directoryPage=[];directoryTotal=0;currentPage=0;const s=scope();directoryActive=s.all||s.labels.length>0;
+      for(const [phone,r] of rows){if(r.directory&&!inScope(r)){if(!r.local)rows.delete(phone);else{r.directory=false;r.label_ids=[];r.labelTags=[];}}}
+      labelPhones=new Set([...rows.values()].filter(r=>r.directory&&inScope(r)).map(r=>r.phone));$('recipientView').value=directoryActive?'labels':'all';renderRows();await loadDirectory();
     }
+    async function loadDirectory(){
+      const epoch=++directoryEpoch;if(!directoryView()){renderRows();return;}directoryBusy=true;counts();
+      const local=$('recipientView').value==='all'?filtered(new Map([...rows].filter(([,r])=>r.local)),{query:$('recipientSearch').value}):[],part=local.slice(currentPage*50,(currentPage+1)*50);
+      try{const d=await api('/whatsapp/campaigns/recipient-directory',{method:'POST',body:{...scope(),q:$('recipientSearch').value,exclude:$('recipientView').value==='all'?[...rows.values()].filter(r=>r.local).map(r=>r.phone):[],offset:Math.max(0,currentPage*50-local.length),limit:Math.max(1,50-part.length)}});if(epoch!==directoryEpoch)return;
+        directoryTotal=d.total+local.length;directoryPage=[...part,...d.rows.slice(0,50-part.length)];for(const [phone,r] of rows)if(r.directory&&!r.local&&!r.selected&&!directoryPage.some(x=>x.phone===phone))rows.delete(phone);for(const r of d.rows){const tags=labels.filter(l=>(r.label_ids||[]).includes(l.id));addRecipient(rows,{...r,directory:true,selected:false,labelTags:tags,sources:['دليل WhatsApp'],columns:{}});labelPhones.add(r.phone);}renderRows();
+      }catch(e){if(epoch===directoryEpoch){directoryPage=[];directoryTotal=0;renderRows();throw e;}}finally{if(epoch===directoryEpoch){directoryBusy=false;counts();}}
+    }
+    async function selectDirectory(checked,searchOnly){
+      if(directoryBusy)return;if(!directoryView()){(searchOnly?visible():[...rows.values()]).forEach(r=>r.selected=checked);renderRows();return;}
+      const epoch=directoryEpoch;directoryBusy=true;counts();try{const d=await api('/whatsapp/campaigns/recipient-directory',{method:'POST',body:{...scope(),q:searchOnly?$('recipientSearch').value:'',identitiesOnly:true}});if(epoch!==directoryEpoch)return;
+        if(checked&&new Set([...selected().map(r=>r.phone),...d.rows.map(r=>r.phone)]).size>10000)throw Error('الحد الأقصى 10,000 مستلم محدد.');
+        for(const r of d.rows){if(!rows.has(r.phone))addRecipient(rows,{...r,name:'',directory:true,sources:['دليل WhatsApp'],columns:{},selected:false});rows.get(r.phone).selected=checked;}for(const r of rows.values())if(r.local&&(!searchOnly||(`${r.name} ${r.phone}`.toLocaleLowerCase().includes($('recipientSearch').value.trim().toLocaleLowerCase()))))r.selected=checked;renderRows();
+      }finally{if(epoch===directoryEpoch){directoryBusy=false;counts();}}
+    }
+    async function hydrateSelected(){const picked=selected(),epoch=directoryEpoch;for(let i=0;i<picked.length;i+=200){const batch=picked.slice(i,i+200),d=await api('/whatsapp/campaigns/resolve',{method:'POST',body:{rows:batch.map(r=>({phone:r.phone,name:r.name}))}});if(epoch!==directoryEpoch)throw Error('تغيّر اختيار المستلمين. راجع القائمة مجددًا.');for(const r of d.rows){const target=rows.get(r.phone);if(target?.selected){target.name=r.name||target.name;target.permission=r.permission;}}}}
     function openConsent(r){consentTarget=r.phone;$('consentPhone').textContent='+'+r.phone;$('consentEvidence').value='';$('consentStatus').value=r.permission?.status||'granted';doc.querySelectorAll('[name=consentCategory]').forEach(c=>c.checked=r.permission?.categories?.includes(c.value)||false);$('consentDialog').showModal();}
     function renderTemplates(){
       const query=$('templateSearch').value.toLocaleLowerCase();$('templateList').replaceChildren();
@@ -93,7 +115,16 @@
       if(v===undefined)v='';if(m.field.required&&!String(v).trim())throw Error(`قيمة مطلوبة مفقودة للمستلم ${r.name||r.phone}: ${m.field.label}`);if(v!=='')result[key]=String(v);
     }return result;}
     function populatePreviewRecipients(){const previous=$('previewRecipient').value;$('previewRecipient').replaceChildren();selected().forEach(r=>{const o=el('option','',`${r.name||'بدون اسم'} — +${r.phone}`);o.value=r.phone;$('previewRecipient').append(o);});if(rows.has(previous))$('previewRecipient').value=previous;updatePreview();}
-    function updatePreview(){if(!template)return;try{const r=rows.get($('previewRecipient').value)||selected()[0];const v=r?valuesFor(r):{};$('templatePreview').textContent=win.MehrabTemplateCatalog.previewLines(template,new Map(Object.entries(v)));}catch(e){$('templatePreview').textContent=e.message;}}
+    function renderMessage(target,t,values){
+      target.replaceChildren();const v=new Map(Object.entries(values)),interpolate=(c,path,key)=>win.MehrabTemplateCatalog.interpolate(c[key],path,key,v);
+      const safeUrl=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null;}catch{return null;}};
+      (t.components||[]).forEach((c,i)=>{const path=`components[${i}]`;
+        if(c.type==='BUTTONS'){const box=el('div','wa-buttons');for(const [j,b] of (c.buttons||[]).entries()){const button=el('div','wa-button',b.text||'زر');if(b.type==='URL'){const href=safeUrl(interpolate(b,`${path}.buttons[${j}]`,'url'));if(href){const link=el('a','',b.text||'فتح الرابط');link.href=href;link.target='_blank';link.rel='noopener noreferrer';button.replaceChildren(link);}}box.append(button);}target.append(box);return;}
+        if(c.type==='HEADER'&&c.format&&c.format!=='TEXT'){const media=values[path+'.media'],url=safeUrl(media);if(c.format==='IMAGE'&&url){const image=el('img','wa-media');image.src=url;image.alt='صورة عنوان القالب';image.referrerPolicy='no-referrer';image.loading='lazy';target.append(image);}else target.append(el('div','wa-media-placeholder',({IMAGE:'صورة',VIDEO:'فيديو',DOCUMENT:'ملف',LOCATION:'موقع'})[c.format]||c.format));}
+        if(c.text){const block=el('div','wa-'+c.type.toLowerCase());const text=interpolate(c,path,'text');let at=0;for(const m of text.matchAll(/https:\/\/[^\s<>]+/g)){block.append(doc.createTextNode(text.slice(at,m.index)));const href=safeUrl(m[0]);if(href){const a=el('a','',m[0]);a.href=href;a.target='_blank';a.rel='noopener noreferrer';block.append(a);}else block.append(doc.createTextNode(m[0]));at=m.index+m[0].length;}block.append(doc.createTextNode(text.slice(at)));target.append(block);}
+      });
+    }
+    function updatePreview(){if(!template)return;try{const r=rows.get($('previewRecipient').value)||selected()[0];renderMessage($('templatePreview'),template,r?valuesFor(r):{});}catch(e){$('templatePreview').textContent=e.message;}}
     function reviewLocal(){
       $('reviewAcknowledgement').checked=false;$('confirmSend').disabled=true;
       $('reviewRows').replaceChildren();const recipients=draft?.recipients||selected();
@@ -107,7 +138,7 @@
       const before=$('reviewPreviewRecipient').value;$('reviewPreviewRecipient').replaceChildren();for(const r of recipients){const o=el('option','',`${r.name||'بدون اسم'} — +${r.phone}${r.reason?' (مستبعد)':''}`);o.value=r.phone;$('reviewPreviewRecipient').append(o);}if(recipients.some(r=>r.phone===before))$('reviewPreviewRecipient').value=before;updateReviewPreview();
       $('revalidateReview').hidden=!draft;$('revalidateReview').disabled=loading||confirmAttempted;
     }
-    function updateReviewPreview(){const r=(draft?.recipients||selected()).find(r=>r.phone===$('reviewPreviewRecipient').value);if(!r)return;try{$('reviewPreview').textContent=win.MehrabTemplateCatalog.previewLines(template||draft.campaign.template,new Map(Object.entries(draft?r.values:valuesFor(r))));}catch(e){$('reviewPreview').textContent=e.message;}}
+    function updateReviewPreview(){const r=(draft?.recipients||selected()).find(r=>r.phone===$('reviewPreviewRecipient').value);if(!r)return;try{renderMessage($('reviewPreview'),template||draft.campaign.template,draft?r.values:valuesFor(r));}catch(e){$('reviewPreview').textContent=e.message;}}
     async function reviseReview(excludePhones=[]){if(loading||confirmAttempted)return;loading=true;reviewLocal();try{if(reviewUncertain)draft=await api('/whatsapp/campaigns/'+draft.campaign.id);draft=await api(`/whatsapp/campaigns/${draft.campaign.id}/review`,{method:'POST',body:{reviewToken:draft.reviewToken,excludePhones}});reviewUncertain=false;setNotice('أعيد التحقق من القائمة. راجع الأعداد وأكّد المراجعة من جديد؛ لم يُرسل شيء.');}catch(e){reviewUncertain=true;setNotice('تعذر تأكيد تحديث المراجعة. أعد التحقق قبل التأكيد؛ لم يُرسل شيء.');}finally{loading=false;reviewLocal();}}
     function makeBody(){if(!template)throw Error('اختر قالبًا.');return {title:$('campaignTitle').value.trim(),templateId:template.id,language:template.language,revision:template.revision,intervalMs:Number($('sendInterval').value),excludePhones:[...finalExcluded],recipients:selected().map(r=>({phone:r.phone,name:r.name,sources:r.sources,values:valuesFor(r)}))};}
     async function prepare(){
@@ -127,7 +158,7 @@
     async function showHistory(){
       $('wizard').hidden=true;$('history').hidden=false;$('historyTab').classList.add('nav-active');$('newTab').classList.remove('nav-active');win.history.replaceState(null,'','#history');
       const data=await api('/whatsapp/campaigns?offset='+historyPage*50);$('historyList').replaceChildren();if(!data.campaigns.length)$('historyList').append(el('p','hint','لا توجد عمليات مسجلة من واجهة الإرسال في هذه الصفحة.'));
-      $('historyPrev').disabled=historyPage===0;$('historyNext').disabled=!data.hasMore;$('historyPage').textContent=`صفحة ${historyPage+1}`;
+      $('historyPrev').disabled=historyPage===0;$('historyNext').disabled=!data.hasMore;$('historyPrev').hidden=$('historyNext').hidden=historyPage===0&&!data.hasMore;$('historyPage').textContent=`صفحة ${historyPage+1}`;
       $('historyList').hidden=Boolean(historyId);$('historyPagination').hidden=Boolean(historyId);$('historyBack').hidden=!historyId;
       data.campaigns.forEach(c=>{const row=el('article','history-item campaign-card'),info=el('div','campaign-card-heading');info.append(el('strong','',c.title),el('small','',`${date(c.created_at)} — توقيت القاهرة`),el('small','',`${c.template_name} · ${stateLabels[c.state]||c.state}${c.simulated?' · محاكاة فقط':''}`));const b=el('button','','تفاصيل المستلمين');b.type='button';b.addEventListener('click',safe(()=>historyDetail(c.id)));info.append(b);row.append(info,statsBox(c),progressBox(c));$('historyList').append(row);});
       if(data.direct?.length){$('historyList').append(el('h2','','إرسال فردي من داخل المحادثات'));data.direct.forEach(r=>{const item=el('div','history-item'),info=el('div');info.append(el('strong','',r.name||'بدون اسم'),el('span','phone','+'+r.session_id),el('small','',`قالب ${r.template_id} · ${r.owner_name} · ${date(r.created_at)}`));const state=el('div');state.append(badge(r.status||r.delivery_status||r.state),el('small','status-date',date(r.status_at)));if(r.failure_reason)state.append(el('small','bad',errors[r.failure_reason]||r.failure_reason));item.append(info,state);$('historyList').append(item);});}
@@ -164,12 +195,13 @@
       $('importCount').textContent=`${imported.total} صفوف — اختر الأعمدة قبل الإضافة.`;$('importMapping').hidden=false;
     }));
     $('addImport').addEventListener('click',safe(()=>addRaw(imported.rows.map(r=>({phone:r[$('phoneColumn').value],name:r[$('nameColumn').value]||'',columns:r})),['Excel / CSV'])));
-    $('addLabels').addEventListener('click',safe(loadLabelMembers));$('recipientSearch').addEventListener('input',()=>{currentPage=0;renderRows();});$('recipientView').addEventListener('change',()=>{currentPage=0;renderRows();});
-    $('recipientPrev').addEventListener('click',()=>{currentPage=Math.max(0,currentPage-1);renderRows();});$('recipientNext').addEventListener('click',()=>{currentPage++;renderRows();});
-    $('selectAll').addEventListener('click',()=>{visible().forEach(r=>r.selected=true);renderRows();});$('selectNone').addEventListener('click',()=>{visible().forEach(r=>r.selected=false);renderRows();});
+    $('addLabels').addEventListener('click',safe(loadLabelMembers));$('recipientSearch').addEventListener('input',()=>{currentPage=0;win.clearTimeout(directoryTimer);if(directoryView()){directoryEpoch++;directoryBusy=false;directoryTimer=win.setTimeout(()=>safe(loadDirectory)(),250);}else renderRows();});$('recipientView').addEventListener('change',safe(async()=>{currentPage=0;await loadDirectory();renderRows();}));
+    $('recipientPrev').addEventListener('click',safe(async()=>{currentPage=Math.max(0,currentPage-1);await loadDirectory();renderRows();}));$('recipientNext').addEventListener('click',safe(async()=>{currentPage++;await loadDirectory();renderRows();}));
+    $('selectAll').addEventListener('click',safe(()=>selectDirectory(true,true)));$('selectNone').addEventListener('click',safe(()=>selectDirectory(false,true)));
+    $('selectEveryPage').addEventListener('click',safe(()=>selectDirectory(true,false)));$('clearEveryPage').addEventListener('click',()=>{directoryEpoch++;directoryBusy=false;for(const r of rows.values())r.selected=false;renderRows();});
     $('saveConsent').addEventListener('click',safe(async()=>{const b=$('saveConsent');b.disabled=true;try{await api('/whatsapp/campaigns/permissions',{method:'POST',body:{phone:consentTarget,status:$('consentStatus').value,categories:[...doc.querySelectorAll('[name=consentCategory]:checked')].map(x=>x.value),evidence:$('consentEvidence').value}});const r=await api('/whatsapp/campaigns/resolve',{method:'POST',body:{rows:[{phone:consentTarget}]}});rows.get(consentTarget).permission=r.rows[0].permission;$('consentDialog').close();renderRows();}finally{b.disabled=false;}}));
     $('templateSearch').addEventListener('input',renderTemplates);$('previewRecipient').addEventListener('change',updatePreview);
-    $('nextStep').addEventListener('click',safe(async()=>{if(step===1){if(!selected().length)return;if(!templates.length){const d=await api('/whatsapp/template-catalog');templates=d.templates.filter(t=>t.status==='APPROVED');renderTemplates();}go(2);}else{selected().forEach(valuesFor);go(3);}}));
+    $('nextStep').addEventListener('click',safe(async()=>{if(loading||directoryBusy)return;if(step===1){if(!selected().length)return;const signature=selected().map(r=>r.phone).sort().join(',');loading=true;counts();try{await hydrateSelected();if(!templates.length){const d=await api('/whatsapp/template-catalog');templates=d.templates.filter(t=>t.status==='APPROVED');renderTemplates();}if(signature!==selected().map(r=>r.phone).sort().join(','))throw Error('تغيّر اختيار المستلمين. راجع القائمة مجددًا.');go(2);}finally{loading=false;if(step===1)counts();}}else{selected().forEach(valuesFor);go(3);}}));
     $('previousStep').addEventListener('click',()=>{if(!lockedBody)go(Math.max(1,step-1));});$('prepareReview').addEventListener('click',safe(prepare));
     $('reviewPreviewRecipient').addEventListener('change',updateReviewPreview);$('revalidateReview').addEventListener('click',safe(()=>reviseReview()));
     $('reviewAcknowledgement').addEventListener('change',()=>{$('confirmSend').disabled=!$('reviewAcknowledgement').checked||!draft?.eligible||confirmAttempted||loading||reviewUncertain;});

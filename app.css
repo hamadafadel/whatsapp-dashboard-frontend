@@ -5379,5 +5379,5 @@ html[data-native-composer-state="connecting"][data-native-composer="1"] .chat-co
 .campaign-page{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:12px}
 .campaign-page button,.campaign-conversation-panel>button{border:1px solid #d5c7d7;background:white;border-radius:7px;color:#54105b;padding:5px 9px}
 .campaign-response-tag,.message-campaign-tag{display:block;max-width:100%;overflow-wrap:anywhere;color:#756377;font-size:11px;line-height:1.5;padding:3px 8px}
-.channel-filter-bar{flex-wrap:wrap;overflow:visible}.channel-filter-bar>.channel-filter-btn{flex:0 0 auto;white-space:nowrap}
+.channel-filter-bar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-width:0;scrollbar-width:thin;-webkit-overflow-scrolling:touch}.channel-filter-bar>.channel-filter-btn{flex:0 0 auto;white-space:nowrap}
 @media(max-width:600px){.campaign-conversation-panel{padding:7px 10px;gap:6px}.campaign-conversation-panel select,.campaign-conversation-panel input{font-size:13px;padding:6px}}
