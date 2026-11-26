@@ -2,6 +2,51 @@
   const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.MehrabTemplateCatalog=api;
 })(typeof window!=='undefined'?window:globalThis,function(){
   'use strict';
+  function mediaPreview(doc,format,url){
+    let u;try{u=new URL(url);if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['127.0.0.1','localhost'].includes(u.hostname)))return null;}catch{return null;}
+    if(u.username||u.password)return null;
+    const tag=format==='IMAGE'?'img':format==='VIDEO'?'video':'a',node=doc.createElement(tag);
+    node.className='template-header-media';node.style.cssText='display:block;max-width:100%;max-height:240px;border-radius:12px;margin:8px auto;object-fit:contain';
+    if(tag==='a'){node.href=u.href;node.target='_blank';node.rel='noopener noreferrer';node.textContent='📄 عرض مستند القالب';}
+    else{node.src=u.href;if(tag==='img'){node.alt='صورة عنوان القالب';node.referrerPolicy='no-referrer';}else{node.controls=true;node.preload='metadata';node.playsInline=true;}}
+    return node;
+  }
+  // One chooser for conversation sending and campaigns. It never sends messages.
+  function mediaField({doc,template,field,request,onChange}){
+    const root=doc.createElement('div'),note=doc.createElement('p'),preview=doc.createElement('div'),button=doc.createElement('button'),file=doc.createElement('input');
+    const index=Number(/^components\[(\d+)\]/.exec(field.key)?.[1]),format=template.components[index]?.format;
+    const base=`/whatsapp/template-media/${encodeURIComponent(template.id)}/${encodeURIComponent(template.language)}`;
+    const accepts={IMAGE:'image/jpeg,image/png',VIDEO:'video/mp4',DOCUMENT:'application/pdf'};
+    root.className='template-media-chooser';root.setAttribute('data-media-field',field.key);note.setAttribute('role','status');note.textContent='جاري تحميل الميديا الافتراضية…';
+    button.type='button';button.textContent='رفع '+({IMAGE:'صورة',VIDEO:'فيديو',DOCUMENT:'مستند PDF'}[format]||'ملف')+' / تغيير الميديا';
+    file.type='file';file.accept=accepts[format]||'';file.hidden=true;file.setAttribute('aria-label','ميديا عنوان القالب');
+    root.append(preview,button,file,note);let version=0;
+    const alive=n=>n===version&&root.isConnected;
+    const busy=v=>{root.dataset.mediaBusy=String(v);button.disabled=v;};
+    function apply(data){
+      if(!data?.media)return false;
+      const origin=new URL(request.origin),url=new URL(data.media.url,origin);
+      if(url.origin!==origin.origin||!/^\/uploads\/template-headers\/[a-f0-9-]{36}$/.test(url.pathname)||url.search||url.hash||data.media.format!==format)throw Error('INVALID_MEDIA_RESPONSE');
+      const node=mediaPreview(doc,format,url.href);preview.replaceChildren(...(node?[node]:[]));busy(false);onChange(url.href);
+      note.textContent='ميديا محفوظة افتراضيًا لهذا القالب واللغة. تغييرها لا يغيّر الرسائل الموجودة في الطابور.';return true;
+    }
+    async function load(){const n=++version;busy(true);try{
+      let data=await request(base);if(!alive(n))return;
+      if(!data.media&&data.sampleAvailable){note.textContent='جاري حفظ نسخة من عينة Meta…';data=await request(base+'/meta-sample',{method:'POST',body:{revision:template.revision}});if(!alive(n))return;}
+      if(!apply(data))note.textContent='لا توجد عينة Meta قابلة للاستخدام. ارفع الملف من الجهاز لحفظه افتراضيًا.';
+    }catch{if(alive(n))note.textContent='تعذر استرجاع العينة أو الميديا المحفوظة. يمكنك رفع ملف؛ تغيير الافتراضي يحتاج صلاحية أدمن.';}finally{if(alive(n))busy(false);}}
+    // Keep the native picker invocation synchronous within the actual gesture.
+    button.addEventListener('click',()=>{if(!button.disabled){file.value='';file.click();}});
+    file.addEventListener('change',async()=>{const chosen=file.files?.[0];if(!chosen)return;
+      const limit={IMAGE:5,VIDEO:16,DOCUMENT:16}[format],max=limit*1024*1024;
+      if(!chosen.size||chosen.size>max){note.textContent=`الحد الأقصى لهذا الملف ${limit} MB.`;return;}
+      const n=++version;busy(true);note.textContent='جاري حفظ الميديا…';
+      try{const form=new doc.defaultView.FormData();form.append('revision',template.revision);form.append('file',chosen);const data=await request(base,{method:'POST',body:form});if(alive(n))apply(data);}
+      catch{if(alive(n))note.textContent='تعذر حفظ الملف. لم تُرسل رسالة ولم يتغير الملف المختار سابقًا. راجع الصلاحيات ونوع الملف.';}
+      finally{if(alive(n))busy(false);}
+    });
+    queueMicrotask(load);return root;
+  }
   function interpolate(text,path,field,values){
     return String(text||'').replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*|\d+)\s*\}\}/g,
       (original,name)=>values.get(`${path}.${field}:${name}`)||original);
@@ -32,10 +77,17 @@
       detail.append(el('h3','',template.name),el('p','template-catalog-meta',`${template.language} · ${template.category} · ${template.status} · ${template.parameterFormat||'POSITIONAL'}`));
       const values=new Map(),preview=el('div','template-catalog-preview'),targetSession=session,targetEpoch=epoch;
       preview.dir='auto';preview.setAttribute('data-catalog-preview','');
-      const update=()=>{preview.textContent=previewLines(template,values);};
+      const update=()=>{preview.textContent=previewLines(template,values);template.components.forEach((c,i)=>{if(c.type==='HEADER'&&['IMAGE','VIDEO','DOCUMENT'].includes(c.format)){const node=mediaPreview(doc,c.format,values.get(`components[${i}].media`));if(node)preview.prepend(node);}});};
       update();detail.append(preview);
       const fields=template.sendSchema?.fields||(template.variables||[]).map(v=>({...v,label:`${v.componentType} — {{${v.name}}}`,required:true}));
       for(const variable of fields){
+        if(variable.type==='media'){
+          const request=async(path,options={})=>{const multipart=options.body instanceof doc.defaultView.FormData;
+            const r=await fetchImpl(apiBase+path,{method:options.method||'GET',headers:getAuthHeaders(options.body&&!multipart?{'Content-Type':'application/json'}:{}),body:multipart?options.body:options.body?JSON.stringify(options.body):undefined,cache:'no-store',signal:AbortSignal.timeout(90000)});
+            if(handleInvalidToken(r)||!r.ok)throw Error('TEMPLATE_MEDIA_UNAVAILABLE');return r.json();};
+          request.origin=new URL(apiBase,doc.defaultView.location.href).origin;
+          detail.append(mediaField({doc,template,field:variable,request,onChange:url=>{values.set(variable.key,url);update();}}));continue;
+        }
         const sections={HEADER:'العنوان',BODY:'نص الرسالة',FOOTER:'التذييل',URL:'رابط الزر'};
         const label=el('label','template-catalog-variable',variable.label||`${sections[variable.componentType]||variable.path} — {{${variable.name}}}`);
         const input=el('input');input.type='text';input.dir='auto';input.maxLength=4096;input.required=variable.required!==false;
@@ -44,7 +96,7 @@
         label.append(input);detail.append(label);
       }
       if(!(template.variables||[]).length)detail.append(el('p','template-catalog-meta','هذا القالب لا يحتاج متغيرات نصية.'));
-      for(const requirement of template.requirements||[])detail.append(el('p','template-catalog-note',`مكوّن مطلوب: ${requirement.type} — استخدم Media ID صالحًا أو رابط HTTPS متاحًا لـMeta؛ لا يُرفع ملف تلقائيًا.`));
+      for(const requirement of template.requirements||[])if(!['IMAGE','VIDEO','DOCUMENT'].includes(requirement.type))detail.append(el('p','template-catalog-note',`مكوّن مطلوب: ${requirement.type}`));
       if(template.warnings?.length)detail.append(el('p','template-catalog-note','القالب يحتوي على مكونات متقدمة؛ المعاينة هنا نصية فقط.'));
       const enabled=dynamicEnabled&&template.sendSchema?.supported===true&&typeof getGeneration==='function';
       if(!enabled)detail.append(el('p','template-catalog-note',template.sendSchema?.unsupported?.length?'هذا النوع يحتاج تكاملًا إضافيًا ولا يمكن إرساله بأمان حاليًا.':'معاينة فقط — الإرسال الديناميكي غير مفعّل.'));
@@ -68,6 +120,7 @@
         });
         send.addEventListener('click',async()=>{
           if(send.disabled||uncertain.has(targetSession)||busySessions.has(targetSession)||!alive())return;
+          if(detail.querySelector('[data-media-busy="true"]')||fields.some(f=>f.type==='media'&&f.required&&!values.get(f.key))){feedback.textContent='انتظر حفظ ميديا العنوان أو اختر ملفًا صالحًا أولًا.';return;}
           if([...detail.querySelectorAll('input')].some(input=>!input.reportValidity()))return;
           send.disabled=true;busySessions.add(targetSession);
           const id=doc.defaultView.crypto.randomUUID();let attempted=false;
@@ -164,5 +217,5 @@
     function syncContext(sessionId,channel){if(!overlay.classList.contains('hidden')&&(session!==sessionId||channel!=='whatsapp'))close();}
     return {open,close,syncContext};
   }
-  return {create,previewLines,interpolate};
+  return {create,previewLines,interpolate,mediaField,mediaPreview};
 });

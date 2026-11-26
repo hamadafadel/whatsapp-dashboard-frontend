@@ -111,15 +111,20 @@
     function renderFields(){
       $('templateFields').replaceChildren();$('templateMeta').textContent=template?`${template.name} · ${template.language} · ${template.category} · APPROVED`:'';
       for(const f of template?.sendSchema?.fields||[]){
+        if(f.type==='media'){
+          mapping.set(f.key,{mode:'literal',value:'',field:f});const current=template,currentMapping=mapping.get(f.key);
+          const request=(path,options)=>api(path,options);request.origin=new URL(apiBase).origin;
+          $('templateFields').append(win.MehrabTemplateCatalog.mediaField({doc,template,field:f,request,onChange:url=>{if(template===current&&mapping.get(f.key)===currentMapping){currentMapping.value=url;updatePreview();}}}));continue;
+        }
         const wrap=el('div','field-mapping'),label=el('label','',f.label+(f.required?' *':'')),controls=el('div','mapping-controls'),mode=el('select'),value=el('input');value.dir='auto';value.maxLength=4096;value.placeholder=f.type==='media'?'Meta Media ID أو رابط HTTPS':'قيمة مشتركة لكل المستلمين';value.setAttribute('aria-label',f.label);
         const options=[['literal','قيمة ثابتة'],['name','اسم العميل'],['phone','رقم واتساب'],...([...new Set(selected().flatMap(r=>Object.keys(r.columns)))]).map(c=>['column:'+c,'عمود: '+c])];
         options.forEach(([v,n])=>{const o=el('option','',n);o.value=v;mode.append(o);});mode.setAttribute('aria-label','مصدر '+f.label);mapping.set(f.key,{mode:'literal',value:'',field:f});
         mode.addEventListener('change',()=>{mapping.get(f.key).mode=mode.value;value.hidden=mode.value!=='literal';updatePreview();});value.addEventListener('input',()=>{mapping.get(f.key).value=value.value;updatePreview();});controls.append(mode,value);wrap.append(label,controls);$('templateFields').append(wrap);
       }populatePreviewRecipients();updatePreview();
     }
-    function valuesFor(r){const result={};for(const [key,m] of mapping){let v=m.mode==='name'?r.name:m.mode==='phone'?r.phone:m.mode.startsWith('column:')?r.columns[m.mode.slice(7)]:m.value;
+    function valuesFor(r,validate=true){if(validate&&$('templateFields').querySelector('[data-media-busy="true"]'))throw Error('انتظر اكتمال حفظ ميديا القالب.');const result={};for(const [key,m] of mapping){let v=m.mode==='name'?r.name:m.mode==='phone'?r.phone:m.mode.startsWith('column:')?r.columns[m.mode.slice(7)]:m.value;
       if(m.mode.startsWith('column:')&&r.conflicts.includes(m.mode.slice(7)))throw Error(`قيم متعارضة للعمود ${m.mode.slice(7)} في الرقم ${r.phone}. احذف الصف وأعد إضافته بالقيمة الصحيحة.`);
-      if(v===undefined)v='';if(m.field.required&&!String(v).trim())throw Error(`قيمة مطلوبة مفقودة للمستلم ${r.name||r.phone}: ${m.field.label}`);if(v!=='')result[key]=String(v);
+      if(v===undefined)v='';if(validate&&m.field.required&&!String(v).trim())throw Error(`قيمة مطلوبة مفقودة للمستلم ${r.name||r.phone}: ${m.field.label}`);if(v!=='')result[key]=String(v);
     }return result;}
     function populatePreviewRecipients(){const previous=$('previewRecipient').value;$('previewRecipient').replaceChildren();selected().forEach(r=>{const o=el('option','',`${r.name||'بدون اسم'} — +${r.phone}`);o.value=r.phone;$('previewRecipient').append(o);});if(rows.has(previous))$('previewRecipient').value=previous;updatePreview();}
     function renderMessage(target,t,values){
@@ -127,11 +132,11 @@
       const safeUrl=value=>{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null;}catch{return null;}};
       (t.components||[]).forEach((c,i)=>{const path=`components[${i}]`;
         if(c.type==='BUTTONS'){const box=el('div','wa-buttons');for(const [j,b] of (c.buttons||[]).entries()){const button=el('div','wa-button',b.text||'زر');if(b.type==='URL'){const href=safeUrl(interpolate(b,`${path}.buttons[${j}]`,'url'));if(href){const link=el('a','',b.text||'فتح الرابط');link.href=href;link.target='_blank';link.rel='noopener noreferrer';button.replaceChildren(link);}}box.append(button);}target.append(box);return;}
-        if(c.type==='HEADER'&&c.format&&c.format!=='TEXT'){const media=values[path+'.media'],url=safeUrl(media);if(c.format==='IMAGE'&&url){const image=el('img','wa-media');image.src=url;image.alt='صورة عنوان القالب';image.referrerPolicy='no-referrer';image.loading='lazy';target.append(image);}else target.append(el('div','wa-media-placeholder',({IMAGE:'صورة',VIDEO:'فيديو',DOCUMENT:'ملف',LOCATION:'موقع'})[c.format]||c.format));}
+        if(c.type==='HEADER'&&c.format&&c.format!=='TEXT'){const node=win.MehrabTemplateCatalog.mediaPreview(doc,c.format,values[path+'.media']);if(node)target.append(node);else target.append(el('div','wa-media-placeholder',({IMAGE:'صورة',VIDEO:'فيديو',DOCUMENT:'ملف',LOCATION:'موقع'})[c.format]||c.format));}
         if(c.text){const block=el('div','wa-'+c.type.toLowerCase());const text=interpolate(c,path,'text');let at=0;for(const m of text.matchAll(/https:\/\/[^\s<>]+/g)){block.append(doc.createTextNode(text.slice(at,m.index)));const href=safeUrl(m[0]);if(href){const a=el('a','',m[0]);a.href=href;a.target='_blank';a.rel='noopener noreferrer';block.append(a);}else block.append(doc.createTextNode(m[0]));at=m.index+m[0].length;}block.append(doc.createTextNode(text.slice(at)));target.append(block);}
       });
     }
-    function updatePreview(){if(!template)return;try{const r=rows.get($('previewRecipient').value)||selected()[0];renderMessage($('templatePreview'),template,r?valuesFor(r):{});}catch(e){$('templatePreview').textContent=e.message;}}
+    function updatePreview(){if(!template)return;try{const r=rows.get($('previewRecipient').value)||selected()[0];renderMessage($('templatePreview'),template,r?valuesFor(r,false):{});}catch(e){$('templatePreview').textContent=e.message;}}
     function reviewLocal(){
       $('reviewAcknowledgement').checked=false;$('confirmSend').disabled=true;
       $('reviewRows').replaceChildren();const recipients=draft?.recipients||selected();
@@ -218,7 +223,7 @@
       }finally{consentBusy=false;b.disabled=false;counts();}
     }));
     $('templateSearch').addEventListener('input',renderTemplates);$('previewRecipient').addEventListener('change',updatePreview);
-    $('nextStep').addEventListener('click',safe(async()=>{if(loading||directoryBusy)return;if(step===1){if(!selected().length)return;const signature=selected().map(r=>r.phone).sort().join(',');loading=true;counts();try{await hydrateSelected();if(!templates.length){const d=await api('/whatsapp/template-catalog');templates=d.templates.filter(t=>t.status==='APPROVED');renderTemplates();}if(signature!==selected().map(r=>r.phone).sort().join(','))throw Error('تغيّر اختيار المستلمين. راجع القائمة مجددًا.');go(2);}finally{loading=false;if(step===1)counts();}}else{selected().forEach(valuesFor);go(3);}}));
+    $('nextStep').addEventListener('click',safe(async()=>{if(loading||directoryBusy)return;if(step===1){if(!selected().length)return;const signature=selected().map(r=>r.phone).sort().join(',');loading=true;counts();try{await hydrateSelected();if(!templates.length){const d=await api('/whatsapp/template-catalog');templates=d.templates.filter(t=>t.status==='APPROVED');renderTemplates();}if(signature!==selected().map(r=>r.phone).sort().join(','))throw Error('تغيّر اختيار المستلمين. راجع القائمة مجددًا.');go(2);}finally{loading=false;if(step===1)counts();}}else{selected().forEach(r=>valuesFor(r));go(3);}}));
     $('previousStep').addEventListener('click',()=>{if(!lockedBody)go(Math.max(1,step-1));});$('prepareReview').addEventListener('click',safe(prepare));
     $('reviewPreviewRecipient').addEventListener('change',updateReviewPreview);$('revalidateReview').addEventListener('click',safe(()=>reviseReview()));
     $('reviewAcknowledgement').addEventListener('change',()=>{$('confirmSend').disabled=!$('reviewAcknowledgement').checked||!draft?.eligible||confirmAttempted||loading||reviewUncertain;});
