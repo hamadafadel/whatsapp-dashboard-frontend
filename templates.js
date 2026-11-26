@@ -26,6 +26,7 @@
     const finalExcluded=new Set();
     let historyRecipientOffset=0,historySearchTimer=null;
     let directoryActive=false,directoryPage=[],directoryTotal=0,directoryEpoch=0,directoryTimer=null,directoryBusy=false;
+    let consentBusy=false;
     const scope=()=>({all:$('allWhatsApp')?.checked===true,labels:[...doc.querySelectorAll('input[name=campaignLabel]:checked')].map(x=>Number(x.value))});
     const inScope=r=>{const s=scope();return s.all||s.labels.some(id=>(r.label_ids||[]).includes(id));};
     const directoryView=()=>directoryActive&&$('recipientView').value!=='selected';
@@ -58,7 +59,7 @@
         const remove=el('button','row-action','استبعاد');remove.type='button';remove.setAttribute('aria-label',`استبعاد ${r.name||r.phone}`);remove.addEventListener('click',()=>{r.selected=false;renderRows();});actions.append(remove);tr.append(actions);$('recipientRows').append(tr);
       }counts();
     }
-    function counts(){const n=selected().length;$('selectedCount').textContent=`${n} محدد`;$('totalCount').textContent=`إجمالي العملاء المعروضين ${directoryView()?directoryTotal:visible().length} · المحددون ${n}`;$('footerSummary').textContent=n?`${n} مستلم محدد · مراجعة الأهلية قبل الإرسال`:'اختر المستلمين للمتابعة';$('nextStep').disabled=n===0||loading||directoryBusy;}
+    function counts(){const n=selected().length;$('selectedCount').textContent=`${n} محدد`;$('totalCount').textContent=`إجمالي العملاء المعروضين ${directoryView()?directoryTotal:visible().length} · المحددون ${n}`;$('footerSummary').textContent=n?`${n} مستلم محدد · مراجعة الأهلية قبل الإرسال`:'اختر المستلمين للمتابعة';$('nextStep').disabled=n===0||loading||directoryBusy||consentBusy;for(const id of ['bulkGrantConsent','bulkWithdrawConsent'])$(id).disabled=n===0||loading||directoryBusy||consentBusy;}
     function sourceMode(next){source=next;for(const s of ['manual','import','labels'])$('source-'+s).hidden=s!==next;doc.querySelectorAll('[data-source]').forEach(b=>b.classList.toggle('active',b.dataset.source===next));}
     function go(next){step=next;for(let i=1;i<=3;i++){$('step'+i).hidden=i!==step;const li=doc.querySelector(`[data-step="${i}"]`);if(i===step)li.setAttribute('aria-current','step');else li.removeAttribute('aria-current');}
       $('previousStep').hidden=step===1;$('nextStep').hidden=step===3;$('prepareReview').hidden=step!==3||Boolean(draft);$('confirmSend').hidden=step!==3||!draft;
@@ -94,7 +95,13 @@
       }finally{if(epoch===directoryEpoch){directoryBusy=false;counts();}}
     }
     async function hydrateSelected(){const picked=selected(),epoch=directoryEpoch;for(let i=0;i<picked.length;i+=200){const batch=picked.slice(i,i+200),d=await api('/whatsapp/campaigns/resolve',{method:'POST',body:{rows:batch.map(r=>({phone:r.phone,name:r.name}))}});if(epoch!==directoryEpoch)throw Error('تغيّر اختيار المستلمين. راجع القائمة مجددًا.');for(const r of d.rows){const target=rows.get(r.phone);if(target?.selected){target.name=r.name||target.name;target.permission=r.permission;}}}}
-    function openConsent(r){consentTarget=r.phone;$('consentPhone').textContent='+'+r.phone;$('consentEvidence').value='';$('consentStatus').value=r.permission?.status||'granted';doc.querySelectorAll('[name=consentCategory]').forEach(c=>c.checked=r.permission?.categories?.includes(c.value)||false);$('consentDialog').showModal();}
+    function openConsent(r){consentTarget=r.phone;$('consentPhone').textContent='+'+r.phone;$('consentEvidence').value='';$('consentStatus').disabled=false;$('consentStatus').value=r.permission?.status||'granted';$('consentBatchNotice').hidden=$('consentBatchConfirmation').hidden=true;doc.querySelectorAll('[name=consentCategory]').forEach(c=>c.checked=r.permission?.categories?.includes(c.value)||false);$('consentDialog').showModal();}
+    function openBulkConsent(status){
+      if(consentBusy||directoryBusy)return;const phones=selected().map(r=>r.phone);if(!phones.length)return;
+      consentTarget={phones,status};$('consentPhone').textContent=`سيتم تحديث ${phones.length} عميل محدد عبر جميع الصفحات.`;$('consentStatus').value=status;$('consentStatus').disabled=true;$('consentEvidence').value='';$('consentBatchReviewed').checked=false;
+      $('consentBatchNotice').hidden=$('consentBatchConfirmation').hidden=false;$('consentBatchNotice').textContent=status==='granted'?'تُسجّل الموافقة فقط عند وجود مرجع فعلي للمجموعة. العملاء المنسحبون سابقًا سيظلون مستبعدين ولن تعيد العملية اشتراكهم.':'تُسجّل الحالة كإلغاء اشتراك؛ سيُستبعد المحددون من الحملات دون حذفهم أو حذف محادثاتهم.';
+      doc.querySelectorAll('[name=consentCategory]').forEach(c=>c.checked=false);$('consentDialog').showModal();
+    }
     function renderTemplates(){
       const query=$('templateSearch').value.toLocaleLowerCase();$('templateList').replaceChildren();
       for(const t of templates.filter(t=>`${t.name} ${t.language} ${t.category}`.toLocaleLowerCase().includes(query))){
@@ -199,7 +206,17 @@
     $('recipientPrev').addEventListener('click',safe(async()=>{currentPage=Math.max(0,currentPage-1);await loadDirectory();renderRows();}));$('recipientNext').addEventListener('click',safe(async()=>{currentPage++;await loadDirectory();renderRows();}));
     $('selectAll').addEventListener('click',safe(()=>selectDirectory(true,true)));$('selectNone').addEventListener('click',safe(()=>selectDirectory(false,true)));
     $('selectEveryPage').addEventListener('click',safe(()=>selectDirectory(true,false)));$('clearEveryPage').addEventListener('click',()=>{directoryEpoch++;directoryBusy=false;for(const r of rows.values())r.selected=false;renderRows();});
-    $('saveConsent').addEventListener('click',safe(async()=>{const b=$('saveConsent');b.disabled=true;try{await api('/whatsapp/campaigns/permissions',{method:'POST',body:{phone:consentTarget,status:$('consentStatus').value,categories:[...doc.querySelectorAll('[name=consentCategory]:checked')].map(x=>x.value),evidence:$('consentEvidence').value}});const r=await api('/whatsapp/campaigns/resolve',{method:'POST',body:{rows:[{phone:consentTarget}]}});rows.get(consentTarget).permission=r.rows[0].permission;$('consentDialog').close();renderRows();}finally{b.disabled=false;}}));
+    $('bulkGrantConsent').addEventListener('click',()=>openBulkConsent('granted'));$('bulkWithdrawConsent').addEventListener('click',()=>openBulkConsent('withdrawn'));
+    $('saveConsent').addEventListener('click',safe(async()=>{
+      if(consentBusy)return;const target=consentTarget,bulk=typeof target==='object';if(bulk&&!$('consentBatchReviewed').checked)throw Error('راجع عدد المحددين ومرجع الموافقة ثم فعّل خانة التأكيد.');
+      const body={status:bulk?target.status:$('consentStatus').value,categories:[...doc.querySelectorAll('[name=consentCategory]:checked')].map(x=>x.value),evidence:$('consentEvidence').value};
+      if(!body.categories.length||body.evidence.trim().length<5)throw Error('اختر النطاق وسجّل مرجعًا فعليًا لا يقل عن 5 أحرف.');
+      const b=$('saveConsent');consentBusy=true;b.disabled=true;counts();try{
+        if(bulk){const result=await api('/whatsapp/campaigns/permissions/bulk',{method:'POST',body:{...body,phones:target.phones}});for(const p of result.permissions||[]){const r=rows.get(p.phone);if(r)r.permission=p;}setNotice(`تم تحديث ${result.updated} من ${result.total} عميل. ${target.status==='granted'?`بقي ${result.skippedWithdrawn} منسحبًا سابقًا دون إعادة اشتراك.`:'تم استبعادهم من الحملات دون حذف بياناتهم.'} لم تُرسل أي رسالة.`);}
+        else{await api('/whatsapp/campaigns/permissions',{method:'POST',body:{...body,phone:target}});const r=await api('/whatsapp/campaigns/resolve',{method:'POST',body:{rows:[{phone:target}]}});if(rows.has(target))rows.get(target).permission=r.rows[0].permission;}
+        $('consentDialog').close();renderRows();if(step===3)reviewLocal();
+      }finally{consentBusy=false;b.disabled=false;counts();}
+    }));
     $('templateSearch').addEventListener('input',renderTemplates);$('previewRecipient').addEventListener('change',updatePreview);
     $('nextStep').addEventListener('click',safe(async()=>{if(loading||directoryBusy)return;if(step===1){if(!selected().length)return;const signature=selected().map(r=>r.phone).sort().join(',');loading=true;counts();try{await hydrateSelected();if(!templates.length){const d=await api('/whatsapp/template-catalog');templates=d.templates.filter(t=>t.status==='APPROVED');renderTemplates();}if(signature!==selected().map(r=>r.phone).sort().join(','))throw Error('تغيّر اختيار المستلمين. راجع القائمة مجددًا.');go(2);}finally{loading=false;if(step===1)counts();}}else{selected().forEach(valuesFor);go(3);}}));
     $('previousStep').addEventListener('click',()=>{if(!lockedBody)go(Math.max(1,step-1));});$('prepareReview').addEventListener('click',safe(prepare));

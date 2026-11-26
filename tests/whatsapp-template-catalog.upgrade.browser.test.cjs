@@ -9,7 +9,7 @@ const prior=process.env.CATALOG_PREVIOUS_ASSET_DIR;
 const files=new Set(['index.html','app.js','app.css','campaign-conversations.js','native-composer.js','whatsapp-template-catalog.js','service-worker.js','manifest.json','mehrab-splash-192-v5.png','mehrab-splash-512-v5.png']);
 const template={id:'123',name:'synthetic_upgrade',language:'ar',category:'UTILITY',status:'APPROVED',revision:'synthetic-revision',components:[{type:'BODY',text:'أهلا {{1}}'}],variables:[{key:'components[0].text:1',name:'1',componentType:'BODY'}],requirements:[],sendSchema:{supported:true,fields:[{key:'components[0].text:1',label:'BODY — {{1}}',required:true}]}};
 
-for(const width of [390,1440])test(`retained profile upgrades to v11 without reinstall; shared API, validation and single mock admission (${width}px)`,{skip:!prior},async()=>{
+for(const width of [390,1440])test(`retained profile upgrades to v12 without reinstall; shared API, validation and single mock admission (${width}px)`,{skip:!prior},async()=>{
  let release='before',context,origin,dynamic=false;const traffic=[],posts=[],gets=[],rows=[],errors=[];
  const profile=fs.mkdtempSync(path.join(os.tmpdir(),'mehrab-catalog-pwa-upgrade-'));const blocked=[];
  const server=http.createServer((req,res)=>{
@@ -68,7 +68,7 @@ for(const width of [390,1440])test(`retained profile upgrades to v11 without rei
   await page.close();release='after';page=await context.newPage();
   await page.goto(origin);
   await page.waitForFunction(()=>typeof window.MehrabTemplateCatalog?.create==='function',null,{timeout:10000});
-  await page.waitForFunction(async()=>(await caches.keys()).includes('mehrab-dashboard-static-v11')&&!(await caches.keys()).includes('mehrab-dashboard-static-v7'));
+  await page.waitForFunction(async()=>(await caches.keys()).includes('mehrab-dashboard-static-v12')&&!(await caches.keys()).includes('mehrab-dashboard-static-v7'));
   // The real application intentionally reloads once on controllerchange. Wait for
   // that navigation to settle before interacting with the new document.
   await page.waitForLoadState('networkidle');
